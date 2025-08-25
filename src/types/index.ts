@@ -1,5 +1,4 @@
-
-export type TranscriptionProvider = 'assemblyai';
+export type TranscriptionProvider = 'assemblyai' | 'deepgram';
 
 export interface AssemblyAIConfig {
   speaker_labels?: boolean;

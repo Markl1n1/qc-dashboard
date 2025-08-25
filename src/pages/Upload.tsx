@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback } from 'react';
 import { useDropzone, Accept } from 'react-dropzone';
 import { Button } from '../components/ui/button';
@@ -8,29 +9,57 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Textarea } from '../components/ui/textarea';
 import { Checkbox } from '../components/ui/checkbox';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { Badge } from '../components/ui/badge';
 import { CheckedState } from '@radix-ui/react-checkbox';
 import { useSimplifiedTranscription } from '../hooks/useSimplifiedTranscription';
+import { useDeepgramTranscription } from '../hooks/useDeepgramTranscription';
+import { Mic, Zap, Users, Globe } from 'lucide-react';
+import DeepgramOptions from '../components/DeepgramOptions';
+import { DeepgramOptions as DeepgramOptionsType } from '../types/deepgram';
 
 interface UploadProps {}
 
 const Upload: React.FC<UploadProps> = () => {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [transcription, setTranscription] = useState<string>('');
-  const [model, setModel] = useState<string>('assemblyai-universal');
-  const [language, setLanguage] = useState<string>('en');
-  const [speakerLabels, setSpeakerLabels] = useState<boolean>(false);
+  const [provider, setProvider] = useState<'assemblyai' | 'deepgram'>('assemblyai');
   const [assignedAgent, setAssignedAgent] = useState<string>('');
   const [assignedSupervisor, setAssignedSupervisor] = useState<string>('');
-  const [isApiKeyValid, setIsApiKeyValid] = useState<boolean>(true);
-  const [apiKeyError, setApiKeyError] = useState<string | null>(null);
   const [tokenEstimate, setTokenEstimate] = useState<{ audioLengthMinutes: number; estimatedCost: number } | null>(null);
 
+  // AssemblyAI options
+  const [assemblyModel, setAssemblyModel] = useState<string>('assemblyai-universal');
+  const [assemblyLanguage, setAssemblyLanguage] = useState<string>('en');
+  const [assemblySpeakerLabels, setAssemblySpeakerLabels] = useState<boolean>(false);
+
+  // Deepgram options
+  const [deepgramOptions, setDeepgramOptions] = useState<DeepgramOptionsType>({
+    model: 'nova-2',
+    language_detection: true,
+    speaker_labels: true,
+    smart_formatting: true,
+    profanity_filter: false,
+    punctuation: true
+  });
+
   const { 
-    transcribe, 
-    isLoading: isTranscribing, 
-    progress, 
-    error: transcriptionError
+    transcribe: transcribeAssembly, 
+    isLoading: isAssemblyLoading, 
+    progress: assemblyProgress, 
+    error: assemblyError
   } = useSimplifiedTranscription();
+
+  const { 
+    transcribe: transcribeDeepgram, 
+    isLoading: isDeepgramLoading, 
+    progress: deepgramProgress, 
+    error: deepgramError
+  } = useDeepgramTranscription();
+
+  const isTranscribing = isAssemblyLoading || isDeepgramLoading;
+  const progress = provider === 'assemblyai' ? assemblyProgress : deepgramProgress;
+  const transcriptionError = provider === 'assemblyai' ? assemblyError : deepgramError;
 
   const acceptedFileTypes: Accept = {
     'audio/*': ['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac']
@@ -56,12 +85,20 @@ const Upload: React.FC<UploadProps> = () => {
       return;
     }
 
-    console.log('Starting transcription for file:', audioFile.name);
+    console.log(`Starting ${provider} transcription for file:`, audioFile.name);
+    
     try {
-      const result = await transcribe(audioFile, {
-        speakerLabels: speakerLabels,
-        language: language,
-      });
+      let result;
+      
+      if (provider === 'assemblyai') {
+        result = await transcribeAssembly(audioFile, {
+          speakerLabels: assemblySpeakerLabels,
+          language: assemblyLanguage,
+        });
+      } else {
+        result = await transcribeDeepgram(audioFile, deepgramOptions);
+      }
+      
       console.log('Transcription completed, setting result');
       setTranscription(result.text);
     } catch (err: any) {
@@ -77,16 +114,73 @@ const Upload: React.FC<UploadProps> = () => {
     }
 
     console.log('Estimating token cost for:', audioFile.name);
-    // Placeholder for token estimation logic
     setTokenEstimate({ audioLengthMinutes: 10, estimatedCost: 0.5 });
   };
 
-  const handleSpeakerLabelsChange = (checked: CheckedState) => {
-    setSpeakerLabels(checked === true);
+  const handleAssemblySpeakerLabelsChange = (checked: CheckedState) => {
+    setAssemblySpeakerLabels(checked === true);
   };
 
   return (
     <div className="container mx-auto p-6">
+      {/* Provider Selection */}
+      <Card className="mb-4">
+        <CardHeader>
+          <CardTitle>Choose Transcription Provider</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Tabs value={provider} onValueChange={(value) => setProvider(value as 'assemblyai' | 'deepgram')}>
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="assemblyai" className="flex items-center gap-2">
+                <Mic className="h-4 w-4" />
+                AssemblyAI
+              </TabsTrigger>
+              <TabsTrigger value="deepgram" className="flex items-center gap-2">
+                <Zap className="h-4 w-4" />
+                Deepgram
+                <Badge variant="secondary" className="text-xs">New</Badge>
+              </TabsTrigger>
+            </TabsList>
+
+            <div className="mt-4">
+              {provider === 'assemblyai' && (
+                <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-1">
+                    <Mic className="h-4 w-4" />
+                    Universal Model
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Globe className="h-4 w-4" />
+                    Multi-language
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Users className="h-4 w-4" />
+                    Speaker Labels
+                  </div>
+                </div>
+              )}
+              {provider === 'deepgram' && (
+                <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-1">
+                    <Zap className="h-4 w-4" />
+                    Nova-2 Model
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Globe className="h-4 w-4" />
+                    Auto Language Detection
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Users className="h-4 w-4" />
+                    Agent/Customer Detection
+                  </div>
+                </div>
+              )}
+            </div>
+          </Tabs>
+        </CardContent>
+      </Card>
+
+      {/* File Upload */}
       <Card className="mb-4">
         <CardHeader>
           <CardTitle>Upload Audio File</CardTitle>
@@ -108,50 +202,62 @@ const Upload: React.FC<UploadProps> = () => {
         </CardContent>
       </Card>
 
+      {/* Provider-specific Options */}
       <Card className="mb-4">
         <CardHeader>
           <CardTitle>Transcription Options</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4">
-            <div className="grid grid-cols-3 items-center gap-4">
-              <Label htmlFor="model" className="text-right">
-                Model
-              </Label>
-              <Select value={model} onValueChange={setModel}>
-                <SelectTrigger className="col-span-2">
-                  <SelectValue placeholder="Select a model" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="assemblyai-universal">AssemblyAI Universal</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          {provider === 'assemblyai' && (
+            <div className="grid gap-4">
+              <div className="grid grid-cols-3 items-center gap-4">
+                <Label htmlFor="model" className="text-right">
+                  Model
+                </Label>
+                <Select value={assemblyModel} onValueChange={setAssemblyModel}>
+                  <SelectTrigger className="col-span-2">
+                    <SelectValue placeholder="Select a model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="assemblyai-universal">AssemblyAI Universal</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-            <div className="grid grid-cols-3 items-center gap-4">
-              <Label htmlFor="language" className="text-right">
-                Language
-              </Label>
-              <Select value={language} onValueChange={setLanguage}>
-                <SelectTrigger className="col-span-2">
-                  <SelectValue placeholder="Select a language" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="en">English</SelectItem>
-                  <SelectItem value="es">Spanish</SelectItem>
-                  <SelectItem value="fr">French</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+              <div className="grid grid-cols-3 items-center gap-4">
+                <Label htmlFor="language" className="text-right">
+                  Language
+                </Label>
+                <Select value={assemblyLanguage} onValueChange={setAssemblyLanguage}>
+                  <SelectTrigger className="col-span-2">
+                    <SelectValue placeholder="Select a language" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="en">English</SelectItem>
+                    <SelectItem value="es">Spanish</SelectItem>
+                    <SelectItem value="fr">French</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-            <div className="flex items-center space-x-2">
-              <Checkbox id="speakerLabels" checked={speakerLabels} onCheckedChange={handleSpeakerLabelsChange} />
-              <Label htmlFor="speakerLabels">Speaker Labels</Label>
+              <div className="flex items-center space-x-2">
+                <Checkbox id="speakerLabels" checked={assemblySpeakerLabels} onCheckedChange={handleAssemblySpeakerLabelsChange} />
+                <Label htmlFor="speakerLabels">Speaker Labels</Label>
+              </div>
             </div>
-          </div>
+          )}
+
+          {provider === 'deepgram' && (
+            <DeepgramOptions
+              options={deepgramOptions}
+              onChange={setDeepgramOptions}
+              disabled={isTranscribing}
+            />
+          )}
         </CardContent>
       </Card>
 
+      {/* Agent Assignment */}
       <Card className="mb-4">
         <CardHeader>
           <CardTitle>Agent and Supervisor Assignment</CardTitle>
@@ -174,6 +280,7 @@ const Upload: React.FC<UploadProps> = () => {
         </CardContent>
       </Card>
 
+      {/* Token Estimation */}
       {tokenEstimate && (
         <Card className="mb-4">
           <CardHeader>
@@ -186,15 +293,17 @@ const Upload: React.FC<UploadProps> = () => {
         </Card>
       )}
 
+      {/* Action Buttons */}
       <div className="flex justify-between mb-4">
         <Button onClick={handleEstimateTokenCost} disabled={!audioFile}>
           Estimate Token Cost
         </Button>
         <Button onClick={handleTranscribe} disabled={!audioFile || isTranscribing}>
-          {isTranscribing ? 'Transcribing...' : 'Transcribe'}
+          {isTranscribing ? `Transcribing with ${provider}...` : `Transcribe with ${provider}`}
         </Button>
       </div>
 
+      {/* Progress */}
       {progress && (
         <Card className="mb-4">
           <CardHeader>
@@ -207,6 +316,7 @@ const Upload: React.FC<UploadProps> = () => {
         </Card>
       )}
 
+      {/* Error Display */}
       {transcriptionError && (
         <Card className="mb-4">
           <CardHeader>
@@ -218,10 +328,14 @@ const Upload: React.FC<UploadProps> = () => {
         </Card>
       )}
 
+      {/* Results */}
       {transcription && (
         <Card>
           <CardHeader>
-            <CardTitle>Transcription</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              Transcription Result
+              <Badge variant="outline">{provider}</Badge>
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <Textarea value={transcription} readOnly className="min-h-[200px]" />
