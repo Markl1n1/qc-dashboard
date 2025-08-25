@@ -1,89 +1,181 @@
 
 import React, { useState } from 'react';
-import { User, Settings, LogOut, Shield } from 'lucide-react';
 import { Button } from './ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from './ui/dropdown-menu';
-import { Avatar, AvatarFallback } from './ui/avatar';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
+import { User, LogOut, Settings, Moon } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
-import { useUserRole } from '../hooks/useUserRole';
-import { useNavigate } from 'react-router-dom';
-import PasscodeManager from './PasscodeManager';
+import { toast } from 'sonner';
+import { supabase } from '../integrations/supabase/client';
 
 const UserProfileMenu = () => {
-  const { user, signOut } = useAuthStore();
-  const { isAdmin } = useUserRole();
-  const navigate = useNavigate();
-  const [showPasscodeManager, setShowPasscodeManager] = useState(false);
+  const { user, logout } = useAuthStore();
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [userName, setUserName] = useState<string>('');
 
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/auth');
+  // Get user name from profile
+  React.useEffect(() => {
+    const fetchUserName = async () => {
+      if (user) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('name')
+          .eq('id', user.id)
+          .single();
+
+        if (data && !error) {
+          setUserName(data.name || user.email || 'User');
+        } else {
+          setUserName(user.email || 'User');
+        }
+      }
+    };
+
+    fetchUserName();
+  }, [user]);
+
+  const handleChangePassword = async () => {
+    if (newPassword !== confirmPassword) {
+      toast.error('Passwords do not match');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      toast.error('Password must be at least 6 characters long');
+      return;
+    }
+
+    setIsChangingPassword(true);
+
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+
+      if (error) {
+        toast.error(`Failed to change password: ${error.message}`);
+      } else {
+        toast.success('Password changed successfully');
+        setShowPasswordDialog(false);
+        setNewPassword('');
+        setConfirmPassword('');
+      }
+    } catch (error) {
+      toast.error('An unexpected error occurred');
+    } finally {
+      setIsChangingPassword(false);
+    }
   };
 
-  const handleSettings = () => {
-    navigate('/settings');
-  };
-
-  const getInitials = (email: string) => {
-    return email?.split('@')[0]?.substring(0, 2)?.toUpperCase() || 'U';
+  const handleLogout = async () => {
+    try {
+      await logout();
+      toast.success('Logged out successfully');
+    } catch (error) {
+      toast.error('Failed to logout');
+    }
   };
 
   return (
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-            <Avatar className="h-8 w-8">
-              <AvatarFallback className="text-xs">
-                {getInitials(user?.email || '')}
-              </AvatarFallback>
-            </Avatar>
+          <Button variant="ghost" size="icon" className="rounded-full">
+            <User className="h-5 w-5" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-56" align="end" forceMount>
-          <div className="flex items-center justify-start gap-2 p-2">
-            <div className="flex flex-col space-y-1 leading-none">
-              {user?.email && (
-                <p className="text-sm font-medium leading-none">{user.email}</p>
-              )}
-              {isAdmin && (
-                <p className="text-xs leading-none text-muted-foreground">
-                  Administrator
-                </p>
-              )}
-            </div>
-          </div>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuLabel>{userName}</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={handleSettings}>
-            <Settings className="mr-2 h-4 w-4" />
-            <span>Settings</span>
+          <DropdownMenuItem onClick={() => {}}>
+            <Moon className="mr-2 h-4 w-4" />
+            Theme
           </DropdownMenuItem>
-          {isAdmin && (
-            <DropdownMenuItem onClick={() => setShowPasscodeManager(true)}>
-              <Shield className="mr-2 h-4 w-4" />
-              <span>Manage Passcode</span>
-            </DropdownMenuItem>
-          )}
+          <DropdownMenuItem onClick={() => setShowPasswordDialog(true)}>
+            <Settings className="mr-2 h-4 w-4" />
+            Change Password
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={handleSignOut}>
+          <DropdownMenuItem onClick={handleLogout}>
             <LogOut className="mr-2 h-4 w-4" />
-            <span>Log out</span>
+            Logout
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {showPasscodeManager && (
-        <PasscodeManager 
-          open={showPasscodeManager}
-          onClose={() => setShowPasscodeManager(false)}
-        />
-      )}
+      <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Change Password</DialogTitle>
+            <DialogDescription>
+              Enter your new password below. Make sure it's at least 6 characters long.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="new-password" className="text-right">
+                New Password
+              </Label>
+              <Input
+                id="new-password"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="col-span-3"
+                placeholder="Enter new password"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="confirm-password" className="text-right">
+                Confirm Password
+              </Label>
+              <Input
+                id="confirm-password"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="col-span-3"
+                placeholder="Confirm new password"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowPasswordDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleChangePassword}
+              disabled={isChangingPassword || !newPassword || !confirmPassword}
+            >
+              {isChangingPassword ? 'Changing...' : 'Change Password'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };

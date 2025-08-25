@@ -1,3 +1,4 @@
+
 import { AssemblyAIConfig, UnifiedTranscriptionProgress } from '../types';
 import { useDialogStore } from '../store/dialogStore';
 import { v4 as uuidv4 } from 'uuid';
@@ -12,19 +13,14 @@ class TranscriptionService {
   private progressCallback: ((progress: UnifiedTranscriptionProgress) => void) | null = null;
   private modelLoaded = false;
   private currentModel: string | null = null;
-  private isProcessing = false;
 
   setProgressCallback(callback: (progress: UnifiedTranscriptionProgress) => void) {
     this.progressCallback = callback;
   }
 
   private updateProgress(stage: UnifiedTranscriptionProgress['stage'], progress: number, message: string) {
-    if (this.progressCallback && !this.isProcessing) {
-      try {
-        this.progressCallback({ stage, progress, message });
-      } catch (error) {
-        console.error('Progress callback error:', error);
-      }
+    if (this.progressCallback) {
+      this.progressCallback({ stage, progress, message });
     }
   }
 
@@ -34,12 +30,6 @@ class TranscriptionService {
     assignedSupervisor: string,
     config?: AssemblyAIConfig
   ): Promise<string> {
-    if (this.isProcessing) {
-      throw new Error('Transcription already in progress');
-    }
-
-    this.isProcessing = true;
-    
     try {
       if (!file) {
         throw new Error('No file provided');
@@ -92,8 +82,6 @@ class TranscriptionService {
     } catch (error) {
       this.updateProgress('error', 0, error instanceof Error ? error.message : 'Transcription failed');
       throw error;
-    } finally {
-      this.isProcessing = false;
     }
   }
 
@@ -152,7 +140,9 @@ class TranscriptionService {
     }
   }
 
+  // Mock methods for compatibility with useTranscription hook
   async transcribe(file: File, options: TranscriptionOptions): Promise<string> {
+    // This would be a local transcription method - currently not implemented
     throw new Error('Local transcription not implemented');
   }
 

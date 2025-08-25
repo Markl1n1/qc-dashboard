@@ -1,35 +1,86 @@
 
 import React from 'react';
-import { Outlet } from 'react-router-dom';
-import { Toaster } from './ui/sonner';
+import { Link, useLocation } from 'react-router-dom';
+import { Button } from './ui/button';
+import { Upload, Home, Settings } from 'lucide-react';
+import { useAuthStore } from '../store/authStore';
+import { useUserRole } from '../hooks/useUserRole';
 import UserProfileMenu from './UserProfileMenu';
+import PasscodeManager from './PasscodeManager';
 import VoiceQCLogo from './VoiceQCLogo';
 
-const Layout: React.FC = () => {
+const Layout = ({ children }: { children: React.ReactNode }) => {
+  const location = useLocation();
+  const { isAuthenticated } = useAuthStore();
+  const { isAdmin } = useUserRole();
+
+  const isActive = (path: string) => location.pathname === path;
+
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <VoiceQCLogo size="md" />
-            <h1 className="hidden sm:block text-xl font-semibold">VoiceQC</h1>
+      <header className="border-b">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-6">
+              <Link to="/" className="flex items-center">
+                <VoiceQCLogo />
+              </Link>
+              
+              {isAuthenticated && (
+                <nav className="flex items-center space-x-4">
+                  <Button
+                    variant={isActive('/') ? 'default' : 'ghost'}
+                    size="sm"
+                    asChild
+                  >
+                    <Link to="/">
+                      <Home className="mr-2 h-4 w-4" />
+                      Dashboard
+                    </Link>
+                  </Button>
+                  <Button
+                    variant={isActive('/upload') ? 'default' : 'ghost'}
+                    size="sm"
+                    asChild
+                  >
+                    <Link to="/upload">
+                      <Upload className="mr-2 h-4 w-4" />
+                      Upload
+                    </Link>
+                  </Button>
+                  {isAdmin && (
+                    <Button
+                      variant={isActive('/settings') ? 'default' : 'ghost'}
+                      size="sm"
+                      asChild
+                    >
+                      <Link to="/settings">
+                        <Settings className="mr-2 h-4 w-4" />
+                        Settings
+                      </Link>
+                    </Button>
+                  )}
+                </nav>
+              )}
+            </div>
+
+            <div className="flex items-center space-x-4">
+              {isAuthenticated ? (
+                <>
+                  {isAdmin && <PasscodeManager />}
+                  <UserProfileMenu />
+                </>
+              ) : (
+                <Button asChild>
+                  <Link to="/auth">Login</Link>
+                </Button>
+              )}
+            </div>
           </div>
-          <UserProfileMenu />
         </div>
       </header>
-      
-      <main className="flex-1">
-        <div className="w-full max-w-full overflow-x-hidden">
-          <Outlet />
-        </div>
-      </main>
-      
-      <Toaster 
-        position="top-right"
-        expand={false}
-        richColors
-        closeButton
-      />
+
+      <main>{children}</main>
     </div>
   );
 };
