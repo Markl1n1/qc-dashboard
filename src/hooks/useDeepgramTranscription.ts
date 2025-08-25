@@ -2,6 +2,7 @@
 import { useState, useCallback } from 'react';
 import { deepgramService, DeepgramOptions } from '../services/deepgramService';
 import { UnifiedTranscriptionProgress, SpeakerUtterance } from '../types';
+import { logger } from '../utils/logger';
 
 export const useDeepgramTranscription = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -12,7 +13,7 @@ export const useDeepgramTranscription = () => {
     audioFile: File, 
     options: DeepgramOptions
   ): Promise<{ text: string; speakerUtterances: SpeakerUtterance[] }> => {
-    console.log('🎙️ Deepgram transcription hook called', { fileName: audioFile.name, options });
+    logger.info('🎙️ Deepgram transcription hook called', { fileName: audioFile.name, options });
     
     setIsLoading(true);
     setError(null);
@@ -21,18 +22,18 @@ export const useDeepgramTranscription = () => {
     try {
       // Set up progress tracking
       deepgramService.setProgressCallback((progressData) => {
-        console.log('📊 Deepgram progress callback:', progressData);
+        logger.debug('📊 Deepgram progress callback:', progressData);
         try {
           setProgress(progressData);
         } catch (err) {
-          console.error('❌ Error setting Deepgram progress state:', err);
+          logger.error('❌ Error setting Deepgram progress state:', err);
         }
       });
 
-      console.log('🚀 Calling Deepgram service...');
+      logger.info('🚀 Calling Deepgram service...');
       const result = await deepgramService.transcribe(audioFile, options);
       
-      console.log('✅ Deepgram transcription completed', { 
+      logger.info('✅ Deepgram transcription completed', { 
         textLength: result.text.length,
         utteranceCount: result.speakerUtterances.length
       });
@@ -42,7 +43,7 @@ export const useDeepgramTranscription = () => {
       return result;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Deepgram transcription failed';
-      console.error('❌ Deepgram transcription error:', { errorMessage, error: err });
+      logger.error('❌ Deepgram transcription error:', { errorMessage, error: err });
       
       setError(errorMessage);
       throw err;

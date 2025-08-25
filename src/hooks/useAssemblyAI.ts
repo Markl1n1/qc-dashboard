@@ -2,6 +2,7 @@
 import { useState, useCallback } from 'react';
 import { assemblyAIService, AssemblyAIOptions } from '../services/assemblyAIService';
 import { UnifiedTranscriptionProgress, SpeakerUtterance } from '../types';
+import { logger } from '../utils/logger';
 
 export const useAssemblyAI = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -23,8 +24,8 @@ export const useAssemblyAI = () => {
         language_code: undefined
       };
 
-      console.log('Starting AssemblyAI transcription with language detection and disfluencies enabled');
-      console.log('Audio file:', audioFile.name, 'Size:', audioFile.size);
+      logger.info('Starting AssemblyAI transcription with language detection and disfluencies enabled');
+      logger.info('Audio file:', audioFile.name, 'Size:', audioFile.size);
 
       // Set up progress tracking
       assemblyAIService.setProgressCallback((progress) => {
@@ -33,12 +34,12 @@ export const useAssemblyAI = () => {
 
       const result = await assemblyAIService.transcribe(audioFile, enhancedOptions);
       
-      console.log('AssemblyAI transcription completed');
+      logger.info('AssemblyAI transcription completed');
       setProgress({ stage: 'complete', progress: 100, message: 'Transcription complete' });
       return result;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'AssemblyAI transcription failed';
-      console.error('AssemblyAI transcription error:', errorMessage);
+      logger.error('AssemblyAI transcription error:', errorMessage);
       
       // For frontend-only mode, provide helpful error messages
       if (errorMessage.includes('CORS') || errorMessage.includes('cors')) {

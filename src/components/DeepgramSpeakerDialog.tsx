@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { ScrollArea } from './ui/scroll-area';
-import { Clock, Copy, User, Headphones } from 'lucide-react';
+import { Clock, Copy, User, Headphones, Mic, Users } from 'lucide-react';
 import { SpeakerUtterance } from '../types';
 import { copyToClipboard, formatDialogForCopy } from '../utils/dialogFormatting';
 import { toast } from 'sonner';
@@ -33,30 +33,41 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
   };
 
   const getSpeakerStyle = (speaker: string) => {
-    // Use different colors for Speaker 0 and Speaker 1
-    if (speaker === 'Speaker 0') {
-      return {
-        backgroundColor: 'hsl(210, 100%, 97%)', // Light blue background
-        borderColor: 'hsl(210, 100%, 85%)', // Blue border
-        textColor: 'hsl(210, 100%, 25%)', // Dark blue text
+    // Color scheme for different speakers using numeric assignment
+    const speakerColors = [
+      {
+        backgroundColor: 'hsl(210, 100%, 97%)', // Light blue
+        borderColor: 'hsl(210, 100%, 85%)',
+        textColor: 'hsl(210, 100%, 25%)',
         icon: User
-      };
-    } else if (speaker === 'Speaker 1') {
-      return {
-        backgroundColor: 'hsl(120, 60%, 97%)', // Light green background  
-        borderColor: 'hsl(120, 60%, 85%)', // Green border
-        textColor: 'hsl(120, 60%, 25%)', // Dark green text
+      },
+      {
+        backgroundColor: 'hsl(120, 60%, 97%)', // Light green
+        borderColor: 'hsl(120, 60%, 85%)',
+        textColor: 'hsl(120, 60%, 25%)',
         icon: Headphones
-      };
-    } else {
-      // Fallback for other speakers (Speaker 2, 3, etc.)
-      return {
-        backgroundColor: 'hsl(280, 60%, 97%)', // Light purple background
-        borderColor: 'hsl(280, 60%, 85%)', // Purple border
-        textColor: 'hsl(280, 60%, 25%)', // Dark purple text
-        icon: User
-      };
-    }
+      },
+      {
+        backgroundColor: 'hsl(280, 60%, 97%)', // Light purple
+        borderColor: 'hsl(280, 60%, 85%)',
+        textColor: 'hsl(280, 60%, 25%)',
+        icon: Mic
+      },
+      {
+        backgroundColor: 'hsl(30, 100%, 97%)', // Light orange
+        borderColor: 'hsl(30, 100%, 85%)',
+        textColor: 'hsl(30, 100%, 25%)',
+        icon: Users
+      }
+    ];
+
+    // Extract speaker number from speaker label (e.g., "Speaker 0" -> 0)
+    const speakerMatch = speaker.match(/Speaker (\d+)/);
+    const speakerIndex = speakerMatch ? parseInt(speakerMatch[1]) : 0;
+    
+    // Use modulo to cycle through colors if we have more speakers than colors
+    const colorIndex = speakerIndex % speakerColors.length;
+    return speakerColors[colorIndex];
   };
 
   const handleCopyDialog = async () => {
@@ -86,8 +97,8 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-base">
-              <User className="h-4 w-4" />
-              Speaker Dialog
+              <Users className="h-4 w-4" />
+              Speaker Diarization Results
               <Badge variant="outline">{utterances.length} utterances</Badge>
             </CardTitle>
             <Button variant="outline" size="sm" onClick={handleCopyDialog}>

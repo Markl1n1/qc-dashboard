@@ -2,6 +2,7 @@
 import { DeepgramOptions, DeepgramTranscriptionResult, DeepgramProgress } from '../types/deepgram';
 import { SpeakerUtterance, UnifiedTranscriptionProgress } from '../types';
 import { supabase } from '../integrations/supabase/client';
+import { logger } from '../utils/logger';
 
 class DeepgramService {
   private progressCallback: ((progress: UnifiedTranscriptionProgress) => void) | null = null;
@@ -17,7 +18,7 @@ class DeepgramService {
   }
 
   async transcribe(audioFile: File, options: DeepgramOptions): Promise<{ text: string; speakerUtterances: SpeakerUtterance[] }> {
-    console.log('🎙️ Starting Deepgram transcription', { fileName: audioFile.name, options });
+    logger.info('🎙️ Starting Deepgram transcription', { fileName: audioFile.name, options });
 
     try {
       this.updateProgress('uploading', 10, 'Uploading audio to Deepgram...');
@@ -46,7 +47,7 @@ class DeepgramService {
       });
 
       if (error) {
-        console.error('❌ Deepgram edge function error:', error);
+        logger.error('❌ Deepgram edge function error:', error);
         throw new Error(`Deepgram transcription failed: ${error.message}`);
       }
 
@@ -58,12 +59,19 @@ class DeepgramService {
 
       const result = data.result as DeepgramTranscriptionResult;
       
-      // Convert to unified format
-      const speakerUtterances = this.processSpeakerUtterances(result.speakerUtterances);
+      // LOG THE COMPLETE RAW RESPONSE FOR DEBUGGING
+      logger.warn('🔍 DEEPGRAM RAW RESPONSE STRUCTURE:');
+      logger.warn('🔍 Full result object:', result);
+      logger.warn('🔍 Speaker utterances array:', result.speakerUtterances);
+      logger.warn('🔍 Detected language:', result.detectedLanguage);
+      logger.warn('🔍 Metadata:', result.metadata);
+      
+      // Convert to unified format - USE RAW SPEAKER NUMBERS
+      const speakerUtterances = this.processRawSpeakerUtterances(result.speakerUtterances);
       
       this.updateProgress('complete', 100, 'Transcription complete!');
 
-      console.log('✅ Deepgram transcription completed', {
+      logger.info('✅ Deepgram transcription completed', {
         textLength: result.text.length,
         utteranceCount: speakerUtterances.length,
         detectedLanguage: result.detectedLanguage
@@ -75,7 +83,7 @@ class DeepgramService {
       };
 
     } catch (error) {
-      console.error('❌ Deepgram service error:', error);
+      logger.error('❌ Deepgram service error:', error);
       this.updateProgress('error', 0, error instanceof Error ? error.message : 'Transcription failed');
       throw error;
     }
@@ -95,65 +103,49 @@ class DeepgramService {
     });
   }
 
-  private processSpeakerUtterances(utterances: any[]): SpeakerUtterance[] {
-    return utterances.map((utterance, index) => {
-      // Intelligent speaker role detection
-      const speakerLabel = this.detectSpeakerRole(utterance.text, utterance.speaker, index);
+  private processRawSpeakerUtterances(utterances: any[]): SpeakerUtterance[] {
+    logger.warn('🔍 PROCESSING DEEPGRAM UTTERANCES:');
+    logger.warn('🔍 Input utterances array length:', utterances?.length || 0);
+    
+    if (!utterances || !Array.isArray(utterances)) {
+      logger.warn('🔍 No utterances array found or invalid format');
+      return [];
+    }
+
+    const processedUtterances = utterances.map((utterance, index) => {
+      // LOG EACH INDIVIDUAL UTTERANCE STRUCTURE
+      logger.warn(`🔍 Utterance ${index}:`, {
+        speaker: utterance.speaker,
+        text: utterance.text?.substring(0, 50) + '...',
+        confidence: utterance.confidence,
+        start: utterance.start,
+        end: utterance.end,
+        fullObject: utterance
+      });
+
+      // Use RAW speaker numbers - no intelligent detection
+      const speakerNumber = utterance.speaker !== undefined ? utterance.speaker : 0;
+      const speakerLabel = `Speaker ${speakerNumber}`;
       
       return {
         speaker: speakerLabel,
-        text: utterance.text,
+        text: utterance.text || '',
         confidence: utterance.confidence || 0.9,
-        start: utterance.start,
-        end: utterance.end
+        start: utterance.start || 0,
+        end: utterance.end || 0
       };
     });
-  }
 
-  private detectSpeakerRole(text: string, speakerNumber: string, utteranceIndex: number): string {
-    const lowerText = text.toLowerCase();
+    // LOG SPEAKER DISTRIBUTION FOR ANALYSIS
+    const speakerDistribution = processedUtterances.reduce((acc: any, utterance: any) => {
+      acc[utterance.speaker] = (acc[utterance.speaker] || 0) + 1;
+      return acc;
+    }, {});
     
-    // Keywords that suggest agent role
-    const agentKeywords = [
-      'thank you for calling',
-      'how can i help',
-      'my name is',
-      'i can assist',
-      'let me check',
-      'i understand',
-      'is there anything else',
-      'have a great day'
-    ];
+    logger.warn('🔍 FINAL SPEAKER DISTRIBUTION:', speakerDistribution);
+    logger.warn('🔍 TOTAL PROCESSED UTTERANCES:', processedUtterances.length);
 
-    // Keywords that suggest customer role
-    const customerKeywords = [
-      'i have a problem',
-      'i need help',
-      'my account',
-      'i want to',
-      'can you help me',
-      'i\'m calling about'
-    ];
-
-    // Check for agent patterns
-    const isAgent = agentKeywords.some(keyword => lowerText.includes(keyword));
-    if (isAgent) {
-      return 'Agent';
-    }
-
-    // Check for customer patterns
-    const isCustomer = customerKeywords.some(keyword => lowerText.includes(keyword));
-    if (isCustomer) {
-      return 'Customer';
-    }
-
-    // Fallback logic: first speaker is usually agent in customer service
-    if (utteranceIndex < 2) {
-      return speakerNumber === '0' ? 'Agent' : 'Customer';
-    }
-
-    // Default labeling
-    return speakerNumber === '0' ? 'Agent' : 'Customer';
+    return processedUtterances;
   }
 }
 
