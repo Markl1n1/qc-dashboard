@@ -9,40 +9,44 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  console.log(`[AssemblyAI Edge Function] ${req.method} request received`);
-  console.log(`[AssemblyAI Edge Function] Request URL: ${req.url}`);
-  console.log(`[AssemblyAI Edge Function] Request headers:`, Object.fromEntries(req.headers.entries()));
+  // Force console logging to be visible in edge function
+  console.warn('🔥 [Edge Function] REQUEST RECEIVED - Console logging active');
+  console.warn('🔥 [Edge Function] Method:', req.method);
+  console.warn('🔥 [Edge Function] URL:', req.url);
+  console.warn('🔥 [Edge Function] Headers:', Object.fromEntries(req.headers.entries()));
 
   if (req.method === 'OPTIONS') {
-    console.log('[AssemblyAI Edge Function] Handling CORS preflight request');
+    console.warn('🔥 [Edge Function] CORS preflight request handled');
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Initialize Supabase client
+    // Initialize Supabase client with detailed logging
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
     
-    console.log(`[AssemblyAI Edge Function] Supabase URL: ${supabaseUrl}`);
-    console.log(`[AssemblyAI Edge Function] Supabase Anon Key: ${supabaseAnonKey ? 'Present' : 'Missing'}`);
+    console.warn('🔥 [Edge Function] Environment check:');
+    console.warn('🔥 [Edge Function] Supabase URL:', supabaseUrl ? 'PRESENT' : 'MISSING');
+    console.warn('🔥 [Edge Function] Supabase Anon Key:', supabaseAnonKey ? 'PRESENT' : 'MISSING');
     
     if (!supabaseUrl || !supabaseAnonKey) {
+      console.error('❌ [Edge Function] Missing Supabase configuration');
       throw new Error('Missing Supabase configuration');
     }
 
     const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: req.headers.get('Authorization')! } }
     });
+    console.warn('✅ [Edge Function] Supabase client created');
 
-    // Get user from token
-    console.log('[AssemblyAI Edge Function] Verifying user authentication...');
+    // Authentication with detailed logging
     const authHeader = req.headers.get('Authorization');
-    console.log(`[AssemblyAI Edge Function] Auth header: ${authHeader ? 'Present' : 'Missing'}`);
+    console.warn('🔥 [Edge Function] Auth header check:', authHeader ? 'PRESENT' : 'MISSING');
     
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
     
     if (authError) {
-      console.error('[AssemblyAI Edge Function] Auth error:', authError);
+      console.error('❌ [Edge Function] Auth error:', authError);
       return new Response(JSON.stringify({ error: `Authentication failed: ${authError.message}` }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -50,28 +54,30 @@ serve(async (req) => {
     }
     
     if (!user) {
-      console.error('[AssemblyAI Edge Function] No user found');
+      console.error('❌ [Edge Function] No user authenticated');
       return new Response(JSON.stringify({ error: 'User not authenticated' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    console.log(`[AssemblyAI Edge Function] Authenticated user: ${user.email}`);
+    console.warn('✅ [Edge Function] User authenticated:', user.email);
 
-    // Check for AssemblyAI API key
+    // Check AssemblyAI API key
     const assemblyAiApiKey = Deno.env.get('ASSEMBLYAI_API_KEY');
-    console.log(`[AssemblyAI Edge Function] AssemblyAI API Key: ${assemblyAiApiKey ? 'Present' : 'Missing'}`);
+    console.warn('🔥 [Edge Function] AssemblyAI API Key check:', assemblyAiApiKey ? 'PRESENT' : 'MISSING');
     
     if (!assemblyAiApiKey) {
+      console.error('❌ [Edge Function] AssemblyAI API key not configured');
       throw new Error('AssemblyAI API key not configured');
     }
 
-    // Parse request body
+    // Parse request body with detailed logging
+    console.warn('🔥 [Edge Function] Parsing request body...');
     let requestData;
     try {
       requestData = await req.json();
-      console.log('[AssemblyAI Edge Function] Request data parsed:', {
+      console.warn('🔥 [Edge Function] Request data parsed:', {
         action: requestData.action,
         hasAudioData: !!requestData.audioData,
         audioDataLength: requestData.audioData ? requestData.audioData.length : 0,
@@ -80,27 +86,30 @@ serve(async (req) => {
         otherKeys: Object.keys(requestData).filter(k => !['action', 'audioData', 'fileName', 'transcriptId'].includes(k))
       });
     } catch (parseError) {
-      console.error('[AssemblyAI Edge Function] Failed to parse request body:', parseError);
+      console.error('❌ [Edge Function] Failed to parse request body:', parseError);
       throw new Error(`Invalid request body: ${parseError.message}`);
     }
 
     const { action, ...otherData } = requestData;
+    console.warn('🔥 [Edge Function] Processing action:', action);
 
     if (action === 'upload') {
-      console.log('[AssemblyAI Edge Function] Processing upload action...');
+      console.warn('🔥 [Edge Function] UPLOAD ACTION STARTED');
       const { audioData, fileName } = otherData;
       
       if (!audioData) {
+        console.error('❌ [Edge Function] No audio data provided');
         throw new Error('No audio data provided for upload');
       }
       
-      console.log(`[AssemblyAI Edge Function] Converting base64 to blob for file: ${fileName}`);
+      console.warn('🔥 [Edge Function] Converting base64 to blob for file:', fileName);
+      console.warn('🔥 [Edge Function] Audio data length:', audioData.length);
       
-      // Convert base64 to blob for upload with chunked processing
+      // Convert base64 to blob with detailed logging
       let audioBlob;
       try {
-        // Process base64 in chunks to prevent memory issues
-        const chunkSize = 32768; // 32KB chunks
+        console.warn('🔥 [Edge Function] Starting chunked base64 conversion...');
+        const chunkSize = 32768;
         const chunks: Uint8Array[] = [];
         
         for (let i = 0; i < audioData.length; i += chunkSize) {
@@ -113,9 +122,12 @@ serve(async (req) => {
           }
           
           chunks.push(bytes);
+          
+          if (i % (chunkSize * 10) === 0) {
+            console.warn('🔥 [Edge Function] Processed', Math.round((i / audioData.length) * 100), '% of base64 conversion');
+          }
         }
         
-        // Combine all chunks
         const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
         const result = new Uint8Array(totalLength);
         let offset = 0;
@@ -126,16 +138,16 @@ serve(async (req) => {
         }
         
         audioBlob = result;
-        console.log(`[AssemblyAI Edge Function] Successfully converted base64 to blob, size: ${audioBlob.length} bytes`);
+        console.warn('✅ [Edge Function] Base64 conversion completed, final size:', audioBlob.length, 'bytes');
       } catch (conversionError) {
-        console.error('[AssemblyAI Edge Function] Base64 conversion error:', conversionError);
+        console.error('❌ [Edge Function] Base64 conversion error:', conversionError);
         throw new Error(`Failed to process audio data: ${conversionError.message}`);
       }
       
       const formData = new FormData();
       formData.append('file', new Blob([audioBlob]), fileName);
 
-      console.log('[AssemblyAI Edge Function] Uploading to AssemblyAI...');
+      console.warn('🔥 [Edge Function] Uploading to AssemblyAI API...');
       const response = await fetch('https://api.assemblyai.com/v2/upload', {
         method: 'POST',
         headers: {
@@ -144,16 +156,16 @@ serve(async (req) => {
         body: formData,
       });
 
-      console.log(`[AssemblyAI Edge Function] Upload response status: ${response.status}`);
+      console.warn('🔥 [Edge Function] AssemblyAI upload response status:', response.status);
       
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[AssemblyAI Edge Function] Upload failed:', errorText);
+        console.error('❌ [Edge Function] AssemblyAI upload failed:', errorText);
         throw new Error(`Upload failed: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
-      console.log('[AssemblyAI Edge Function] Upload successful:', data);
+      console.warn('✅ [Edge Function] Upload successful:', data);
       
       return new Response(JSON.stringify(data), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -161,8 +173,8 @@ serve(async (req) => {
     }
 
     if (action === 'transcribe') {
-      console.log('[AssemblyAI Edge Function] Processing transcribe action...');
-      console.log('[AssemblyAI Edge Function] Transcription options:', otherData);
+      console.warn('🔥 [Edge Function] TRANSCRIBE ACTION STARTED');
+      console.warn('🔥 [Edge Function] Transcription options:', otherData);
       
       const response = await fetch('https://api.assemblyai.com/v2/transcript', {
         method: 'POST',
@@ -173,16 +185,16 @@ serve(async (req) => {
         body: JSON.stringify(otherData),
       });
 
-      console.log(`[AssemblyAI Edge Function] Transcribe response status: ${response.status}`);
+      console.warn('🔥 [Edge Function] AssemblyAI transcribe response status:', response.status);
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[AssemblyAI Edge Function] Transcription request failed:', errorText);
+        console.error('❌ [Edge Function] AssemblyAI transcription request failed:', errorText);
         throw new Error(`Transcription request failed: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
-      console.log('[AssemblyAI Edge Function] Transcription started:', { id: data.id, status: data.status });
+      console.warn('✅ [Edge Function] Transcription started:', { id: data.id, status: data.status });
       
       return new Response(JSON.stringify(data), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -190,14 +202,15 @@ serve(async (req) => {
     }
 
     if (action === 'poll') {
-      console.log('[AssemblyAI Edge Function] Processing poll action...');
+      console.warn('🔥 [Edge Function] POLL ACTION STARTED');
       const { transcriptId } = otherData;
       
       if (!transcriptId) {
+        console.error('❌ [Edge Function] No transcript ID provided');
         throw new Error('No transcript ID provided for polling');
       }
       
-      console.log(`[AssemblyAI Edge Function] Polling transcript: ${transcriptId}`);
+      console.warn('🔥 [Edge Function] Polling transcript:', transcriptId);
       
       const response = await fetch(`https://api.assemblyai.com/v2/transcript/${transcriptId}`, {
         headers: {
@@ -205,28 +218,28 @@ serve(async (req) => {
         },
       });
 
-      console.log(`[AssemblyAI Edge Function] Poll response status: ${response.status}`);
+      console.warn('🔥 [Edge Function] AssemblyAI poll response status:', response.status);
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[AssemblyAI Edge Function] Poll request failed:', errorText);
+        console.error('❌ [Edge Function] AssemblyAI poll request failed:', errorText);
         throw new Error(`Failed to get transcription status: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
-      console.log(`[AssemblyAI Edge Function] Poll result - Status: ${data.status}, Text length: ${data.text?.length || 0}`);
+      console.warn('🔥 [Edge Function] Poll result - Status:', data.status, 'Text length:', data.text?.length || 0);
       
       return new Response(JSON.stringify(data), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    console.error('[AssemblyAI Edge Function] Invalid action:', action);
+    console.error('❌ [Edge Function] Invalid action provided:', action);
     throw new Error(`Invalid action: ${action}`);
 
   } catch (error) {
-    console.error('[AssemblyAI Edge Function] Error details:', error);
-    console.error('[AssemblyAI Edge Function] Error stack:', error.stack);
+    console.error('❌ [Edge Function] CRITICAL ERROR:', error);
+    console.error('❌ [Edge Function] Error stack:', error.stack);
     
     return new Response(JSON.stringify({ 
       error: error.message,

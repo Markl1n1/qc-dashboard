@@ -15,20 +15,25 @@ export const useTranscription = () => {
   const [error, setError] = useState<string | null>(null);
 
   const transcribe = useCallback(async (audioFile: File, options: TranscriptionOptions): Promise<{ text: string; speakerUtterances: SpeakerUtterance[] }> => {
+    console.warn('🎯 [useTranscription] TRANSCRIPTION HOOK CALLED');
+    console.warn('🎯 [useTranscription] File:', audioFile.name, 'Options:', options);
+    
     setIsLoading(true);
     setError(null);
     setProgress(null);
+    console.warn('🎯 [useTranscription] State reset - isLoading: true, error: null, progress: null');
 
     try {
-      console.log('Starting transcription for file:', audioFile.name);
-      console.log('Transcription options:', options);
-
-      // Set up progress tracking
+      console.warn('🎯 [useTranscription] Setting up progress callback');
+      
+      // Set up progress tracking with enhanced logging
       assemblyAIService.setProgressCallback((progressData) => {
+        console.warn('🎯 [useTranscription] Progress callback received:', progressData);
         try {
           setProgress(progressData);
+          console.warn('🎯 [useTranscription] Progress state updated successfully');
         } catch (err) {
-          console.error('Error in progress callback:', err);
+          console.error('❌ [useTranscription] CRITICAL ERROR in progress callback:', err);
         }
       });
 
@@ -40,10 +45,15 @@ export const useTranscription = () => {
         speech_model: 'universal' as const,
         disfluencies: true,
       };
+      console.warn('🎯 [useTranscription] AssemblyAI options prepared:', assemblyOptions);
 
+      console.warn('🎯 [useTranscription] Calling assemblyAIService.transcribe...');
       const result = await assemblyAIService.transcribe(audioFile, assemblyOptions);
       
-      console.log('Transcription completed, text length:', result.text.length);
+      console.warn('🎯 [useTranscription] Transcription completed successfully');
+      console.warn('🎯 [useTranscription] Result text length:', result.text.length);
+      console.warn('🎯 [useTranscription] Speaker utterances count:', result.speakerUtterances.length);
+      
       setProgress({ stage: 'complete', progress: 100, message: 'Transcription complete' });
       
       return {
@@ -52,28 +62,45 @@ export const useTranscription = () => {
       };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Transcription failed';
-      console.error('Transcription error:', errorMessage);
+      console.error('❌ [useTranscription] TRANSCRIPTION ERROR:', errorMessage);
+      console.error('❌ [useTranscription] Error object:', err);
+      console.error('❌ [useTranscription] Error stack:', err instanceof Error ? err.stack : 'No stack trace');
+      
       setError(errorMessage);
       throw err;
     } finally {
       setIsLoading(false);
+      console.warn('🎯 [useTranscription] isLoading set to false');
     }
   }, []);
 
   const loadModel = useCallback(async (options: TranscriptionOptions): Promise<void> => {
-    console.log('Model loading not required for AssemblyAI service');
-    // AssemblyAI doesn't require local model loading
+    console.warn('🎯 [useTranscription] loadModel called - not required for AssemblyAI');
   }, []);
 
+  console.warn('🎯 [useTranscription] Hook returning functions and state');
+  
   return {
     transcribe,
     loadModel,
     isLoading,
     progress,
     error,
-    isModelLoaded: () => true, // Always available for AssemblyAI
-    getCurrentModel: () => 'assemblyai-universal',
-    getModelInfo: (modelName: string) => ({ name: modelName, size: 'cloud' }),
-    getAllModelInfo: () => [{ name: 'assemblyai-universal', size: 'cloud' }]
+    isModelLoaded: () => {
+      console.warn('🎯 [useTranscription] isModelLoaded called - returning true');
+      return true;
+    },
+    getCurrentModel: () => {
+      console.warn('🎯 [useTranscription] getCurrentModel called');
+      return 'assemblyai-universal';
+    },
+    getModelInfo: (modelName: string) => {
+      console.warn('🎯 [useTranscription] getModelInfo called for:', modelName);
+      return { name: modelName, size: 'cloud' };
+    },
+    getAllModelInfo: () => {
+      console.warn('🎯 [useTranscription] getAllModelInfo called');
+      return [{ name: 'assemblyai-universal', size: 'cloud' }];
+    }
   };
 };

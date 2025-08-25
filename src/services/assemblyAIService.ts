@@ -50,81 +50,104 @@ class AssemblyAIService {
   private errorCount = 0;
   private readonly maxErrors = 3;
 
+  constructor() {
+    // Force console logging to be visible
+    console.warn('🔧 AssemblyAI Service initialized - Console logging active');
+    console.warn('🔧 If you see this message, console logging is working properly');
+  }
+
   setProgressCallback(callback: (progress: UnifiedTranscriptionProgress) => void) {
     this.progressCallback = callback;
-    console.log('[AssemblyAI] Progress callback set');
+    console.warn('🔧 [AssemblyAI] Progress callback set successfully');
   }
 
   private updateProgress(stage: UnifiedTranscriptionProgress['stage'], progress: number, message: string) {
-    console.log(`[AssemblyAI] Progress: ${stage} (${progress}%) - ${message}`);
+    console.warn(`🔧 [AssemblyAI] PROGRESS UPDATE: ${stage} (${progress}%) - ${message}`);
     if (this.progressCallback) {
       try {
         this.progressCallback({ stage, progress, message });
+        console.warn('🔧 [AssemblyAI] Progress callback executed successfully');
       } catch (error) {
-        console.error('[AssemblyAI] Error in progress callback:', error);
+        console.error('❌ [AssemblyAI] CRITICAL ERROR in progress callback:', error);
+        console.error('❌ [AssemblyAI] Progress callback error stack:', error instanceof Error ? error.stack : 'No stack trace');
       }
+    } else {
+      console.warn('⚠️ [AssemblyAI] No progress callback set - progress not reported to UI');
     }
   }
 
   private async ensureAuthenticated(): Promise<void> {
-    console.log('[AssemblyAI] Checking authentication...');
+    console.warn('🔧 [AssemblyAI] AUTHENTICATION CHECK STARTED');
     
-    const { data: { session }, error } = await supabase.auth.getSession();
-    
-    if (error) {
-      console.error('[AssemblyAI] Authentication error:', error);
-      throw new Error(`Authentication failed: ${error.message}`);
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      
+      if (error) {
+        console.error('❌ [AssemblyAI] Authentication error:', error);
+        throw new Error(`Authentication failed: ${error.message}`);
+      }
+      
+      if (!session) {
+        console.error('❌ [AssemblyAI] No active session found');
+        throw new Error('Please log in to use transcription services');
+      }
+      
+      console.warn('✅ [AssemblyAI] Authentication verified for user:', session.user.email);
+    } catch (authError) {
+      console.error('❌ [AssemblyAI] CRITICAL AUTH ERROR:', authError);
+      throw authError;
     }
-    
-    if (!session) {
-      console.error('[AssemblyAI] No active session found');
-      throw new Error('Please log in to use transcription services');
-    }
-    
-    console.log('[AssemblyAI] Authentication verified, user:', session.user.email);
   }
 
   validateApiKey(): boolean {
-    console.log('[AssemblyAI] API key validation delegated to edge function');
+    console.warn('🔧 [AssemblyAI] API key validation delegated to edge function');
     return true;
   }
 
   async transcribe(audioFile: File, options: AssemblyAIOptions): Promise<AssemblyAIResult> {
-    // Circuit breaker pattern
+    console.warn('🚀 [AssemblyAI] TRANSCRIPTION PROCESS STARTED');
+    console.warn('🚀 [AssemblyAI] Current processing state:', this.isProcessing);
+    console.warn('🚀 [AssemblyAI] Current error count:', this.errorCount);
+    
+    // Circuit breaker pattern with detailed logging
     if (this.isProcessing) {
+      console.error('❌ [AssemblyAI] BLOCKED: Another transcription is already in progress');
       throw new Error('Another transcription is already in progress. Please wait.');
     }
 
     if (this.errorCount >= this.maxErrors) {
+      console.error('❌ [AssemblyAI] BLOCKED: Too many failed attempts:', this.errorCount);
       throw new Error('Too many failed attempts. Please refresh the page and try again.');
     }
 
     this.isProcessing = true;
+    console.warn('🔧 [AssemblyAI] Processing flag set to TRUE');
 
     try {
-      console.log(`[AssemblyAI] Starting transcription process...`);
-      console.log(`[AssemblyAI] File details:`, {
+      console.warn('🔧 [AssemblyAI] File details:', {
         name: audioFile.name,
         type: audioFile.type,
         size: audioFile.size,
         lastModified: new Date(audioFile.lastModified).toISOString()
       });
-      console.log(`[AssemblyAI] Options:`, options);
+      console.warn('🔧 [AssemblyAI] Options:', options);
 
       // Step 1: Ensure user is authenticated
+      console.warn('🔧 [AssemblyAI] STEP 1: Authentication check');
       await this.ensureAuthenticated();
       
       // Step 2: Validate file
+      console.warn('🔧 [AssemblyAI] STEP 2: File validation');
       if (!isValidAudioFile(audioFile)) {
-        const error = `Unsupported audio file format: ${audioFile.name} with type: ${audioFile.type}. Please use supported formats: MP3, WAV, M4A, FLAC, OGG, AAC, WEBM, 3GP, AMR, WMA`;
-        console.error(`[AssemblyAI] ${error}`);
+        const error = `Unsupported audio file format: ${audioFile.name} with type: ${audioFile.type}`;
+        console.error('❌ [AssemblyAI] File validation failed:', error);
         throw new Error(error);
       }
 
       // Step 3: Prepare file for upload
+      console.warn('🔧 [AssemblyAI] STEP 3: File preparation');
       let fileToUpload = createFileWithCorrectMimeType(audioFile);
-      
-      console.log(`[AssemblyAI] Final file to upload:`, {
+      console.warn('🔧 [AssemblyAI] Final file prepared:', {
         name: fileToUpload.name,
         type: fileToUpload.type,
         size: fileToUpload.size
@@ -133,23 +156,23 @@ class AssemblyAIService {
       this.updateProgress('uploading', 10, 'Uploading audio to AssemblyAI...');
 
       // Step 4: Upload audio file
-      console.log('[AssemblyAI] Step 1: Uploading audio file...');
+      console.warn('🔧 [AssemblyAI] STEP 4: File upload');
       const uploadUrl = await this.uploadAudio(fileToUpload);
-      console.log('[AssemblyAI] Upload completed, URL received:', uploadUrl);
+      console.warn('✅ [AssemblyAI] Upload completed, URL received:', uploadUrl);
       
       this.updateProgress('queued', 30, 'Audio uploaded, starting transcription...');
 
       // Step 5: Start transcription
-      console.log('[AssemblyAI] Step 2: Starting transcription...');
+      console.warn('🔧 [AssemblyAI] STEP 5: Starting transcription');
       const transcriptId = await this.startTranscription(uploadUrl, options);
-      console.log('[AssemblyAI] Transcription started with ID:', transcriptId);
+      console.warn('✅ [AssemblyAI] Transcription started with ID:', transcriptId);
       
       this.updateProgress('processing', 50, 'Transcription in progress...');
 
       // Step 6: Poll for completion
-      console.log('[AssemblyAI] Step 3: Polling for completion...');
+      console.warn('🔧 [AssemblyAI] STEP 6: Polling for completion');
       const transcript = await this.pollTranscription(transcriptId);
-      console.log('[AssemblyAI] Transcription completed:', {
+      console.warn('✅ [AssemblyAI] Transcription completed:', {
         id: transcript.id,
         status: transcript.status,
         textLength: transcript.text?.length || 0,
@@ -159,7 +182,7 @@ class AssemblyAIService {
       this.updateProgress('complete', 100, 'Transcription completed');
 
       const result = this.formatResults(transcript, transcriptId, fileToUpload);
-      console.log('[AssemblyAI] Final result formatted:', {
+      console.warn('✅ [AssemblyAI] Final result formatted:', {
         textLength: result.text.length,
         utteranceCount: result.speakerUtterances.length,
         transcriptId: result.transcriptId
@@ -167,30 +190,26 @@ class AssemblyAIService {
 
       // Reset error count on success
       this.errorCount = 0;
+      console.warn('🔧 [AssemblyAI] Error count reset to 0');
       
       return result;
     } catch (error) {
       this.errorCount++;
-      console.error(`[AssemblyAI] Transcription error (attempt ${this.errorCount}):`, error);
+      console.error('❌ [AssemblyAI] TRANSCRIPTION FAILED (attempt', this.errorCount, '):', error);
+      console.error('❌ [AssemblyAI] Error stack trace:', error instanceof Error ? error.stack : 'No stack trace');
       
       let errorMessage = 'Transcription failed';
       if (error instanceof Error) {
         errorMessage = error.message;
       }
       
-      // Provide specific error messages for common issues
-      if (errorMessage.includes('Unauthorized') || errorMessage.includes('401')) {
-        errorMessage = 'Authentication failed. Please log in and try again.';
-      } else if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
-        errorMessage = 'Network error. Please check your internet connection and try again.';
-      } else if (errorMessage.includes('CORS')) {
-        errorMessage = 'Connection error. Please refresh the page and try again.';
-      }
+      console.error('❌ [AssemblyAI] Final error message:', errorMessage);
       
       this.updateProgress('error', 0, errorMessage);
       throw new Error(errorMessage);
     } finally {
       this.isProcessing = false;
+      console.warn('🔧 [AssemblyAI] Processing flag set to FALSE');
     }
   }
 
