@@ -4,7 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Textarea } from './ui/textarea';
 import { Badge } from './ui/badge';
-import { FileText, Users, Timeline } from 'lucide-react';
+import { FileText, Users, Clock } from 'lucide-react';
 import { SpeakerUtterance } from '../types';
 import DeepgramSpeakerDialog from './DeepgramSpeakerDialog';
 import SpeakerTimelineView from './SpeakerTimelineView';
@@ -53,7 +53,7 @@ const DeepgramResultsTabs: React.FC<DeepgramResultsTabsProps> = ({
               Full Transcript
             </TabsTrigger>
             <TabsTrigger value="timeline" className="flex items-center gap-2">
-              <Timeline className="h-4 w-4" />
+              <Clock className="h-4 w-4" />
               Timeline View
             </TabsTrigger>
           </TabsList>
