@@ -100,33 +100,38 @@ const UserProfileMenu = () => {
 
   return (
     <>
-      <div className="flex items-center space-x-2">
-        {isAdmin && <PasscodeManager />}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="rounded-full">
-              <User className="h-5 w-5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel className="break-words">{userName}</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => {}}>
-              <Moon className="mr-2 h-4 w-4" />
-              Theme
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setShowPasswordDialog(true)}>
-              <Settings className="mr-2 h-4 w-4" />
-              Change Password
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleLogout}>
-              <LogOut className="mr-2 h-4 w-4" />
-              Logout
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" className="rounded-full">
+            <User className="h-5 w-5" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuLabel className="break-words">{userName}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {isAdmin && (
+            <>
+              <DropdownMenuItem asChild>
+                <PasscodeManager />
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          )}
+          <DropdownMenuItem onClick={() => {}}>
+            <Moon className="mr-2 h-4 w-4" />
+            Theme
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setShowPasswordDialog(true)}>
+            <Settings className="mr-2 h-4 w-4" />
+            Change Password
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={handleLogout}>
+            <LogOut className="mr-2 h-4 w-4" />
+            Logout
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
         <DialogContent className="sm:max-w-[425px]">

@@ -120,14 +120,19 @@ class TranscriptionService {
     }
   }
 
-  // Mock methods for compatibility with useTranscription hook
+  // Fixed mock methods - no recursive calls
   async transcribe(file: File, options: TranscriptionOptions): Promise<string> {
-    // This would be a local transcription method - currently not implemented
-    throw new Error('Local transcription not implemented');
+    console.log('Local transcription called with:', file.name, options);
+    throw new Error('Local transcription not implemented - use transcribeAudio instead');
   }
 
   async loadModel(options: TranscriptionOptions): Promise<void> {
+    console.log('Loading model with options:', options);
     this.updateProgress('queued', 50, 'Loading transcription model...');
+    
+    // Simulate loading time
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
     this.currentModel = options.model || 'default';
     this.modelLoaded = true;
     this.updateProgress('complete', 100, 'Model loaded successfully');

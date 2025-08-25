@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
@@ -31,11 +32,19 @@ const DialogFilters: React.FC<DialogFiltersProps> = ({
   sortBy,
   onSortChange
 }) => {
-  return <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
       {/* Search Input */}
-      <div>
+      <div className="md:col-span-2 lg:col-span-1">
         <Label htmlFor="search">Search Dialogs</Label>
-        <Input type="search" id="search" placeholder="Search by filename..." value={searchTerm} onChange={e => onSearchChange(e.target.value)} />
+        <Input 
+          type="search" 
+          id="search" 
+          placeholder="Search by filename..." 
+          value={searchTerm} 
+          onChange={e => onSearchChange(e.target.value)} 
+          className="w-full"
+        />
       </div>
 
       {/* Status Filter */}
@@ -66,11 +75,11 @@ const DialogFilters: React.FC<DialogFiltersProps> = ({
             <SelectItem value="uploadDate">Upload Date</SelectItem>
             <SelectItem value="fileName">File Name</SelectItem>
             <SelectItem value="agent">Agent</SelectItem>
-            {/* Add more sorting options as needed */}
           </SelectContent>
         </Select>
       </div>
-    </div>;
+    </div>
+  );
 };
 
 interface DialogCopyIdProps {
@@ -102,14 +111,14 @@ const DialogCopyId: React.FC<DialogCopyIdProps> = ({ dialogId }) => {
 
   return (
     <div className="flex items-center space-x-2">
-      <span className="text-sm font-mono text-muted-foreground">
+      <span className="text-sm font-mono text-muted-foreground truncate max-w-[200px]">
         {dialogId}
       </span>
       <Button
         variant="ghost"
         size="sm"
         onClick={handleCopy}
-        className="h-6 w-6 p-0"
+        className="h-6 w-6 p-0 flex-shrink-0"
       >
         {isCopied ? (
           <Check className="h-3 w-3 text-green-600" />
@@ -253,12 +262,12 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="container mx-auto px-4 py-6 space-y-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Dialog History</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">Dialog History</h1>
         </div>
-        <Button onClick={() => navigate('/upload')}>
+        <Button onClick={() => navigate('/upload')} className="w-full sm:w-auto">
           <Plus className="h-4 w-4 mr-2" />
           Upload New Dialog
         </Button>
@@ -279,12 +288,12 @@ const Dashboard = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[300px]">Dialog</TableHead>
-                  <TableHead>Agent</TableHead>
-                  <TableHead>Upload Date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Quality</TableHead>
-                  <TableHead className="w-[100px]">Actions</TableHead>
+                  <TableHead className="min-w-[250px]">Dialog</TableHead>
+                  <TableHead className="min-w-[120px]">Agent</TableHead>
+                  <TableHead className="min-w-[140px]">Upload Date</TableHead>
+                  <TableHead className="min-w-[100px]">Status</TableHead>
+                  <TableHead className="min-w-[100px]">Quality</TableHead>
+                  <TableHead className="w-[80px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -303,11 +312,11 @@ const Dashboard = () => {
                     >
                       <TableCell>
                         <div className="flex items-center space-x-3">
-                          <div className="p-2 bg-primary/10 rounded-lg">
+                          <div className="p-2 bg-primary/10 rounded-lg flex-shrink-0">
                             <FileAudio className="h-4 w-4 text-primary" />
                           </div>
-                          <div>
-                            <p className="font-medium">{dialog.fileName}</p>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium truncate">{dialog.fileName}</p>
                             <DialogCopyId dialogId={dialog.id} />
                           </div>
                         </div>
@@ -315,10 +324,10 @@ const Dashboard = () => {
                       
                       <TableCell>
                         <div className="flex items-center space-x-2">
-                          <div className="w-6 h-6 bg-primary/10 rounded-full flex items-center justify-center">
+                          <div className="w-6 h-6 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
                             <User className="h-3 w-3 text-primary" />
                           </div>
-                          <span className="text-sm">{dialog.assignedAgent}</span>
+                          <span className="text-sm truncate">{dialog.assignedAgent}</span>
                         </div>
                       </TableCell>
                       
