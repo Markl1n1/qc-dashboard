@@ -7,7 +7,6 @@ import { Label } from '../components/ui/label';
 import { Progress } from '../components/ui/progress';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Textarea } from '../components/ui/textarea';
 import { Checkbox } from '../components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Badge } from '../components/ui/badge';
@@ -16,13 +15,20 @@ import { useSimplifiedTranscription } from '../hooks/useSimplifiedTranscription'
 import { useDeepgramTranscription } from '../hooks/useDeepgramTranscription';
 import { Mic, Zap, Users, Globe } from 'lucide-react';
 import DeepgramOptions from '../components/DeepgramOptions';
+import DeepgramResultsTabs from '../components/DeepgramResultsTabs';
 import { DeepgramOptions as DeepgramOptionsType } from '../types/deepgram';
+import { SpeakerUtterance } from '../types';
 
 interface UploadProps {}
 
 const Upload: React.FC<UploadProps> = () => {
   const [audioFile, setAudioFile] = useState<File | null>(null);
-  const [transcription, setTranscription] = useState<string>('');
+  const [transcriptionResults, setTranscriptionResults] = useState<{
+    text: string;
+    speakerUtterances: SpeakerUtterance[];
+    detectedLanguage?: { language: string; confidence: number };
+    metadata?: { duration: number; model: string };
+  } | null>(null);
   const [provider, setProvider] = useState<'assemblyai' | 'deepgram'>('assemblyai');
   const [assignedAgent, setAssignedAgent] = useState<string>('');
   const [assignedSupervisor, setAssignedSupervisor] = useState<string>('');
@@ -68,7 +74,7 @@ const Upload: React.FC<UploadProps> = () => {
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     setAudioFile(file);
-    setTranscription('');
+    setTranscriptionResults(null);
     setTokenEstimate(null);
     console.log('File dropped:', file.name);
   }, []);
@@ -95,12 +101,25 @@ const Upload: React.FC<UploadProps> = () => {
           speakerLabels: assemblySpeakerLabels,
           language: assemblyLanguage,
         });
+        
+        // Format for display
+        setTranscriptionResults({
+          text: result.text,
+          speakerUtterances: result.speakerUtterances
+        });
       } else {
         result = await transcribeDeepgram(audioFile, deepgramOptions);
+        
+        // Enhanced results with metadata
+        setTranscriptionResults({
+          text: result.text,
+          speakerUtterances: result.speakerUtterances,
+          detectedLanguage: result.detectedLanguage,
+          metadata: result.metadata
+        });
       }
       
       console.log('Transcription completed, setting result');
-      setTranscription(result.text);
     } catch (err: any) {
       console.error('Transcription failed', err);
       alert(`Transcription failed: ${err.message}`);
@@ -138,7 +157,7 @@ const Upload: React.FC<UploadProps> = () => {
               <TabsTrigger value="deepgram" className="flex items-center gap-2">
                 <Zap className="h-4 w-4" />
                 Deepgram
-                <Badge variant="secondary" className="text-xs">New</Badge>
+                <Badge variant="secondary" className="text-xs">Enhanced</Badge>
               </TabsTrigger>
             </TabsList>
 
@@ -163,7 +182,7 @@ const Upload: React.FC<UploadProps> = () => {
                 <div className="flex items-center gap-4 text-sm text-muted-foreground">
                   <div className="flex items-center gap-1">
                     <Zap className="h-4 w-4" />
-                    Nova-2 Model
+                    Nova-2/3 Models
                   </div>
                   <div className="flex items-center gap-1">
                     <Globe className="h-4 w-4" />
@@ -171,7 +190,7 @@ const Upload: React.FC<UploadProps> = () => {
                   </div>
                   <div className="flex items-center gap-1">
                     <Users className="h-4 w-4" />
-                    Agent/Customer Detection
+                    Color-coded Agent/Customer
                   </div>
                 </div>
               )}
@@ -328,19 +347,34 @@ const Upload: React.FC<UploadProps> = () => {
         </Card>
       )}
 
-      {/* Results */}
-      {transcription && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              Transcription Result
-              <Badge variant="outline">{provider}</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Textarea value={transcription} readOnly className="min-h-[200px]" />
-          </CardContent>
-        </Card>
+      {/* Results - Enhanced for Deepgram */}
+      {transcriptionResults && (
+        <>
+          {provider === 'deepgram' ? (
+            <DeepgramResultsTabs
+              transcription={transcriptionResults.text}
+              speakerUtterances={transcriptionResults.speakerUtterances}
+              detectedLanguage={transcriptionResults.detectedLanguage}
+              metadata={transcriptionResults.metadata}
+            />
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  Transcription Result
+                  <Badge variant="outline">{provider}</Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <textarea 
+                  value={transcriptionResults.text} 
+                  readOnly 
+                  className="min-h-[200px] w-full p-3 border rounded-md resize-none"
+                />
+              </CardContent>
+            </Card>
+          )}
+        </>
       )}
     </div>
   );

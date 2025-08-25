@@ -39,7 +39,8 @@ Deno.serve(async (req) => {
     console.log('🎙️ Processing Deepgram transcription request', {
       mimeType,
       options,
-      audioLength: audio.length
+      audioLength: audio.length,
+      model: options.model || 'nova-2'
     });
 
     // Convert base64 to binary
@@ -48,8 +49,9 @@ Deno.serve(async (req) => {
     // Prepare Deepgram request parameters
     const params = new URLSearchParams();
     
-    // Core parameters
-    params.append('model', options.model || 'nova-2');
+    // Core parameters - support both Nova-2 and Nova-3
+    const model = options.model || 'nova-2';
+    params.append('model', model);
     params.append('punctuate', 'true');
     params.append('smart_format', options.smart_format !== false ? 'true' : 'false');
     
@@ -73,7 +75,7 @@ Deno.serve(async (req) => {
 
     const deepgramUrl = `https://api.deepgram.com/v1/listen?${params.toString()}`;
     
-    console.log('📡 Calling Deepgram API:', deepgramUrl);
+    console.log('📡 Calling Deepgram API with model:', model, 'URL:', deepgramUrl);
 
     const deepgramResponse = await fetch(deepgramUrl, {
       method: 'POST',
@@ -89,15 +91,24 @@ Deno.serve(async (req) => {
       console.error('❌ Deepgram API error:', {
         status: deepgramResponse.status,
         statusText: deepgramResponse.statusText,
-        error: errorText
+        error: errorText,
+        model: model
       });
+      
+      // Check for specific Nova-3 errors
+      if (deepgramResponse.status === 400 && errorText.includes('model')) {
+        throw new Error(`Model ${model} is not available. Please check your Deepgram plan supports this model.`);
+      }
+      
       throw new Error(`Deepgram API error: ${deepgramResponse.status} ${deepgramResponse.statusText}`);
     }
 
     const deepgramResult = await deepgramResponse.json();
     console.log('✅ Deepgram response received', {
       hasResults: !!deepgramResult.results,
-      hasUtterances: !!deepgramResult.results?.utterances
+      hasUtterances: !!deepgramResult.results?.utterances,
+      model: model,
+      detectedLanguage: deepgramResult.metadata?.model_info?.language
     });
 
     // Process the result
@@ -106,25 +117,27 @@ Deno.serve(async (req) => {
     // Process speaker utterances if available
     let speakerUtterances: any[] = [];
     if (deepgramResult.results?.utterances) {
-      speakerUtterances = deepgramResult.results.utterances.map((utterance: any) => ({
-        speaker: `Speaker ${utterance.speaker}`,
-        text: utterance.transcript,
-        confidence: utterance.confidence,
-        start: utterance.start,
-        end: utterance.end
-      }));
+      speakerUtterances = deepgramResult.results.utterances.map((utterance: any, index: number) => {
+        // Enhanced speaker detection for Agent/Customer
+        const speakerLabel = detectSpeakerRole(utterance.transcript, utterance.speaker, index);
+        
+        return {
+          speaker: speakerLabel,
+          text: utterance.transcript,
+          confidence: utterance.confidence,
+          start: utterance.start,
+          end: utterance.end
+        };
+      });
     }
 
     // Detect language if available
     let detectedLanguage = null;
-    if (deepgramResult.metadata?.model_info) {
-      const modelInfo = deepgramResult.metadata.model_info;
-      if (modelInfo.language) {
-        detectedLanguage = {
-          language: modelInfo.language,
-          confidence: 0.95 // Deepgram doesn't provide confidence for detected language
-        };
-      }
+    if (deepgramResult.metadata?.model_info?.language) {
+      detectedLanguage = {
+        language: deepgramResult.metadata.model_info.language,
+        confidence: deepgramResult.metadata.model_info.language_confidence || 0.95
+      };
     }
 
     const result = {
@@ -134,14 +147,15 @@ Deno.serve(async (req) => {
       metadata: {
         duration: deepgramResult.metadata?.duration || 0,
         channels: deepgramResult.metadata?.channels || 1,
-        model: options.model || 'nova-2'
+        model: model
       }
     };
 
     console.log('✅ Processed transcription result', {
       textLength: result.text.length,
       utteranceCount: result.speakerUtterances.length,
-      hasLanguageDetection: !!result.detectedLanguage
+      hasLanguageDetection: !!result.detectedLanguage,
+      model: model
     });
 
     return new Response(
@@ -164,3 +178,58 @@ Deno.serve(async (req) => {
     );
   }
 });
+
+// Enhanced speaker role detection function
+function detectSpeakerRole(text: string, speakerNumber: string, utteranceIndex: number): string {
+  const lowerText = text.toLowerCase();
+  
+  // Keywords that suggest agent role
+  const agentKeywords = [
+    'thank you for calling',
+    'how can i help',
+    'my name is',
+    'i can assist',
+    'let me check',
+    'i understand',
+    'is there anything else',
+    'have a great day',
+    'i apologize',
+    'let me transfer',
+    'i can help you with',
+    'thank you for holding'
+  ];
+
+  // Keywords that suggest customer role
+  const customerKeywords = [
+    'i have a problem',
+    'i need help',
+    'my account',
+    'i want to',
+    'can you help me',
+    'i\'m calling about',
+    'i received',
+    'my order',
+    'i can\'t',
+    'what happened to'
+  ];
+
+  // Check for agent patterns
+  const isAgent = agentKeywords.some(keyword => lowerText.includes(keyword));
+  if (isAgent) {
+    return 'Agent';
+  }
+
+  // Check for customer patterns
+  const isCustomer = customerKeywords.some(keyword => lowerText.includes(keyword));
+  if (isCustomer) {
+    return 'Customer';
+  }
+
+  // Fallback logic: first speaker is usually agent in customer service
+  if (utteranceIndex < 3) {
+    return speakerNumber === '0' ? 'Agent' : 'Customer';
+  }
+
+  // Default labeling based on speaker number
+  return speakerNumber === '0' ? 'Agent' : 'Customer';
+}

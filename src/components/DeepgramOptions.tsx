@@ -5,7 +5,7 @@ import { Label } from './ui/label';
 import { Switch } from './ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Badge } from './ui/badge';
-import { Mic2, Users, Globe, Sparkles } from 'lucide-react';
+import { Mic2, Users, Globe, Sparkles, Zap } from 'lucide-react';
 import { DeepgramOptions as DeepgramOptionsType } from '../types/deepgram';
 
 interface DeepgramOptionsProps {
@@ -25,6 +25,29 @@ const DeepgramOptions: React.FC<DeepgramOptionsProps> = ({
   ) => {
     onChange({ ...options, [key]: value });
   };
+
+  const languageOptions = [
+    { code: 'en', name: 'English' },
+    { code: 'es', name: 'Spanish' },
+    { code: 'fr', name: 'French' },
+    { code: 'de', name: 'German' },
+    { code: 'it', name: 'Italian' },
+    { code: 'pt', name: 'Portuguese' },
+    { code: 'ru', name: 'Russian' },
+    { code: 'ja', name: 'Japanese' },
+    { code: 'ko', name: 'Korean' },
+    { code: 'zh', name: 'Chinese' },
+    { code: 'nl', name: 'Dutch' },
+    { code: 'sv', name: 'Swedish' },
+    { code: 'no', name: 'Norwegian' },
+    { code: 'da', name: 'Danish' },
+    { code: 'fi', name: 'Finnish' },
+    { code: 'pl', name: 'Polish' },
+    { code: 'cs', name: 'Czech' },
+    { code: 'hu', name: 'Hungarian' },
+    { code: 'tr', name: 'Turkish' },
+    { code: 'ar', name: 'Arabic' }
+  ];
 
   return (
     <div className="space-y-4">
@@ -49,13 +72,20 @@ const DeepgramOptions: React.FC<DeepgramOptionsProps> = ({
               onValueChange={(value) => updateOption('model', value)}
               disabled={disabled}
             >
-              <SelectTrigger className="w-40">
+              <SelectTrigger className="w-48">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="nova-3">
+                  <div className="flex items-center gap-2">
+                    <Zap className="h-3 w-3 text-yellow-500" />
+                    <Badge variant="default" className="bg-gradient-to-r from-purple-500 to-pink-500">Premium</Badge>
+                    Nova-3
+                  </div>
+                </SelectItem>
                 <SelectItem value="nova-2">
                   <div className="flex items-center gap-2">
-                    <Badge variant="default">Best</Badge>
+                    <Badge variant="secondary">Best</Badge>
                     Nova-2
                   </div>
                 </SelectItem>
@@ -65,6 +95,33 @@ const DeepgramOptions: React.FC<DeepgramOptionsProps> = ({
               </SelectContent>
             </Select>
           </div>
+
+          {/* Model Information */}
+          {options.model === 'nova-3' && (
+            <div className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border border-purple-200">
+              <div className="flex items-center gap-2 mb-2">
+                <Zap className="h-4 w-4 text-purple-600" />
+                <span className="text-sm font-medium text-purple-800">Nova-3 Premium Features</span>
+              </div>
+              <p className="text-xs text-purple-700">
+                Latest model with enhanced multilingual support, superior noise handling, 
+                and improved accuracy for complex audio environments.
+              </p>
+            </div>
+          )}
+
+          {options.model === 'nova-2' && (
+            <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="flex items-center gap-2 mb-2">
+                <Sparkles className="h-4 w-4 text-blue-600" />
+                <span className="text-sm font-medium text-blue-800">Nova-2 Features</span>
+              </div>
+              <p className="text-xs text-blue-700">
+                Excellent for non-English languages, handles filler words well, 
+                and provides reliable accuracy across various audio qualities.
+              </p>
+            </div>
+          )}
 
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
@@ -128,7 +185,7 @@ const DeepgramOptions: React.FC<DeepgramOptionsProps> = ({
               </div>
               <p className="text-xs text-muted-foreground">
                 Deepgram will automatically detect speakers and label them as "Agent" or "Customer" 
-                based on conversation patterns and common phrases.
+                based on conversation patterns and common phrases. Results will be color-coded for easy reading.
               </p>
             </div>
           )}
@@ -141,6 +198,7 @@ const DeepgramOptions: React.FC<DeepgramOptionsProps> = ({
           <CardTitle className="flex items-center gap-2 text-base">
             <Globe className="h-4 w-4" />
             Language Detection
+            <Badge variant="outline" className="text-xs">36+ Languages</Badge>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -148,7 +206,7 @@ const DeepgramOptions: React.FC<DeepgramOptionsProps> = ({
             <div className="space-y-0.5">
               <Label>Automatic Language Detection</Label>
               <p className="text-sm text-muted-foreground">
-                Detect language automatically (supports 36+ languages)
+                Detect language automatically with confidence scoring
               </p>
             </div>
             <Switch
@@ -161,9 +219,9 @@ const DeepgramOptions: React.FC<DeepgramOptionsProps> = ({
           {!options.language_detection && (
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
-                <Label>Language Code</Label>
+                <Label>Select Language</Label>
                 <p className="text-sm text-muted-foreground">
-                  Specify the language (e.g., en, es, fr)
+                  Choose the expected audio language
                 </p>
               </div>
               <Select
@@ -171,22 +229,29 @@ const DeepgramOptions: React.FC<DeepgramOptionsProps> = ({
                 onValueChange={(value) => updateOption('language', value)}
                 disabled={disabled}
               >
-                <SelectTrigger className="w-32">
+                <SelectTrigger className="w-40">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="en">English</SelectItem>
-                  <SelectItem value="es">Spanish</SelectItem>
-                  <SelectItem value="fr">French</SelectItem>
-                  <SelectItem value="de">German</SelectItem>
-                  <SelectItem value="it">Italian</SelectItem>
-                  <SelectItem value="pt">Portuguese</SelectItem>
-                  <SelectItem value="ru">Russian</SelectItem>
-                  <SelectItem value="ja">Japanese</SelectItem>
-                  <SelectItem value="ko">Korean</SelectItem>
-                  <SelectItem value="zh">Chinese</SelectItem>
+                  {languageOptions.map((lang) => (
+                    <SelectItem key={lang.code} value={lang.code}>
+                      {lang.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+            </div>
+          )}
+
+          {options.language_detection && (
+            <div className="p-3 bg-green-50 rounded-lg border border-green-200">
+              <div className="flex items-center gap-2 mb-2">
+                <Globe className="h-4 w-4 text-green-600" />
+                <span className="text-sm font-medium text-green-800">Auto-Detection Active</span>
+              </div>
+              <p className="text-xs text-green-700">
+                Language will be detected automatically with confidence scores displayed in results.
+              </p>
             </div>
           )}
         </CardContent>
