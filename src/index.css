@@ -1,0 +1,168 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Background colors */
+    --background: 240 10% 98%;
+    --foreground: 240 10% 4%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 4%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 4%;
+
+    /* Primary brand colors */
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 98%;
+    --primary-dark: 217 91% 50%;
+
+    /* Secondary colors */
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 240 6% 10%;
+
+    /* Accent colors */
+    --accent: 240 5% 96%;
+    --accent-foreground: 240 6% 10%;
+
+    /* Status colors */
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 98%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 98%;
+    --error: 0 84% 60%;
+    --error-foreground: 0 0% 98%;
+
+    /* Dialog status colors */
+    --status-pending: 39 100% 50%; /* Orange */
+    --status-processing: 213 100% 59%; /* Blue */
+    --status-completed: 120 61% 50%; /* Green */
+    --status-failed: 0 84% 60%; /* Red */
+
+    /* Quality levels */
+    --level-1: 45 93% 58%; /* Yellow - can be improved */
+    --level-2: 25 95% 53%; /* Orange - mistake */
+    --level-3: 0 84% 60%;  /* Red - critical mistake */
+
+    /* Neutral colors */
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 46%;
+    --border: 240 6% 90%;
+    --input: 240 6% 90%;
+    --ring: 217 91% 60%;
+
+    /* Semantic colors */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+
+    --radius: 0.75rem;
+
+    /* Sidebar colors */
+    --sidebar-background: 240 10% 98%;
+    --sidebar-foreground: 240 5% 26%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4% 95%;
+    --sidebar-accent-foreground: 240 5% 10%;
+    --sidebar-border: 240 6% 90%;
+    --sidebar-ring: 217 91% 60%;
+  }
+
+  .dark {
+    --background: 240 10% 4%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 4%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 4%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 240 10% 4%;
+    --secondary: 240 4% 15%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 4% 15%;
+    --muted-foreground: 240 5% 64%;
+    --accent: 240 4% 15%;
+    --accent-foreground: 0 0% 98%;
+    --border: 240 4% 15%;
+    --input: 240 4% 15%;
+    --ring: 217 91% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight;
+  }
+}
+
+@layer components {
+  .data-table {
+    @apply w-full border-collapse border border-border rounded-lg overflow-hidden;
+  }
+  
+  .data-table th {
+    @apply bg-muted px-4 py-3 text-left text-sm font-medium text-muted-foreground border-b border-border;
+  }
+  
+  .data-table td {
+    @apply px-4 py-3 text-sm border-b border-border;
+  }
+  
+  .data-table tr:hover {
+    @apply bg-muted/50;
+  }
+  
+  .upload-zone {
+    @apply border-2 border-dashed border-border rounded-lg p-8 text-center transition-colors hover:border-primary/50 hover:bg-muted/50;
+  }
+  
+  .upload-zone.drag-over {
+    @apply border-primary bg-primary/5;
+  }
+  
+  .quality-level-1 {
+    @apply bg-level-1/10 text-level-1 border border-level-1/20;
+  }
+  
+  .quality-level-2 {
+    @apply bg-level-2/10 text-level-2 border border-level-2/20;
+  }
+  
+  .quality-level-3 {
+    @apply bg-level-3/10 text-level-3 border border-level-3/20;
+  }
+  
+  /* Status badge styles with proper colors */
+  .status-processing {
+    background: hsl(var(--status-processing) / 0.1);
+    color: hsl(var(--status-processing));
+    border: 1px solid hsl(var(--status-processing) / 0.2);
+  }
+  
+  .status-completed {
+    background: hsl(var(--status-completed) / 0.1);
+    color: hsl(var(--status-completed));
+    border: 1px solid hsl(var(--status-completed) / 0.2);
+  }
+  
+  .status-pending {
+    background: hsl(var(--status-pending) / 0.1);
+    color: hsl(var(--status-pending));
+    border: 1px solid hsl(var(--status-pending) / 0.2);
+  }
+  
+  .status-failed {
+    background: hsl(var(--status-failed) / 0.1);
+    color: hsl(var(--status-failed));
+    border: 1px solid hsl(var(--status-failed) / 0.2);
+  }
+}
