@@ -8,107 +8,86 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Regional endpoints
+const REGIONAL_ENDPOINTS = {
+  us: 'https://api.assemblyai.com/v2/',
+  eu: 'https://api.eu.assemblyai.com/v2/'
+};
+
 serve(async (req) => {
-  // Force console logging to be visible in edge function
-  console.warn('🔥 [Edge Function] REQUEST RECEIVED - Console logging active');
-  console.warn('🔥 [Edge Function] Method:', req.method);
-  console.warn('🔥 [Edge Function] URL:', req.url);
-  console.warn('🔥 [Edge Function] Headers:', Object.fromEntries(req.headers.entries()));
+  console.log('🔥 [Enhanced Edge Function] REQUEST RECEIVED');
+  console.log('🔥 [Enhanced Edge Function] Method:', req.method);
+  console.log('🔥 [Enhanced Edge Function] URL:', req.url);
 
   if (req.method === 'OPTIONS') {
-    console.warn('🔥 [Edge Function] CORS preflight request handled');
+    console.log('🔥 [Enhanced Edge Function] CORS preflight handled');
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Initialize Supabase client with detailed logging
+    // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
     
-    console.warn('🔥 [Edge Function] Environment check:');
-    console.warn('🔥 [Edge Function] Supabase URL:', supabaseUrl ? 'PRESENT' : 'MISSING');
-    console.warn('🔥 [Edge Function] Supabase Anon Key:', supabaseAnonKey ? 'PRESENT' : 'MISSING');
+    console.log('🔥 [Enhanced Edge Function] Environment check:');
+    console.log('🔥 [Enhanced Edge Function] Supabase URL:', supabaseUrl ? 'PRESENT' : 'MISSING');
+    console.log('🔥 [Enhanced Edge Function] Supabase Anon Key:', supabaseAnonKey ? 'PRESENT' : 'MISSING');
     
     if (!supabaseUrl || !supabaseAnonKey) {
-      console.error('❌ [Edge Function] Missing Supabase configuration');
       throw new Error('Missing Supabase configuration');
     }
 
     const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: req.headers.get('Authorization')! } }
     });
-    console.warn('✅ [Edge Function] Supabase client created');
 
-    // Authentication with detailed logging
-    const authHeader = req.headers.get('Authorization');
-    console.warn('🔥 [Edge Function] Auth header check:', authHeader ? 'PRESENT' : 'MISSING');
-    
+    // Authentication
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
     
-    if (authError) {
-      console.error('❌ [Edge Function] Auth error:', authError);
-      return new Response(JSON.stringify({ error: `Authentication failed: ${authError.message}` }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-    
-    if (!user) {
-      console.error('❌ [Edge Function] No user authenticated');
-      return new Response(JSON.stringify({ error: 'User not authenticated' }), {
+    if (authError || !user) {
+      console.error('❌ [Enhanced Edge Function] Auth failed:', authError);
+      return new Response(JSON.stringify({ error: 'Authentication required' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    console.warn('✅ [Edge Function] User authenticated:', user.email);
+    console.log('✅ [Enhanced Edge Function] User authenticated:', user.email);
 
-    // Check AssemblyAI API key
+    // Get AssemblyAI API key
     const assemblyAiApiKey = Deno.env.get('ASSEMBLYAI_API_KEY');
-    console.warn('🔥 [Edge Function] AssemblyAI API Key check:', assemblyAiApiKey ? 'PRESENT' : 'MISSING');
     
     if (!assemblyAiApiKey) {
-      console.error('❌ [Edge Function] AssemblyAI API key not configured');
       throw new Error('AssemblyAI API key not configured');
     }
 
-    // Parse request body with detailed logging
-    console.warn('🔥 [Edge Function] Parsing request body...');
-    let requestData;
-    try {
-      requestData = await req.json();
-      console.warn('🔥 [Edge Function] Request data parsed:', {
-        action: requestData.action,
-        hasAudioData: !!requestData.audioData,
-        audioDataLength: requestData.audioData ? requestData.audioData.length : 0,
-        fileName: requestData.fileName,
-        transcriptId: requestData.transcriptId,
-        otherKeys: Object.keys(requestData).filter(k => !['action', 'audioData', 'fileName', 'transcriptId'].includes(k))
-      });
-    } catch (parseError) {
-      console.error('❌ [Edge Function] Failed to parse request body:', parseError);
-      throw new Error(`Invalid request body: ${parseError.message}`);
-    }
+    // Parse request
+    const requestData = await req.json();
+    const { action, region = 'us', ...otherData } = requestData;
+    
+    console.log('🔥 [Enhanced Edge Function] Processing action:', action);
+    console.log('🔥 [Enhanced Edge Function] Region:', region);
 
-    const { action, ...otherData } = requestData;
-    console.warn('🔥 [Edge Function] Processing action:', action);
+    // Get regional endpoint
+    const baseEndpoint = REGIONAL_ENDPOINTS[region as keyof typeof REGIONAL_ENDPOINTS] || REGIONAL_ENDPOINTS.us;
+    console.log('🔥 [Enhanced Edge Function] Using endpoint:', baseEndpoint);
 
     if (action === 'upload') {
-      console.warn('🔥 [Edge Function] UPLOAD ACTION STARTED');
+      console.log('🔥 [Enhanced Edge Function] ENHANCED UPLOAD ACTION');
       const { audioData, fileName } = otherData;
       
       if (!audioData) {
-        console.error('❌ [Edge Function] No audio data provided');
-        throw new Error('No audio data provided for upload');
+        throw new Error('No audio data provided');
       }
       
-      console.warn('🔥 [Edge Function] Converting base64 to blob for file:', fileName);
-      console.warn('🔥 [Edge Function] Audio data length:', audioData.length);
+      console.log('🔥 [Enhanced Edge Function] Processing file:', fileName);
+      console.log('🔥 [Enhanced Edge Function] Audio data length:', audioData.length);
       
-      // Convert base64 to blob with detailed logging
-      let audioBlob;
+      // Enhanced chunked processing for large files
+      let audioBlob: Uint8Array;
+      
       try {
-        console.warn('🔥 [Edge Function] Starting chunked base64 conversion...');
+        console.log('🔥 [Enhanced Edge Function] Starting enhanced base64 conversion...');
         const chunkSize = 32768;
         const chunks: Uint8Array[] = [];
         
@@ -123,8 +102,9 @@ serve(async (req) => {
           
           chunks.push(bytes);
           
+          // Progress logging for large files
           if (i % (chunkSize * 10) === 0) {
-            console.warn('🔥 [Edge Function] Processed', Math.round((i / audioData.length) * 100), '% of base64 conversion');
+            console.log('🔥 [Enhanced Edge Function] Conversion progress:', Math.round((i / audioData.length) * 100), '%');
           }
         }
         
@@ -138,17 +118,17 @@ serve(async (req) => {
         }
         
         audioBlob = result;
-        console.warn('✅ [Edge Function] Base64 conversion completed, final size:', audioBlob.length, 'bytes');
+        console.log('✅ [Enhanced Edge Function] Enhanced conversion completed, size:', audioBlob.length, 'bytes');
       } catch (conversionError) {
-        console.error('❌ [Edge Function] Base64 conversion error:', conversionError);
-        throw new Error(`Failed to process audio data: ${conversionError.message}`);
+        console.error('❌ [Enhanced Edge Function] Conversion error:', conversionError);
+        throw new Error(`Enhanced conversion failed: ${conversionError.message}`);
       }
       
       const formData = new FormData();
       formData.append('file', new Blob([audioBlob]), fileName);
 
-      console.warn('🔥 [Edge Function] Uploading to AssemblyAI API...');
-      const response = await fetch('https://api.assemblyai.com/v2/upload', {
+      console.log('🔥 [Enhanced Edge Function] Uploading to regional endpoint...');
+      const response = await fetch(`${baseEndpoint}upload`, {
         method: 'POST',
         headers: {
           'Authorization': assemblyAiApiKey,
@@ -156,16 +136,22 @@ serve(async (req) => {
         body: formData,
       });
 
-      console.warn('🔥 [Edge Function] AssemblyAI upload response status:', response.status);
+      console.log('🔥 [Enhanced Edge Function] Regional upload response:', response.status);
       
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('❌ [Edge Function] AssemblyAI upload failed:', errorText);
+        console.error('❌ [Enhanced Edge Function] Regional upload failed:', errorText);
+        
+        // Check for quota/billing errors
+        if (errorText.includes('quota') || errorText.includes('billing') || errorText.includes('limit')) {
+          throw new Error(`API quota exceeded: ${errorText}`);
+        }
+        
         throw new Error(`Upload failed: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
-      console.warn('✅ [Edge Function] Upload successful:', data);
+      console.log('✅ [Enhanced Edge Function] Regional upload successful');
       
       return new Response(JSON.stringify(data), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -173,10 +159,23 @@ serve(async (req) => {
     }
 
     if (action === 'transcribe') {
-      console.warn('🔥 [Edge Function] TRANSCRIBE ACTION STARTED');
-      console.warn('🔥 [Edge Function] Transcription options:', otherData);
+      console.log('🔥 [Enhanced Edge Function] ENHANCED TRANSCRIBE ACTION');
+      console.log('🔥 [Enhanced Edge Function] Enhanced options:', otherData);
       
-      const response = await fetch('https://api.assemblyai.com/v2/transcript', {
+      // Log enabled features
+      const enabledFeatures = [];
+      if (otherData.speaker_labels) enabledFeatures.push('speaker_diarization');
+      if (otherData.language_detection) enabledFeatures.push('language_detection');
+      if (otherData.content_safety_labels) enabledFeatures.push('content_safety');
+      if (otherData.pii_policy) enabledFeatures.push('pii_detection');
+      if (otherData.entity_detection) enabledFeatures.push('entity_detection');
+      if (otherData.sentiment_analysis) enabledFeatures.push('sentiment_analysis');
+      if (otherData.auto_chapters) enabledFeatures.push('auto_chapters');
+      if (otherData.summarization) enabledFeatures.push('summarization');
+      
+      console.log('🔥 [Enhanced Edge Function] Enabled features:', enabledFeatures);
+      
+      const response = await fetch(`${baseEndpoint}transcript`, {
         method: 'POST',
         headers: {
           'Authorization': assemblyAiApiKey,
@@ -185,16 +184,22 @@ serve(async (req) => {
         body: JSON.stringify(otherData),
       });
 
-      console.warn('🔥 [Edge Function] AssemblyAI transcribe response status:', response.status);
+      console.log('🔥 [Enhanced Edge Function] Enhanced transcription response:', response.status);
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('❌ [Edge Function] AssemblyAI transcription request failed:', errorText);
-        throw new Error(`Transcription request failed: ${response.status} - ${errorText}`);
+        console.error('❌ [Enhanced Edge Function] Enhanced transcription failed:', errorText);
+        
+        // Check for quota/billing errors
+        if (errorText.includes('quota') || errorText.includes('billing') || errorText.includes('limit')) {
+          throw new Error(`API quota exceeded: ${errorText}`);
+        }
+        
+        throw new Error(`Enhanced transcription failed: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
-      console.warn('✅ [Edge Function] Transcription started:', { id: data.id, status: data.status });
+      console.log('✅ [Enhanced Edge Function] Enhanced transcription started:', { id: data.id, status: data.status });
       
       return new Response(JSON.stringify(data), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -202,44 +207,56 @@ serve(async (req) => {
     }
 
     if (action === 'poll') {
-      console.warn('🔥 [Edge Function] POLL ACTION STARTED');
+      console.log('🔥 [Enhanced Edge Function] ENHANCED POLL ACTION');
       const { transcriptId } = otherData;
       
       if (!transcriptId) {
-        console.error('❌ [Edge Function] No transcript ID provided');
-        throw new Error('No transcript ID provided for polling');
+        throw new Error('No transcript ID provided');
       }
       
-      console.warn('🔥 [Edge Function] Polling transcript:', transcriptId);
+      console.log('🔥 [Enhanced Edge Function] Polling transcript:', transcriptId);
       
-      const response = await fetch(`https://api.assemblyai.com/v2/transcript/${transcriptId}`, {
+      const response = await fetch(`${baseEndpoint}transcript/${transcriptId}`, {
         headers: {
           'Authorization': assemblyAiApiKey,
         },
       });
 
-      console.warn('🔥 [Edge Function] AssemblyAI poll response status:', response.status);
+      console.log('🔥 [Enhanced Edge Function] Enhanced poll response:', response.status);
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('❌ [Edge Function] AssemblyAI poll request failed:', errorText);
-        throw new Error(`Failed to get transcription status: ${response.status} - ${errorText}`);
+        console.error('❌ [Enhanced Edge Function] Enhanced poll failed:', errorText);
+        throw new Error(`Poll failed: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
-      console.warn('🔥 [Edge Function] Poll result - Status:', data.status, 'Text length:', data.text?.length || 0);
+      console.log('🔥 [Enhanced Edge Function] Poll result - Status:', data.status);
+      
+      if (data.status === 'completed') {
+        // Log available enhanced features in response
+        const features = [];
+        if (data.language_code) features.push(`language: ${data.language_code}`);
+        if (data.content_safety_labels) features.push('content_safety');
+        if (data.entities && data.entities.length > 0) features.push(`entities: ${data.entities.length}`);
+        if (data.sentiment_analysis_results) features.push('sentiment');
+        if (data.chapters && data.chapters.length > 0) features.push(`chapters: ${data.chapters.length}`);
+        if (data.summary) features.push('summary');
+        
+        console.log('🔥 [Enhanced Edge Function] Enhanced features in response:', features);
+      }
       
       return new Response(JSON.stringify(data), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    console.error('❌ [Edge Function] Invalid action provided:', action);
+    console.error('❌ [Enhanced Edge Function] Invalid action:', action);
     throw new Error(`Invalid action: ${action}`);
 
   } catch (error) {
-    console.error('❌ [Edge Function] CRITICAL ERROR:', error);
-    console.error('❌ [Edge Function] Error stack:', error.stack);
+    console.error('❌ [Enhanced Edge Function] CRITICAL ERROR:', error);
+    console.error('❌ [Enhanced Edge Function] Error stack:', error.stack);
     
     return new Response(JSON.stringify({ 
       error: error.message,
