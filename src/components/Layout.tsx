@@ -2,13 +2,16 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from './ui/button';
-import { Upload, Home, Settings } from 'lucide-react';
+import { Upload, Home } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
+import { useUserRole } from '../hooks/useUserRole';
 import UserProfileMenu from './UserProfileMenu';
+import PasscodeManager from './PasscodeManager';
 
 const Layout = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
   const { isAuthenticated } = useAuthStore();
+  const { isAdmin } = useUserRole();
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -50,7 +53,10 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 
             <div className="flex items-center space-x-4">
               {isAuthenticated ? (
-                <UserProfileMenu />
+                <>
+                  {isAdmin && <PasscodeManager />}
+                  <UserProfileMenu />
+                </>
               ) : (
                 <Button asChild>
                   <Link to="/auth">Login</Link>
