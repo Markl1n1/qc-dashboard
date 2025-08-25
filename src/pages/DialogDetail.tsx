@@ -148,7 +148,7 @@ const DialogDetail = () => {
   };
 
   // Helper function to format quality score display
-  const formatQualityScore = (score: number | undefined): React.ReactNode => {
+  const formatQualityScore = (score: number | undefined): string => {
     if (typeof score === 'number') {
       return `${score}/100`;
     }
@@ -286,11 +286,11 @@ const DialogDetail = () => {
                           <div key={categoryId} className="text-center p-3 border rounded">
                             <div className="font-medium capitalize text-sm">{categoryId.replace('_', ' ')}</div>
                             <div className={`text-xl sm:text-2xl font-bold ${
-                              score >= 80 ? 'text-green-600' : 
-                              score >= 60 ? 'text-yellow-600' : 
+                              typeof score === 'number' && score >= 80 ? 'text-green-600' : 
+                              typeof score === 'number' && score >= 60 ? 'text-yellow-600' : 
                               'text-red-600'
                             }`}>
-                              {score}/100
+                              {typeof score === 'number' ? `${score}/100` : 'N/A'}
                             </div>
                           </div>
                         ))}
