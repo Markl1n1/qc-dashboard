@@ -2,7 +2,6 @@
 import { useState, useCallback } from 'react';
 import { simplifiedAssemblyAIService, SimplifiedAssemblyAIOptions } from '../services/simplifiedAssemblyAIService';
 import { UnifiedTranscriptionProgress, SpeakerUtterance } from '../types';
-import { EmergencyLogger } from '../services/emergencyLogger';
 
 export interface SimpleTranscriptionOptions {
   speakerLabels?: boolean;
@@ -15,23 +14,20 @@ export const useSimplifiedTranscription = () => {
   const [error, setError] = useState<string | null>(null);
 
   const transcribe = useCallback(async (audioFile: File, options: SimpleTranscriptionOptions): Promise<{ text: string; speakerUtterances: SpeakerUtterance[] }> => {
-    EmergencyLogger.log('useSimplifiedTranscription.transcribe called', { fileName: audioFile.name, options });
-    
-    // Clear any previous emergency logs
-    EmergencyLogger.clear();
+    console.log('useSimplifiedTranscription.transcribe called', { fileName: audioFile.name, options });
     
     setIsLoading(true);
     setError(null);
     setProgress(null);
 
     try {
-      // Set up progress tracking with error boundaries
+      // Set up progress tracking
       simplifiedAssemblyAIService.setProgressCallback((progressData) => {
-        EmergencyLogger.log('Progress callback received in hook', progressData);
+        console.log('Progress callback received in hook:', progressData);
         try {
           setProgress(progressData);
         } catch (err) {
-          EmergencyLogger.log('Error setting progress state', err);
+          console.error('Error setting progress state:', err);
         }
       });
 
@@ -41,10 +37,10 @@ export const useSimplifiedTranscription = () => {
         language_code: options.language,
       };
 
-      EmergencyLogger.log('Calling simplified service transcribe');
+      console.log('Calling simplified service transcribe');
       const result = await simplifiedAssemblyAIService.transcribe(audioFile, assemblyOptions);
       
-      EmergencyLogger.log('Transcription completed in hook', { 
+      console.log('Transcription completed in hook', { 
         textLength: result.text.length,
         utteranceCount: result.speakerUtterances.length 
       });
@@ -57,13 +53,13 @@ export const useSimplifiedTranscription = () => {
       };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Transcription failed';
-      EmergencyLogger.log('Transcription error in hook', { errorMessage, error: err });
+      console.error('Transcription error in hook:', { errorMessage, error: err });
       
       setError(errorMessage);
       throw err;
     } finally {
       setIsLoading(false);
-      EmergencyLogger.log('useSimplifiedTranscription finished, isLoading set to false');
+      console.log('useSimplifiedTranscription finished, isLoading set to false');
     }
   }, []);
 
@@ -71,9 +67,6 @@ export const useSimplifiedTranscription = () => {
     transcribe,
     isLoading,
     progress,
-    error,
-    // Emergency log access for debugging
-    getEmergencyLogs: () => EmergencyLogger.getLogs(),
-    clearEmergencyLogs: () => EmergencyLogger.clear()
+    error
   };
 };

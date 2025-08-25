@@ -1,7 +1,6 @@
 
 import { SpeakerUtterance, UnifiedTranscriptionProgress } from '../types';
 import { supabase } from '../integrations/supabase/client';
-import { EmergencyLogger } from './emergencyLogger';
 
 export interface SimplifiedAssemblyAIOptions {
   speaker_labels?: boolean;
@@ -19,48 +18,31 @@ export interface SimplifiedAssemblyAIResult {
 class SimplifiedAssemblyAIService {
   private progressCallback?: (progress: UnifiedTranscriptionProgress) => void;
   private isProcessing = false;
-  private callDepth = 0;
-  private readonly maxCallDepth = 10;
 
   constructor() {
-    EmergencyLogger.log('SimplifiedAssemblyAIService initialized');
+    console.log('SimplifiedAssemblyAIService initialized');
   }
 
   setProgressCallback(callback: (progress: UnifiedTranscriptionProgress) => void) {
-    EmergencyLogger.log('Setting progress callback');
+    console.log('Setting progress callback');
     this.progressCallback = callback;
   }
 
   private updateProgress(stage: UnifiedTranscriptionProgress['stage'], progress: number, message: string) {
-    this.callDepth++;
-    
-    if (this.callDepth > this.maxCallDepth) {
-      EmergencyLogger.log('CRITICAL: Maximum call depth reached in updateProgress', { callDepth: this.callDepth });
-      throw new Error('Stack overflow prevention: Too many nested calls in updateProgress');
-    }
-
-    EmergencyLogger.log(`Progress Update (depth: ${this.callDepth})`, { stage, progress, message });
+    console.log(`Progress Update: ${stage} (${progress}%) - ${message}`);
     
     if (this.progressCallback) {
       try {
-        // Use setTimeout to break the call stack
-        setTimeout(() => {
-          if (this.progressCallback) {
-            this.progressCallback({ stage, progress, message });
-          }
-          this.callDepth--;
-        }, 0);
+        this.progressCallback({ stage, progress, message });
+        console.log('Progress callback executed successfully');
       } catch (error) {
-        EmergencyLogger.log('Error in progress callback', error);
-        this.callDepth--;
+        console.error('Error in progress callback:', error);
       }
-    } else {
-      this.callDepth--;
     }
   }
 
   private async convertFileToBase64(file: File): Promise<string> {
-    EmergencyLogger.log('Starting file conversion to base64', { fileName: file.name, size: file.size });
+    console.log('Starting file conversion to base64', { fileName: file.name, size: file.size });
     
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -68,18 +50,17 @@ class SimplifiedAssemblyAIService {
       reader.onload = () => {
         try {
           const result = reader.result as string;
-          // Remove data URL prefix
           const base64 = result.split(',')[1];
-          EmergencyLogger.log('File converted to base64 successfully', { base64Length: base64.length });
+          console.log('File converted to base64 successfully', { base64Length: base64.length });
           resolve(base64);
         } catch (error) {
-          EmergencyLogger.log('Error processing FileReader result', error);
+          console.error('Error processing FileReader result:', error);
           reject(error);
         }
       };
       
       reader.onerror = () => {
-        EmergencyLogger.log('FileReader error', reader.error);
+        console.error('FileReader error:', reader.error);
         reject(new Error('Failed to read file'));
       };
       
@@ -88,31 +69,31 @@ class SimplifiedAssemblyAIService {
   }
 
   async transcribe(audioFile: File, options: SimplifiedAssemblyAIOptions): Promise<SimplifiedAssemblyAIResult> {
-    EmergencyLogger.log('Transcribe method called', { 
+    console.log('Transcribe method called', { 
       fileName: audioFile.name, 
       fileSize: audioFile.size,
       isProcessing: this.isProcessing 
     });
 
     if (this.isProcessing) {
-      EmergencyLogger.log('Already processing, rejecting new request');
+      console.log('Already processing, rejecting new request');
       throw new Error('Another transcription is already in progress');
     }
 
     this.isProcessing = true;
-    EmergencyLogger.log('Set processing flag to true');
+    console.log('Set processing flag to true');
 
     try {
       // Step 1: Authentication check
-      EmergencyLogger.log('Checking authentication');
+      console.log('Checking authentication');
       const { data: { session }, error: authError } = await supabase.auth.getSession();
       
       if (authError || !session) {
-        EmergencyLogger.log('Authentication failed', authError);
+        console.error('Authentication failed:', authError);
         throw new Error('Authentication required');
       }
       
-      EmergencyLogger.log('Authentication successful', { userEmail: session.user.email });
+      console.log('Authentication successful', { userEmail: session.user.email });
 
       // Step 2: Convert file to base64
       this.updateProgress('uploading', 10, 'Converting file...');
@@ -120,7 +101,7 @@ class SimplifiedAssemblyAIService {
       
       // Step 3: Upload to AssemblyAI
       this.updateProgress('uploading', 30, 'Uploading to AssemblyAI...');
-      EmergencyLogger.log('Calling edge function for upload');
+      console.log('Calling edge function for upload');
       
       const { data: uploadData, error: uploadError } = await supabase.functions.invoke('assemblyai-transcribe', {
         body: {
@@ -131,16 +112,16 @@ class SimplifiedAssemblyAIService {
       });
 
       if (uploadError) {
-        EmergencyLogger.log('Upload error', uploadError);
+        console.error('Upload error:', uploadError);
         throw new Error(`Upload failed: ${uploadError.message}`);
       }
 
-      EmergencyLogger.log('Upload successful', uploadData);
+      console.log('Upload successful:', uploadData);
       const uploadUrl = uploadData.upload_url;
 
       // Step 4: Start transcription
       this.updateProgress('processing', 50, 'Starting transcription...');
-      EmergencyLogger.log('Starting transcription with options', options);
+      console.log('Starting transcription with options:', options);
 
       const transcriptionOptions = {
         audio_url: uploadUrl,
@@ -156,34 +137,34 @@ class SimplifiedAssemblyAIService {
       });
 
       if (transcriptError) {
-        EmergencyLogger.log('Transcription start error', transcriptError);
+        console.error('Transcription start error:', transcriptError);
         throw new Error(`Transcription failed: ${transcriptError.message}`);
       }
 
-      EmergencyLogger.log('Transcription started', { transcriptId: transcriptData.id });
+      console.log('Transcription started', { transcriptId: transcriptData.id });
       const transcriptId = transcriptData.id;
 
-      // Step 5: Poll for completion (simplified)
+      // Step 5: Poll for completion
       this.updateProgress('processing', 70, 'Processing audio...');
       const finalResult = await this.pollForCompletion(transcriptId);
       
       this.updateProgress('complete', 100, 'Transcription complete');
-      EmergencyLogger.log('Transcription completed successfully');
+      console.log('Transcription completed successfully');
 
       return this.formatResults(finalResult, transcriptId);
 
     } catch (error) {
-      EmergencyLogger.log('Transcription error', error);
+      console.error('Transcription error:', error);
       this.updateProgress('error', 0, error instanceof Error ? error.message : 'Unknown error');
       throw error;
     } finally {
       this.isProcessing = false;
-      EmergencyLogger.log('Processing flag set to false');
+      console.log('Processing flag set to false');
     }
   }
 
   private async pollForCompletion(transcriptId: string, maxAttempts: number = 60): Promise<any> {
-    EmergencyLogger.log('Starting polling', { transcriptId, maxAttempts });
+    console.log('Starting polling', { transcriptId, maxAttempts });
     
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
@@ -195,11 +176,11 @@ class SimplifiedAssemblyAIService {
         });
 
         if (error) {
-          EmergencyLogger.log('Poll error', { attempt, error });
+          console.error('Poll error', { attempt, error });
           throw new Error(`Poll failed: ${error.message}`);
         }
 
-        EmergencyLogger.log('Poll result', { attempt, status: data.status });
+        console.log('Poll result', { attempt, status: data.status });
 
         if (data.status === 'completed') {
           return data;
@@ -215,7 +196,7 @@ class SimplifiedAssemblyAIService {
         this.updateProgress('processing', progress, 'Processing audio...');
 
       } catch (error) {
-        EmergencyLogger.log('Poll attempt failed', { attempt, error });
+        console.error('Poll attempt failed', { attempt, error });
         if (attempt >= maxAttempts - 1) {
           throw error;
         }
@@ -227,7 +208,7 @@ class SimplifiedAssemblyAIService {
   }
 
   private formatResults(transcript: any, transcriptId: string): SimplifiedAssemblyAIResult {
-    EmergencyLogger.log('Formatting results', { transcriptId, hasText: !!transcript.text });
+    console.log('Formatting results', { transcriptId, hasText: !!transcript.text });
     
     const text = transcript.text || '';
     const speakerUtterances: SpeakerUtterance[] = [];
@@ -245,7 +226,7 @@ class SimplifiedAssemblyAIService {
     }
 
     const result = { text, speakerUtterances, transcriptId };
-    EmergencyLogger.log('Results formatted', { textLength: text.length, utteranceCount: speakerUtterances.length });
+    console.log('Results formatted', { textLength: text.length, utteranceCount: speakerUtterances.length });
     
     return result;
   }

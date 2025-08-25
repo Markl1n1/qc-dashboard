@@ -9,15 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Textarea } from '../components/ui/textarea';
 import { Checkbox } from '../components/ui/checkbox';
 import { CheckedState } from '@radix-ui/react-checkbox';
-import { EmergencyDebugPanel } from '../components/EmergencyDebugPanel';
 import { useSimplifiedTranscription } from '../hooks/useSimplifiedTranscription';
 
 interface UploadProps {}
-
-interface ModelInfo {
-  name: string;
-  size: string;
-}
 
 const Upload: React.FC<UploadProps> = () => {
   const [audioFile, setAudioFile] = useState<File | null>(null);
@@ -35,9 +29,7 @@ const Upload: React.FC<UploadProps> = () => {
     transcribe, 
     isLoading: isTranscribing, 
     progress, 
-    error: transcriptionError,
-    getEmergencyLogs,
-    clearEmergencyLogs 
+    error: transcriptionError
   } = useSimplifiedTranscription();
 
   const acceptedFileTypes: Accept = {
@@ -49,6 +41,7 @@ const Upload: React.FC<UploadProps> = () => {
     setAudioFile(file);
     setTranscription('');
     setTokenEstimate(null);
+    console.log('File dropped:', file.name);
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -63,11 +56,13 @@ const Upload: React.FC<UploadProps> = () => {
       return;
     }
 
+    console.log('Starting transcription for file:', audioFile.name);
     try {
       const result = await transcribe(audioFile, {
         speakerLabels: speakerLabels,
         language: language,
       });
+      console.log('Transcription completed, setting result');
       setTranscription(result.text);
     } catch (err: any) {
       console.error('Transcription failed', err);
@@ -81,6 +76,7 @@ const Upload: React.FC<UploadProps> = () => {
       return;
     }
 
+    console.log('Estimating token cost for:', audioFile.name);
     // Placeholder for token estimation logic
     setTokenEstimate({ audioLengthMinutes: 10, estimatedCost: 0.5 });
   };
@@ -232,8 +228,6 @@ const Upload: React.FC<UploadProps> = () => {
           </CardContent>
         </Card>
       )}
-      
-      <EmergencyDebugPanel />
     </div>
   );
 };
