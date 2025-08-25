@@ -53,6 +53,23 @@ class TranscriptionService {
 
       this.updateProgress('uploading', 10, 'Starting transcription...');
       
+      // Ensure user is authenticated
+      console.log('[TranscriptionService] Checking authentication...');
+      const { supabase } = await import('../integrations/supabase/client');
+      const { data: { session }, error: authError } = await supabase.auth.getSession();
+      
+      if (authError) {
+        console.error('[TranscriptionService] Authentication error:', authError);
+        throw new Error(`Authentication failed: ${authError.message}`);
+      }
+      
+      if (!session) {
+        console.error('[TranscriptionService] No active session found');
+        throw new Error('Please log in to use transcription services');
+      }
+      
+      console.log('[TranscriptionService] Authentication verified, user:', session.user.email);
+      
       const formData = new FormData();
       formData.append('audio', file);
       formData.append('assignedAgent', assignedAgent);
@@ -65,18 +82,57 @@ class TranscriptionService {
       this.updateProgress('processing', 30, 'Processing audio file...');
 
       console.log('[TranscriptionService] Making request to transcribe endpoint...');
+      console.log('[TranscriptionService] Request details:', {
+        url: 'https://sahudeguwojdypmmlbkd.supabase.co/functions/v1/transcribe',
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        },
+        formDataEntries: Array.from(formData.entries()).map(([key, value]) => [
+          key, 
+          value instanceof File ? `File: ${value.name} (${value.size} bytes)` : value
+        ])
+      });
+
       const response = await fetch('https://sahudeguwojdypmmlbkd.supabase.co/functions/v1/transcribe', {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
         body: formData,
       });
 
+      console.log('[TranscriptionService] Response status:', response.status);
+      console.log('[TranscriptionService] Response headers:', Object.fromEntries(response.headers.entries()));
+
       if (!response.ok) {
-        const errorData = await response.json();
+        const responseText = await response.text();
+        console.error('[TranscriptionService] Error response body:', responseText);
+        
+        let errorData;
+        try {
+          errorData = JSON.parse(responseText);
+        } catch {
+          errorData = { message: responseText || `Transcription failed: ${response.statusText}` };
+        }
+        
         console.error('[TranscriptionService] Transcription request failed:', errorData);
+        
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in and try again.');
+        } else if (response.status === 403) {
+          throw new Error('Access denied. Please check your permissions.');
+        } else if (response.status === 500) {
+          throw new Error('Server error. Please try again later.');
+        }
+        
         throw new Error(errorData.message || `Transcription failed: ${response.statusText}`);
       }
 
-      const { dialogId } = await response.json();
+      const responseData = await response.json();
+      console.log('[TranscriptionService] Success response:', responseData);
+      
+      const { dialogId } = responseData;
       console.log('[TranscriptionService] Transcription request successful, dialogId:', dialogId);
       
       this.updateProgress('complete', 100, 'Transcription completed successfully');
@@ -85,6 +141,8 @@ class TranscriptionService {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Transcription failed';
       console.error('[TranscriptionService] Transcription error:', errorMessage);
+      console.error('[TranscriptionService] Full error details:', error);
+      
       this.updateProgress('error', 0, errorMessage);
       throw error;
     }
@@ -94,19 +152,40 @@ class TranscriptionService {
     console.log('[TranscriptionService] processTranscription called with dialogId:', dialogId);
     
     try {
+      // Ensure user is authenticated
+      const { supabase } = await import('../integrations/supabase/client');
+      const { data: { session }, error: authError } = await supabase.auth.getSession();
+      
+      if (authError || !session) {
+        throw new Error('Authentication required for transcription processing');
+      }
+      
+      console.log('[TranscriptionService] Making process transcription request...');
       const response = await fetch(`https://sahudeguwojdypmmlbkd.supabase.co/functions/v1/process-transcription/${dialogId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
         },
       });
-  
+
+      console.log('[TranscriptionService] Process response status:', response.status);
+
       if (!response.ok) {
-        const errorData = await response.json();
+        const responseText = await response.text();
+        console.error('[TranscriptionService] Process error response:', responseText);
+        
+        let errorData;
+        try {
+          errorData = JSON.parse(responseText);
+        } catch {
+          errorData = { message: responseText || `Transcription processing failed: ${response.statusText}` };
+        }
+        
         console.error('[TranscriptionService] Process transcription failed:', errorData);
         throw new Error(errorData.message || `Transcription processing failed: ${response.statusText}`);
       }
-  
+
       const data = await response.json();
       console.log('[TranscriptionService] Transcription processed successfully:', data);
     } catch (error) {
@@ -119,20 +198,43 @@ class TranscriptionService {
     console.log('[TranscriptionService] estimateTokenCost called with file:', file.name);
     
     try {
+      // Ensure user is authenticated
+      const { supabase } = await import('../integrations/supabase/client');
+      const { data: { session }, error: authError } = await supabase.auth.getSession();
+      
+      if (authError || !session) {
+        throw new Error('Authentication required for cost estimation');
+      }
+      
       const formData = new FormData();
       formData.append('audio', file);
-  
+
+      console.log('[TranscriptionService] Making token cost estimation request...');
       const response = await fetch('https://sahudeguwojdypmmlbkd.supabase.co/functions/v1/estimate-token-cost', {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
         body: formData,
       });
-  
+
+      console.log('[TranscriptionService] Estimation response status:', response.status);
+
       if (!response.ok) {
-        const errorData = await response.json();
+        const responseText = await response.text();
+        console.error('[TranscriptionService] Estimation error response:', responseText);
+        
+        let errorData;
+        try {
+          errorData = JSON.parse(responseText);
+        } catch {
+          errorData = { message: responseText || `Token estimation failed: ${response.statusText}` };
+        }
+        
         console.error('[TranscriptionService] Token estimation failed:', errorData);
         throw new Error(errorData.message || `Token estimation failed: ${response.statusText}`);
       }
-  
+
       const result = await response.json();
       console.log('[TranscriptionService] Token estimation result:', result);
       return result;
