@@ -76,7 +76,7 @@ class DatabaseService {
       .single();
 
     if (error) throw error;
-    return data;
+    return data as DatabaseDialog;
   }
 
   async getDialogs(userId?: string): Promise<DatabaseDialog[]> {
@@ -88,7 +88,7 @@ class DatabaseService {
 
     const { data, error } = await query;
     if (error) throw error;
-    return data || [];
+    return (data || []) as DatabaseDialog[];
   }
 
   async getDialog(id: string): Promise<DatabaseDialog | null> {
@@ -99,7 +99,7 @@ class DatabaseService {
       .maybeSingle();
 
     if (error) throw error;
-    return data;
+    return data as DatabaseDialog | null;
   }
 
   async updateDialog(id: string, updates: Partial<DatabaseDialog>): Promise<DatabaseDialog> {
@@ -111,7 +111,7 @@ class DatabaseService {
       .single();
 
     if (error) throw error;
-    return data;
+    return data as DatabaseDialog;
   }
 
   async deleteDialog(id: string): Promise<void> {
@@ -132,7 +132,7 @@ class DatabaseService {
       .single();
 
     if (error) throw error;
-    return data;
+    return data as DatabaseTranscription;
   }
 
   async getTranscriptions(dialogId: string): Promise<DatabaseTranscription[]> {
@@ -143,7 +143,7 @@ class DatabaseService {
       .order('created_at', { ascending: true });
 
     if (error) throw error;
-    return data || [];
+    return (data || []) as DatabaseTranscription[];
   }
 
   async updateTranscription(id: string, updates: Partial<DatabaseTranscription>): Promise<DatabaseTranscription> {
@@ -155,7 +155,7 @@ class DatabaseService {
       .single();
 
     if (error) throw error;
-    return data;
+    return data as DatabaseTranscription;
   }
 
   // Speaker utterance operations
@@ -166,7 +166,7 @@ class DatabaseService {
       .select();
 
     if (error) throw error;
-    return data || [];
+    return (data || []) as DatabaseUtterance[];
   }
 
   async getUtterances(transcriptionId: string): Promise<DatabaseUtterance[]> {
@@ -177,7 +177,7 @@ class DatabaseService {
       .order('utterance_order', { ascending: true });
 
     if (error) throw error;
-    return data || [];
+    return (data || []) as DatabaseUtterance[];
   }
 
   // Analysis operations
@@ -189,7 +189,7 @@ class DatabaseService {
       .single();
 
     if (error) throw error;
-    return data;
+    return data as DatabaseAnalysis;
   }
 
   async getAnalysis(dialogId: string, analysisType?: 'lemur' | 'openai'): Promise<DatabaseAnalysis[]> {
@@ -204,7 +204,7 @@ class DatabaseService {
 
     const { data, error } = await query.order('created_at', { ascending: false });
     if (error) throw error;
-    return data || [];
+    return (data || []) as DatabaseAnalysis[];
   }
 
   async updateAnalysis(id: string, updates: Partial<DatabaseAnalysis>): Promise<DatabaseAnalysis> {
@@ -216,7 +216,7 @@ class DatabaseService {
       .single();
 
     if (error) throw error;
-    return data;
+    return data as DatabaseAnalysis;
   }
 
   // System configuration operations
