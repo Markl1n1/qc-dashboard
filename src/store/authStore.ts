@@ -1,4 +1,3 @@
-
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { supabase } from '../integrations/supabase/client';
@@ -15,6 +14,7 @@ interface AuthStore {
   updatePasscode: (newPasscode: string) => Promise<{ success: boolean; error?: string }>;
   getCurrentPasscode: () => Promise<string | null>;
   setAuth: (session: Session | null) => void;
+  initializeAuth: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthStore>()(
@@ -30,6 +30,20 @@ export const useAuthStore = create<AuthStore>()(
           user: session?.user ?? null,
           isAuthenticated: !!session?.user,
         });
+      },
+
+      initializeAuth: async () => {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          get().setAuth(session);
+
+          // Listen for auth changes
+          supabase.auth.onAuthStateChange((_event, session) => {
+            get().setAuth(session);
+          });
+        } catch (error) {
+          console.error('Error initializing auth:', error);
+        }
       },
 
       login: async (email: string, password: string) => {

@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Checkbox } from '../components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Badge } from '../components/ui/badge';
+import { Label } from '../components/ui/label';
 import { CheckedState } from '@radix-ui/react-checkbox';
 import { useSimplifiedTranscription } from '../hooks/useSimplifiedTranscription';
 import { useDeepgramTranscription } from '../hooks/useDeepgramTranscription';
