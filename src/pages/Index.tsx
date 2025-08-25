@@ -2,17 +2,39 @@
 import React, { useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { FileText, RefreshCw } from 'lucide-react';
+import { FileText, RefreshCw, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Dialog } from '../types';
 import { useDatabaseDialogs } from '../hooks/useDatabaseDialogs';
+import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '../components/ui/alert-dialog';
 
 const Index = () => {
-  const { dialogs, isLoading, error, loadDialogs } = useDatabaseDialogs();
+  const { dialogs, isLoading, error, loadDialogs, deleteDialog } = useDatabaseDialogs();
 
   useEffect(() => {
     loadDialogs();
   }, [loadDialogs]);
+
+  const handleDeleteDialog = async (dialogId: string, fileName: string) => {
+    try {
+      await deleteDialog(dialogId);
+      toast.success(`Dialog "${fileName}" has been deleted successfully`);
+    } catch (error) {
+      console.error('Error deleting dialog:', error);
+      toast.error('Failed to delete dialog');
+    }
+  };
 
   const getStatusColor = (status: Dialog['status']) => {
     switch (status) {
@@ -104,6 +126,30 @@ const Index = () => {
                     <Button variant="ghost" size="sm" asChild>
                       <Link to={`/dialog/${dialog.id}`}>View Details</Link>
                     </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete Dialog</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to delete "{dialog.fileName}"? This action cannot be undone and will permanently remove the dialog, transcription, and any analysis data.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => handleDeleteDialog(dialog.id, dialog.fileName)}
+                            className="bg-red-600 hover:bg-red-700"
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </div>
               ))}

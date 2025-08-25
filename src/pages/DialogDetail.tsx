@@ -5,11 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Badge } from '../components/ui/badge';
-import { ArrowLeft, Play, FileText, BarChart3, Loader2 } from 'lucide-react';
+import { ArrowLeft, Play, Users, BarChart3, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Dialog } from '../types';
 import { useDatabaseDialogs } from '../hooks/useDatabaseDialogs';
 import { toast } from 'sonner';
+import DeepgramSpeakerDialog from '../components/DeepgramSpeakerDialog';
 
 const DialogDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -118,8 +119,8 @@ const DialogDetail = () => {
       <Tabs defaultValue="transcription" className="w-full">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="transcription" className="flex items-center gap-2">
-            <FileText className="h-4 w-4" />
-            Transcription
+            <Users className="h-4 w-4" />
+            Speaker Dialog
           </TabsTrigger>
           <TabsTrigger value="analysis" className="flex items-center gap-2">
             <Play className="h-4 w-4" />
@@ -133,47 +134,14 @@ const DialogDetail = () => {
 
         <TabsContent value="transcription" className="mt-6">
           <div className="space-y-6">
-            {/* Plain Transcription */}
-            {dialog.transcription && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Full Transcription</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <textarea 
-                    value={dialog.transcription}
-                    readOnly
-                    className="w-full h-64 p-3 border rounded-md resize-none"
-                  />
-                </CardContent>
-              </Card>
-            )}
-
             {/* Speaker Transcription */}
-            {dialog.speakerTranscription && dialog.speakerTranscription.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Speaker Transcription</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
-                    {dialog.speakerTranscription.map((utterance, index) => (
-                      <div key={index} className="flex gap-3 p-3 bg-muted/50 rounded-lg">
-                        <div className="font-medium text-sm min-w-20 text-muted-foreground">
-                          {utterance.speaker}
-                        </div>
-                        <div className="flex-1">{utterance.text}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {utterance.confidence && `${Math.round(utterance.confidence * 100)}%`}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {!dialog.transcription && (
+            {dialog.speakerTranscription && dialog.speakerTranscription.length > 0 ? (
+              <DeepgramSpeakerDialog
+                utterances={dialog.speakerTranscription}
+                detectedLanguage={undefined}
+                metadata={undefined}
+              />
+            ) : (
               <Card>
                 <CardContent className="pt-6">
                   <p className="text-center text-muted-foreground">No transcription available</p>
@@ -193,7 +161,7 @@ const DialogDetail = () => {
                 </p>
                 <Button 
                   onClick={handleStartAnalysis}
-                  disabled={isAnalyzing || !dialog.transcription}
+                  disabled={isAnalyzing || !dialog.speakerTranscription}
                   size="lg"
                 >
                   {isAnalyzing ? (
@@ -208,7 +176,7 @@ const DialogDetail = () => {
                     </>
                   )}
                 </Button>
-                {!dialog.transcription && (
+                {!dialog.speakerTranscription && (
                   <p className="text-sm text-muted-foreground mt-2">
                     Transcription required before analysis can be performed.
                   </p>

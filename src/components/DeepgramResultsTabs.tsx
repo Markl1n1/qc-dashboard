@@ -2,9 +2,8 @@
 import React from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Textarea } from './ui/textarea';
 import { Badge } from './ui/badge';
-import { FileText, Users, Clock } from 'lucide-react';
+import { Users, Clock } from 'lucide-react';
 import { SpeakerUtterance } from '../types';
 import DeepgramSpeakerDialog from './DeepgramSpeakerDialog';
 import SpeakerTimelineView from './SpeakerTimelineView';
@@ -32,8 +31,7 @@ const DeepgramResultsTabs: React.FC<DeepgramResultsTabsProps> = ({
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          Deepgram Transcription Results
-          <Badge variant="outline">deepgram</Badge>
+          Transcription Results
           {detectedLanguage && (
             <Badge variant="secondary">
               {detectedLanguage.language} ({Math.round(detectedLanguage.confidence * 100)}%)
@@ -43,14 +41,10 @@ const DeepgramResultsTabs: React.FC<DeepgramResultsTabsProps> = ({
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="dialog" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="dialog" className="flex items-center gap-2">
               <Users className="h-4 w-4" />
               Speaker Dialog
-            </TabsTrigger>
-            <TabsTrigger value="full" className="flex items-center gap-2">
-              <FileText className="h-4 w-4" />
-              Full Transcript
             </TabsTrigger>
             <TabsTrigger value="timeline" className="flex items-center gap-2">
               <Clock className="h-4 w-4" />
@@ -64,25 +58,6 @@ const DeepgramResultsTabs: React.FC<DeepgramResultsTabsProps> = ({
               detectedLanguage={detectedLanguage}
               metadata={metadata}
             />
-          </TabsContent>
-
-          <TabsContent value="full" className="mt-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <FileText className="h-4 w-4" />
-                  Complete Transcript
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Textarea
-                  value={transcription}
-                  readOnly
-                  className="min-h-[400px] resize-none"
-                  placeholder="Full transcription will appear here..."
-                />
-              </CardContent>
-            </Card>
           </TabsContent>
 
           <TabsContent value="timeline" className="mt-4">

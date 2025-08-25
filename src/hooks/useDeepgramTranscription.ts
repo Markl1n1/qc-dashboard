@@ -2,7 +2,6 @@
 import { useState, useCallback } from 'react';
 import { deepgramService, DeepgramOptions } from '../services/deepgramService';
 import { UnifiedTranscriptionProgress, SpeakerUtterance } from '../types';
-import { logger } from '../utils/logger';
 
 export const useDeepgramTranscription = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -13,7 +12,7 @@ export const useDeepgramTranscription = () => {
     audioFile: File, 
     options: DeepgramOptions
   ): Promise<{ text: string; speakerUtterances: SpeakerUtterance[] }> => {
-    logger.info('🎙️ Deepgram transcription hook called', { fileName: audioFile.name, options });
+    console.log('🎙️ Deepgram transcription hook called', { fileName: audioFile.name, options });
     
     setIsLoading(true);
     setError(null);
@@ -22,28 +21,28 @@ export const useDeepgramTranscription = () => {
     try {
       // Set up progress tracking
       deepgramService.setProgressCallback((progressData) => {
-        logger.debug('📊 Deepgram progress callback:', progressData);
+        console.log('📊 Deepgram progress callback:', progressData);
         try {
           setProgress(progressData);
         } catch (err) {
-          logger.error('❌ Error setting Deepgram progress state:', err);
+          console.error('❌ Error setting Deepgram progress state:', err);
         }
       });
 
-      logger.info('🚀 Calling Deepgram service...');
+      console.log('🚀 Calling Deepgram service...');
       const result = await deepgramService.transcribe(audioFile, options);
       
-      logger.info('✅ Deepgram transcription completed', { 
+      console.log('✅ Deepgram transcription completed', { 
         textLength: result.text.length,
         utteranceCount: result.speakerUtterances.length
       });
       
-      setProgress({ stage: 'complete', progress: 100, message: 'Deepgram transcription complete!' });
+      setProgress({ stage: 'complete', progress: 100, message: 'Transcription complete!' });
       
       return result;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Deepgram transcription failed';
-      logger.error('❌ Deepgram transcription error:', { errorMessage, error: err });
+      const errorMessage = err instanceof Error ? err.message : 'Transcription failed';
+      console.error('❌ Deepgram transcription error:', { errorMessage, error: err });
       
       setError(errorMessage);
       throw err;
