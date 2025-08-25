@@ -1,7 +1,7 @@
+
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDialogStore } from '../store/dialogStore';
-import { useTranslation } from '../hooks/useTranslation';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -139,6 +139,22 @@ const DialogDetail = () => {
     }, 100);
   };
 
+  // Helper function to get quality score color class
+  const getQualityScoreColor = (score: number | undefined): string => {
+    if (typeof score !== 'number') return 'text-muted-foreground';
+    if (score >= 80) return 'text-green-600';
+    if (score >= 60) return 'text-yellow-600';
+    return 'text-red-600';
+  };
+
+  // Helper function to format quality score display
+  const formatQualityScore = (score: number | undefined): React.ReactNode => {
+    if (typeof score === 'number') {
+      return `${score}/100`;
+    }
+    return 'Not analyzed';
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-6 p-4">
       {/* Header */}
@@ -196,16 +212,8 @@ const DialogDetail = () => {
               <CheckCircle className="h-4 w-4 text-muted-foreground" />
               <div>
                 <p className="font-medium">Quality Score</p>
-                <p className={`font-semibold ${
-                  dialog.qualityScore && typeof dialog.qualityScore === 'number'
-                    ? dialog.qualityScore >= 80 
-                      ? 'text-green-600' 
-                      : dialog.qualityScore >= 60 
-                        ? 'text-yellow-600' 
-                        : 'text-red-600'
-                    : 'text-muted-foreground'
-                }`}>
-                  {dialog.qualityScore && typeof dialog.qualityScore === 'number' ? `${dialog.qualityScore}/100` : 'Not analyzed'}
+                <p className={`font-semibold ${getQualityScoreColor(dialog.qualityScore)}`}>
+                  {formatQualityScore(dialog.qualityScore)}
                 </p>
               </div>
             </div>
