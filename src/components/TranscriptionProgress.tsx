@@ -1,7 +1,9 @@
+
 import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Progress } from './ui/progress';
 import { Badge } from './ui/badge';
+import { Button } from './ui/button';
 import { UnifiedTranscriptionProgress } from '../types';
 import { Download, Cpu, CheckCircle, AlertCircle, Upload, Clock, Loader2, XCircle, X } from 'lucide-react';
 
@@ -22,6 +24,8 @@ const TranscriptionProgress: React.FC<TranscriptionProgressProps> = ({
     switch (stage) {
       case 'uploading':
         return <Upload className="h-4 w-4 text-blue-500 animate-pulse" />;
+      case 'queued':
+        return <Clock className="h-4 w-4 text-yellow-500" />;
       case 'processing':
         return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />;
       case 'complete':
@@ -36,6 +40,7 @@ const TranscriptionProgress: React.FC<TranscriptionProgressProps> = ({
   const getStageColor = (stage: UnifiedTranscriptionProgress['stage']) => {
     switch (stage) {
       case 'uploading':
+      case 'queued':
       case 'processing':
         return 'blue';
       case 'complete':

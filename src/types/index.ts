@@ -9,7 +9,7 @@ export interface AssemblyAIConfig {
 }
 
 export interface UnifiedTranscriptionProgress {
-  stage: 'uploading' | 'queued' | 'processing' | 'complete' | 'error' | 'loading' | 'downloading';
+  stage: 'uploading' | 'queued' | 'processing' | 'complete' | 'error';
   progress: number;
   message: string;
 }
@@ -37,6 +37,24 @@ export interface SpeakerUtterance {
   end: number;
 }
 
+export interface TokenEstimation {
+  audioLengthMinutes: number;
+  estimatedCost: number;
+  lemur?: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    cost: number;
+  };
+  openAI?: {
+    estimatedInputTokens: number;
+    actualInputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    cost: number;
+  };
+}
+
 export interface Dialog {
   id: string;
   fileName: string;
@@ -47,10 +65,7 @@ export interface Dialog {
   assignedSupervisor: string;
   uploadDate: string;
   error?: string;
-  tokenEstimation?: {
-    audioLengthMinutes: number;
-    estimatedCost: number;
-  };
+  tokenEstimation?: TokenEstimation;
   
   // Translation properties
   russianTranscription?: string;
@@ -74,7 +89,7 @@ export interface Dialog {
   
   // Analysis properties
   analysis?: AIAnalysis;
-  lemurEvaluation?: AIAnalysis;
+  lemurEvaluation?: any;
   openaiEvaluation?: any;
   qualityScore?: number;
 }

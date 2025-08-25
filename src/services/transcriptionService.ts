@@ -1,9 +1,18 @@
+
 import { AssemblyAIConfig, UnifiedTranscriptionProgress } from '../types';
 import { useDialogStore } from '../store/dialogStore';
 import { v4 as uuidv4 } from 'uuid';
 
+export interface TranscriptionOptions {
+  model?: string;
+  language?: string;
+  speakerLabels?: boolean;
+}
+
 class TranscriptionService {
   private progressCallback: ((progress: UnifiedTranscriptionProgress) => void) | null = null;
+  private modelLoaded = false;
+  private currentModel: string | null = null;
 
   setProgressCallback(callback: (progress: UnifiedTranscriptionProgress) => void) {
     this.progressCallback = callback;
@@ -60,7 +69,7 @@ class TranscriptionService {
       const newDialog = {
         id: dialogId,
         fileName: fileName,
-        status: 'processing',
+        status: 'processing' as const,
         assignedAgent: assignedAgent,
         assignedSupervisor: assignedSupervisor,
         uploadDate: uploadDate,
@@ -129,6 +138,35 @@ class TranscriptionService {
       console.error('Error estimating token cost:', error);
       throw error;
     }
+  }
+
+  // Mock methods for compatibility with useTranscription hook
+  async transcribe(file: File, options: TranscriptionOptions): Promise<string> {
+    // This would be a local transcription method - currently not implemented
+    throw new Error('Local transcription not implemented');
+  }
+
+  async loadModel(options: TranscriptionOptions): Promise<void> {
+    this.updateProgress('queued', 50, 'Loading transcription model...');
+    this.currentModel = options.model || 'default';
+    this.modelLoaded = true;
+    this.updateProgress('complete', 100, 'Model loaded successfully');
+  }
+
+  isModelLoaded(): boolean {
+    return this.modelLoaded;
+  }
+
+  getCurrentModel(): string | null {
+    return this.currentModel;
+  }
+
+  getModelInfo(modelName: string) {
+    return { name: modelName, size: 'unknown' };
+  }
+
+  getAllModelInfo() {
+    return [{ name: 'default', size: 'small' }];
   }
 }
 

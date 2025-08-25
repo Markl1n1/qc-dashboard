@@ -1,10 +1,22 @@
-
 import { pipeline, Pipeline } from '@huggingface/transformers';
 import { SpeakerUtterance, TranslationProgress } from '../types';
 
 export interface TranslationOptions {
   targetLanguages: string[];
   sourceLanguage?: string;
+}
+
+// WebGPU type declarations
+declare global {
+  interface Navigator {
+    gpu?: {
+      requestAdapter(): Promise<GPUAdapter | null>;
+    };
+  }
+  
+  interface GPUAdapter {
+    features: Set<string>;
+  }
 }
 
 class TranslationService {
@@ -85,7 +97,7 @@ class TranslationService {
         continue;
       }
 
-      this.updateProgress('initializing', 0, `Loading translation model: ${modelName}`, targetLang);
+      this.updateProgress('translating_text', 0, `Loading translation model: ${modelName}`, targetLang);
 
       try {
         let translationPipeline;
@@ -129,7 +141,7 @@ class TranslationService {
         }
 
         this.pipelines.set(pairKey, translationPipeline);
-        this.updateProgress('initializing', 100, `Model loaded: ${modelName}`, targetLang);
+        this.updateProgress('translating_text', 100, `Model loaded: ${modelName}`, targetLang);
         
         return translationPipeline;
 
@@ -148,7 +160,6 @@ class TranslationService {
     throw new Error(`No working translation model found for ${sourceLang} → ${targetLang}`);
   }
 
-  // Enhanced context-aware chunking for dialog replicas
   private chunkDialogReplicas(utterances: SpeakerUtterance[], maxLength: number = 450): SpeakerUtterance[][] {
     const chunks: SpeakerUtterance[][] = [];
     let currentChunk: SpeakerUtterance[] = [];
@@ -283,7 +294,6 @@ class TranslationService {
     }
   }
 
-  // Enhanced speaker utterances translation with context batching
   async translateSpeakerUtterances(
     utterances: SpeakerUtterance[], 
     targetLanguage: string, 

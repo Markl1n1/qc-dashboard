@@ -1,8 +1,9 @@
+
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { LeMUREvaluationResult } from '../types/lemurEvaluation';
 import { OpenAIEvaluationResult } from '../types/openaiEvaluation';
-import { Dialog as BaseDialog } from '../types';
+import { Dialog as BaseDialog, TokenEstimation } from '../types';
 
 // Use the Dialog interface from types/index.ts to ensure consistency
 export interface Dialog extends BaseDialog {}
@@ -67,7 +68,11 @@ export const useDialogStore = create<DialogStore>()(
           const qualityScore = calculateQualityScore(evaluation);
           
           // Add LeMUR token estimation if available
-          const tokenEstimation = dialog.tokenEstimation || {};
+          const tokenEstimation: TokenEstimation = dialog.tokenEstimation || {
+            audioLengthMinutes: 0,
+            estimatedCost: 0
+          };
+          
           if (evaluation.tokenUsage) {
             tokenEstimation.lemur = {
               inputTokens: evaluation.tokenUsage.input,
@@ -98,7 +103,11 @@ export const useDialogStore = create<DialogStore>()(
           dialogs: state.dialogs.map((dialog) => {
             if (dialog.id === id) {
               // Add OpenAI token estimation
-              const tokenEstimation = dialog.tokenEstimation || {};
+              const tokenEstimation: TokenEstimation = dialog.tokenEstimation || {
+                audioLengthMinutes: 0,
+                estimatedCost: 0
+              };
+              
               tokenEstimation.openAI = {
                 estimatedInputTokens: 0, // Will be updated when we have the estimation
                 actualInputTokens: evaluation.tokenUsage.input,
