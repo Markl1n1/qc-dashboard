@@ -19,13 +19,16 @@ import {
 } from './ui/dialog';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { User, LogOut, Settings, Moon } from 'lucide-react';
+import { User, LogOut, Settings, Moon, Shield } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { toast } from 'sonner';
 import { supabase } from '../integrations/supabase/client';
+import { useUserRole } from '../hooks/useUserRole';
+import PasscodeManager from './PasscodeManager';
 
 const UserProfileMenu = () => {
   const { user, logout } = useAuthStore();
+  const { isAdmin } = useUserRole();
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -97,30 +100,33 @@ const UserProfileMenu = () => {
 
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="rounded-full">
-            <User className="h-5 w-5" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuLabel>{userName}</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => {}}>
-            <Moon className="mr-2 h-4 w-4" />
-            Theme
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setShowPasswordDialog(true)}>
-            <Settings className="mr-2 h-4 w-4" />
-            Change Password
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={handleLogout}>
-            <LogOut className="mr-2 h-4 w-4" />
-            Logout
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <div className="flex items-center space-x-2">
+        {isAdmin && <PasscodeManager />}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="rounded-full">
+              <User className="h-5 w-5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel className="break-words">{userName}</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => {}}>
+              <Moon className="mr-2 h-4 w-4" />
+              Theme
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setShowPasswordDialog(true)}>
+              <Settings className="mr-2 h-4 w-4" />
+              Change Password
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleLogout}>
+              <LogOut className="mr-2 h-4 w-4" />
+              Logout
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
 
       <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
         <DialogContent className="sm:max-w-[425px]">

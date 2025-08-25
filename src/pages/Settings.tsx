@@ -5,60 +5,30 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { useToast } from '../hooks/use-toast';
-import { supabase } from '../integrations/supabase/client';
 import { useUserRole } from '../hooks/useUserRole';
 import { Navigate } from 'react-router-dom';
 import { Settings as SettingsIcon } from 'lucide-react';
+import { useSettingsStore } from '../store/settingsStore';
 
 const Settings = () => {
   const { isAdmin } = useUserRole();
   const { toast } = useToast();
-  const [maxTokens, setMaxTokens] = useState<number>(1000);
+  const { maxTokens, setMaxTokens } = useSettingsStore();
+  const [localMaxTokens, setLocalMaxTokens] = useState<number>(maxTokens);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    fetchMaxTokens();
-  }, []);
-
-  const fetchMaxTokens = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('system_config')
-        .select('value')
-        .eq('key', 'openai_max_tokens')
-        .single();
-
-      if (data) {
-        setMaxTokens(parseInt(data.value) || 1000);
-      }
-    } catch (error) {
-      console.error('Error fetching max tokens:', error);
-    }
-  };
+    setLocalMaxTokens(maxTokens);
+  }, [maxTokens]);
 
   const updateMaxTokens = async () => {
     setIsLoading(true);
     try {
-      const { error } = await supabase
-        .from('system_config')
-        .upsert({
-          key: 'openai_max_tokens',
-          value: maxTokens.toString(),
-          description: 'Maximum output tokens for OpenAI requests'
-        });
-
-      if (error) {
-        toast({
-          title: "Error",
-          description: "Failed to update max tokens setting",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Success",
-          description: "Max tokens setting updated successfully",
-        });
-      }
+      setMaxTokens(localMaxTokens);
+      toast({
+        title: "Success",
+        description: "Max tokens setting updated successfully",
+      });
     } catch (error) {
       toast({
         title: "Error",
@@ -94,8 +64,8 @@ const Settings = () => {
                 type="number"
                 min="100"
                 max="4000"
-                value={maxTokens}
-                onChange={(e) => setMaxTokens(parseInt(e.target.value) || 1000)}
+                value={localMaxTokens}
+                onChange={(e) => setLocalMaxTokens(parseInt(e.target.value) || 1000)}
                 placeholder="1000"
               />
               <p className="text-sm text-muted-foreground mt-1">

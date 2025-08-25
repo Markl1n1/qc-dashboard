@@ -140,24 +140,24 @@ const DialogDetail = () => {
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="max-w-6xl mx-auto space-y-6 p-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center space-x-4">
           <Button variant="ghost" onClick={() => navigate('/')}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Dashboard
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">{dialog.fileName}</h1>
-            <p className="text-muted-foreground">
+            <h1 className="text-xl sm:text-2xl font-bold break-words">{dialog.fileName}</h1>
+            <p className="text-muted-foreground text-sm">
               Uploaded {formatDistanceToNow(new Date(dialog.uploadDate))} ago
             </p>
           </div>
         </div>
         <div className="flex items-center space-x-2">
           {dialog.transcription && (
-            <Button variant="outline" onClick={handleDownloadPDF}>
+            <Button variant="outline" onClick={handleDownloadPDF} size="sm">
               <Download className="h-4 w-4 mr-2" />
               Download PDF
             </Button>
@@ -168,7 +168,7 @@ const DialogDetail = () => {
       {/* Status and Info */}
       <Card>
         <CardContent className="pt-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             <div className="flex items-center space-x-3">
               {getStatusIcon(dialog.status)}
               <div>
@@ -182,14 +182,14 @@ const DialogDetail = () => {
               <User className="h-4 w-4 text-muted-foreground" />
               <div>
                 <p className="font-medium">Assigned Agent</p>
-                <p className="text-muted-foreground">{dialog.assignedAgent}</p>
+                <p className="text-muted-foreground text-sm break-words">{dialog.assignedAgent}</p>
               </div>
             </div>
             <div className="flex items-center space-x-3">
               <User className="h-4 w-4 text-muted-foreground" />
               <div>
                 <p className="font-medium">Supervisor</p>
-                <p className="text-muted-foreground">{dialog.assignedSupervisor}</p>
+                <p className="text-muted-foreground text-sm break-words">{dialog.assignedSupervisor}</p>
               </div>
             </div>
             <div className="flex items-center space-x-3">
@@ -197,7 +197,7 @@ const DialogDetail = () => {
               <div>
                 <p className="font-medium">Quality Score</p>
                 <p className={`font-semibold ${
-                  dialog.qualityScore 
+                  dialog.qualityScore && typeof dialog.qualityScore === 'number'
                     ? dialog.qualityScore >= 80 
                       ? 'text-green-600' 
                       : dialog.qualityScore >= 60 
@@ -205,7 +205,7 @@ const DialogDetail = () => {
                         : 'text-red-600'
                     : 'text-muted-foreground'
                 }`}>
-                  {dialog.qualityScore ? `${dialog.qualityScore}/100` : 'Not analyzed'}
+                  {dialog.qualityScore && typeof dialog.qualityScore === 'number' ? `${dialog.qualityScore}/100` : 'Not analyzed'}
                 </p>
               </div>
             </div>
@@ -226,7 +226,7 @@ const DialogDetail = () => {
       {/* Main Content */}
       {dialog.transcription && (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
             <TabsTrigger value="transcription">Transcription</TabsTrigger>
             <TabsTrigger value="analysis">Analysis Results</TabsTrigger>
             <TabsTrigger value="lemur">LeMUR Evaluation</TabsTrigger>
@@ -251,8 +251,8 @@ const DialogDetail = () => {
                 {/* Overall Score */}
                 <Card>
                   <CardHeader>
-                    <CardTitle className="flex items-center justify-between">
-                      Overall Performance
+                    <CardTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                      <span>Overall Performance</span>
                       <Badge variant="outline" className="text-lg px-3 py-1">
                         {dialog.lemurEvaluation.overallScore}/100
                       </Badge>
@@ -273,11 +273,11 @@ const DialogDetail = () => {
                       <CardTitle>Category Performance</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         {Object.entries(dialog.lemurEvaluation.categoryScores).map(([categoryId, score]) => (
                           <div key={categoryId} className="text-center p-3 border rounded">
-                            <div className="font-medium capitalize">{categoryId.replace('_', ' ')}</div>
-                            <div className={`text-2xl font-bold ${
+                            <div className="font-medium capitalize text-sm">{categoryId.replace('_', ' ')}</div>
+                            <div className={`text-xl sm:text-2xl font-bold ${
                               score >= 80 ? 'text-green-600' : 
                               score >= 60 ? 'text-yellow-600' : 
                               'text-red-600'
@@ -301,7 +301,7 @@ const DialogDetail = () => {
                       <div className="space-y-4">
                         {dialog.lemurEvaluation.mistakes.map((mistake) => (
                           <div key={mistake.id} className="border-l-4 border-orange-500 pl-4">
-                            <div className="flex items-center justify-between mb-2">
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-2 gap-2">
                               <h4 className="font-medium">{mistake.mistakeName || mistake.description}</h4>
                               <Badge variant={
                                 mistake.level === 'critical' ? 'destructive' : 
@@ -315,7 +315,7 @@ const DialogDetail = () => {
                             {mistake.text && (
                               <button
                                 onClick={() => handleMistakeClick(mistake.text, mistake.position || 0)}
-                                className="text-sm italic border-l-2 border-muted pl-2 mb-2 block hover:bg-muted rounded p-1 cursor-pointer transition-colors"
+                                className="text-sm italic border-l-2 border-muted pl-2 mb-2 block hover:bg-muted rounded p-1 cursor-pointer transition-colors break-words"
                               >
                                 "{mistake.text}" <span className="text-xs text-blue-600 ml-1">→ View in transcript</span>
                               </button>
@@ -339,7 +339,7 @@ const DialogDetail = () => {
                     <CardContent>
                       <ul className="list-disc pl-5 space-y-1">
                         {dialog.lemurEvaluation.recommendations.map((rec, index) => (
-                          <li key={index} className="text-sm">{rec}</li>
+                          <li key={index} className="text-sm break-words">{rec}</li>
                         ))}
                       </ul>
                     </CardContent>

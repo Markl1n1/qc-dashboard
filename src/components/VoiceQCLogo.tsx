@@ -1,6 +1,5 @@
 
 import React from 'react';
-import { Mic, CheckCircle } from 'lucide-react';
 
 interface VoiceQCLogoProps {
   size?: 'sm' | 'md' | 'lg';
@@ -22,10 +21,11 @@ const VoiceQCLogo: React.FC<VoiceQCLogoProps> = ({ size = 'md', showText = true 
 
   return (
     <div className="flex items-center space-x-2">
-      <div className="relative">
-        <Mic className={`${sizeClasses[size]} text-primary`} />
-        <CheckCircle className={`${sizeClasses[size]} text-green-500 absolute -top-1 -right-1 ${size === 'sm' ? 'h-3 w-3' : size === 'md' ? 'h-4 w-4' : 'h-6 w-6'}`} />
-      </div>
+      <img 
+        src="/VoiceQC-icon.png" 
+        alt="VoiceQC Logo" 
+        className={sizeClasses[size]}
+      />
       {showText && (
         <span className={`${textSizes[size]} font-bold text-primary`}>
           VoiceQC

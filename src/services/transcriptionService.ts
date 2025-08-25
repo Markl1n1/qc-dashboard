@@ -1,7 +1,5 @@
 
 import { AssemblyAIConfig, UnifiedTranscriptionProgress } from '../types';
-import { useDialogStore } from '../store/dialogStore';
-import { v4 as uuidv4 } from 'uuid';
 
 export interface TranscriptionOptions {
   model?: string;
@@ -20,7 +18,11 @@ class TranscriptionService {
 
   private updateProgress(stage: UnifiedTranscriptionProgress['stage'], progress: number, message: string) {
     if (this.progressCallback) {
-      this.progressCallback({ stage, progress, message });
+      try {
+        this.progressCallback({ stage, progress, message });
+      } catch (error) {
+        console.error('Error in progress callback:', error);
+      }
     }
   }
 
@@ -52,7 +54,7 @@ class TranscriptionService {
 
       this.updateProgress('processing', 30, 'Processing audio file...');
 
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/transcribe`, {
+      const response = await fetch('https://sahudeguwojdypmmlbkd.supabase.co/functions/v1/transcribe', {
         method: 'POST',
         body: formData,
       });
@@ -63,31 +65,20 @@ class TranscriptionService {
       }
 
       const { dialogId } = await response.json();
-      const store = useDialogStore.getState();
-      const fileName = file.name;
-      const uploadDate = new Date().toISOString();
-      const newDialog = {
-        id: dialogId,
-        fileName: fileName,
-        status: 'processing' as const,
-        assignedAgent: assignedAgent,
-        assignedSupervisor: assignedSupervisor,
-        uploadDate: uploadDate,
-      };
-      store.addDialog(newDialog);
-
+      
       this.updateProgress('complete', 100, 'Transcription completed successfully');
       
       return dialogId;
     } catch (error) {
-      this.updateProgress('error', 0, error instanceof Error ? error.message : 'Transcription failed');
+      const errorMessage = error instanceof Error ? error.message : 'Transcription failed';
+      this.updateProgress('error', 0, errorMessage);
       throw error;
     }
   }
 
   async processTranscription(dialogId: string): Promise<void> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/process-transcription/${dialogId}`, {
+      const response = await fetch(`https://sahudeguwojdypmmlbkd.supabase.co/functions/v1/process-transcription/${dialogId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -100,21 +91,10 @@ class TranscriptionService {
       }
   
       const data = await response.json();
-      const store = useDialogStore.getState();
-  
-      store.updateDialog(dialogId, {
-        transcription: data.transcription,
-        speakerTranscription: data.speaker_utterances,
-        status: 'completed',
-        error: data.error,
-      });
+      console.log('Transcription processed:', data);
     } catch (error) {
-      const store = useDialogStore.getState();
-      store.updateDialog(dialogId, {
-        status: 'failed',
-        error: error instanceof Error ? error.message : 'Transcription processing failed',
-      });
       console.error('Error processing transcription:', error);
+      throw error;
     }
   }
 
@@ -123,7 +103,7 @@ class TranscriptionService {
       const formData = new FormData();
       formData.append('audio', file);
   
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/estimate-token-cost`, {
+      const response = await fetch('https://sahudeguwojdypmmlbkd.supabase.co/functions/v1/estimate-token-cost', {
         method: 'POST',
         body: formData,
       });
