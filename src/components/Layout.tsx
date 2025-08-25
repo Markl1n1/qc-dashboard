@@ -20,6 +20,9 @@ const Layout = () => {
     { name: 'Upload', href: '/upload', icon: Upload },
   ];
 
+  // Get user name from user metadata or email as fallback
+  const userName = user?.user_metadata?.name || user?.email || 'User';
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -57,7 +60,7 @@ const Layout = () => {
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2 text-sm">
                 <User className="h-4 w-4" />
-                <span>{user?.name}</span>
+                <span>{userName}</span>
               </div>
               <Button
                 variant="outline"
