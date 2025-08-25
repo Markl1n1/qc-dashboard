@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -378,7 +377,7 @@ const EnhancedTranscription: React.FC = () => {
         <TabsContent value="settings">
           <div className="space-y-6">
             <AssemblyAIRegionSelector
-              currentRegion={getCurrentRegion()}
+              selectedRegion={getCurrentRegion()}
               onRegionChange={setRegion}
               disabled={isLoading}
             />
