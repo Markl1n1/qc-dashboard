@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { useDropzone } from 'react-dropzone';
+import { useDropzone, Accept } from 'react-dropzone';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Textarea } from '../components/ui/textarea';
 import { Checkbox } from '../components/ui/checkbox';
+import { CheckedState } from '@radix-ui/react-checkbox';
 import { EmergencyDebugPanel } from '../components/EmergencyDebugPanel';
 import { useSimplifiedTranscription } from '../hooks/useSimplifiedTranscription';
 
@@ -39,6 +40,10 @@ const Upload: React.FC<UploadProps> = () => {
     clearEmergencyLogs 
   } = useSimplifiedTranscription();
 
+  const acceptedFileTypes: Accept = {
+    'audio/*': ['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac']
+  };
+
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     setAudioFile(file);
@@ -48,7 +53,7 @@ const Upload: React.FC<UploadProps> = () => {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: 'audio/*',
+    accept: acceptedFileTypes,
     multiple: false,
   });
 
@@ -78,6 +83,10 @@ const Upload: React.FC<UploadProps> = () => {
 
     // Placeholder for token estimation logic
     setTokenEstimate({ audioLengthMinutes: 10, estimatedCost: 0.5 });
+  };
+
+  const handleSpeakerLabelsChange = (checked: CheckedState) => {
+    setSpeakerLabels(checked === true);
   };
 
   return (
@@ -140,7 +149,7 @@ const Upload: React.FC<UploadProps> = () => {
             </div>
 
             <div className="flex items-center space-x-2">
-              <Checkbox id="speakerLabels" checked={speakerLabels} onCheckedChange={setSpeakerLabels} />
+              <Checkbox id="speakerLabels" checked={speakerLabels} onCheckedChange={handleSpeakerLabelsChange} />
               <Label htmlFor="speakerLabels">Speaker Labels</Label>
             </div>
           </div>
