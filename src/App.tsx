@@ -10,6 +10,7 @@ import { Suspense, lazy } from "react";
 const Layout = lazy(() => import("./components/Layout"));
 const LazyProtectedRoute = lazy(() => import("./components/LazyProtectedRoute"));
 const Login = lazy(() => import("./pages/Login"));
+const Auth = lazy(() => import("./pages/Auth"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Upload = lazy(() => import("./pages/Upload"));
 const DialogDetail = lazy(() => import("./pages/DialogDetail"));
@@ -33,6 +34,7 @@ const App = () => (
         <Suspense fallback={<LoadingSpinner />}>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/auth" element={<Auth />} />
             <Route path="/" element={
               <LazyProtectedRoute>
                 <Layout />
