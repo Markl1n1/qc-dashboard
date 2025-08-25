@@ -14,6 +14,230 @@ export type Database = {
   }
   public: {
     Tables: {
+      dialog_analysis: {
+        Row: {
+          analysis_type: string
+          banned_words_detected: Json | null
+          category_scores: Json | null
+          confidence: number | null
+          conversation_flow: Json | null
+          created_at: string
+          dialog_id: string
+          id: string
+          mistakes: Json | null
+          overall_score: number | null
+          processing_time: number | null
+          recommendations: Json | null
+          sentiment: Json | null
+          summary: string | null
+          token_usage: Json | null
+          updated_at: string
+        }
+        Insert: {
+          analysis_type: string
+          banned_words_detected?: Json | null
+          category_scores?: Json | null
+          confidence?: number | null
+          conversation_flow?: Json | null
+          created_at?: string
+          dialog_id: string
+          id?: string
+          mistakes?: Json | null
+          overall_score?: number | null
+          processing_time?: number | null
+          recommendations?: Json | null
+          sentiment?: Json | null
+          summary?: string | null
+          token_usage?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          analysis_type?: string
+          banned_words_detected?: Json | null
+          category_scores?: Json | null
+          confidence?: number | null
+          conversation_flow?: Json | null
+          created_at?: string
+          dialog_id?: string
+          id?: string
+          mistakes?: Json | null
+          overall_score?: number | null
+          processing_time?: number | null
+          recommendations?: Json | null
+          sentiment?: Json | null
+          summary?: string | null
+          token_usage?: Json | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dialog_analysis_dialog_id_fkey"
+            columns: ["dialog_id"]
+            isOneToOne: false
+            referencedRelation: "dialogs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dialog_speaker_utterances: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          end_time: number | null
+          id: string
+          speaker: string
+          start_time: number | null
+          text: string
+          transcription_id: string
+          utterance_order: number
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          end_time?: number | null
+          id?: string
+          speaker: string
+          start_time?: number | null
+          text: string
+          transcription_id: string
+          utterance_order: number
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          end_time?: number | null
+          id?: string
+          speaker?: string
+          start_time?: number | null
+          text?: string
+          transcription_id?: string
+          utterance_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dialog_speaker_utterances_transcription_id_fkey"
+            columns: ["transcription_id"]
+            isOneToOne: false
+            referencedRelation: "dialog_transcriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dialog_transcriptions: {
+        Row: {
+          confidence: number | null
+          content: string | null
+          created_at: string
+          dialog_id: string
+          id: string
+          language: string | null
+          transcription_type: string
+          updated_at: string
+        }
+        Insert: {
+          confidence?: number | null
+          content?: string | null
+          created_at?: string
+          dialog_id: string
+          id?: string
+          language?: string | null
+          transcription_type: string
+          updated_at?: string
+        }
+        Update: {
+          confidence?: number | null
+          content?: string | null
+          created_at?: string
+          dialog_id?: string
+          id?: string
+          language?: string | null
+          transcription_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dialog_transcriptions_dialog_id_fkey"
+            columns: ["dialog_id"]
+            isOneToOne: false
+            referencedRelation: "dialogs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dialogs: {
+        Row: {
+          assigned_agent: string
+          assigned_supervisor: string
+          audio_length_minutes: number | null
+          created_at: string
+          current_language: string | null
+          error_message: string | null
+          estimated_cost: number | null
+          expires_at: string | null
+          file_name: string
+          id: string
+          is_segmented: boolean | null
+          parent_dialog_id: string | null
+          quality_score: number | null
+          segment_count: number | null
+          segment_index: number | null
+          status: string
+          updated_at: string
+          upload_date: string
+          user_id: string
+        }
+        Insert: {
+          assigned_agent: string
+          assigned_supervisor: string
+          audio_length_minutes?: number | null
+          created_at?: string
+          current_language?: string | null
+          error_message?: string | null
+          estimated_cost?: number | null
+          expires_at?: string | null
+          file_name: string
+          id?: string
+          is_segmented?: boolean | null
+          parent_dialog_id?: string | null
+          quality_score?: number | null
+          segment_count?: number | null
+          segment_index?: number | null
+          status?: string
+          updated_at?: string
+          upload_date?: string
+          user_id: string
+        }
+        Update: {
+          assigned_agent?: string
+          assigned_supervisor?: string
+          audio_length_minutes?: number | null
+          created_at?: string
+          current_language?: string | null
+          error_message?: string | null
+          estimated_cost?: number | null
+          expires_at?: string | null
+          file_name?: string
+          id?: string
+          is_segmented?: boolean | null
+          parent_dialog_id?: string | null
+          quality_score?: number | null
+          segment_count?: number | null
+          segment_index?: number | null
+          status?: string
+          updated_at?: string
+          upload_date?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dialogs_parent_dialog_id_fkey"
+            columns: ["parent_dialog_id"]
+            isOneToOne: false
+            referencedRelation: "dialogs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -73,9 +297,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cleanup_expired_dialogs: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
       get_current_user_role: {
         Args: Record<PropertyKey, never>
         Returns: string
+      }
+      update_dialog_expiration_dates: {
+        Args: Record<PropertyKey, never>
+        Returns: number
       }
     }
     Enums: {
