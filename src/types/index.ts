@@ -1,3 +1,4 @@
+
 export type TranscriptionProvider = 'assemblyai';
 
 export interface AssemblyAIConfig {
@@ -8,9 +9,24 @@ export interface AssemblyAIConfig {
 }
 
 export interface UnifiedTranscriptionProgress {
-  stage: 'uploading' | 'queued' | 'processing' | 'complete' | 'error';
+  stage: 'uploading' | 'queued' | 'processing' | 'complete' | 'error' | 'loading' | 'downloading';
   progress: number;
   message: string;
+}
+
+export interface TranslationProgress {
+  stage: 'translating_text' | 'translating_speakers' | 'complete' | 'error';
+  progress: number;
+  message: string;
+  currentProvider?: string;
+  currentUtterance?: number;
+  totalUtterances?: number;
+}
+
+export interface TranslationQueueItem {
+  dialogId: string;
+  priority: number;
+  createdAt: Date;
 }
 
 export interface SpeakerUtterance {
@@ -26,7 +42,7 @@ export interface Dialog {
   fileName: string;
   transcription?: string;
   speakerTranscription?: SpeakerUtterance[];
-  status: 'processing' | 'completed' | 'failed';
+  status: 'processing' | 'completed' | 'failed' | 'pending';
   assignedAgent: string;
   assignedSupervisor: string;
   uploadDate: string;
@@ -35,6 +51,32 @@ export interface Dialog {
     audioLengthMinutes: number;
     estimatedCost: number;
   };
+  
+  // Translation properties
+  russianTranscription?: string;
+  russianSpeakerTranscription?: SpeakerUtterance[];
+  isTranslating?: boolean;
+  translationStatus?: 'processing' | 'completed' | 'failed';
+  translationProgress?: number;
+  currentLanguage?: 'original' | 'russian';
+  translations?: {
+    speakers?: {
+      ru?: SpeakerUtterance[];
+    };
+  };
+  
+  // Segmentation properties
+  isSegmented?: boolean;
+  parentDialogId?: string;
+  childDialogIds?: string[];
+  segmentCount?: number;
+  segmentIndex?: number;
+  
+  // Analysis properties
+  analysis?: AIAnalysis;
+  lemurEvaluation?: AIAnalysis;
+  openaiEvaluation?: any;
+  qualityScore?: number;
 }
 
 export interface MistakeHighlight {
@@ -64,4 +106,5 @@ export interface AIAnalysis {
   recommendations: string[];
   summary: string;
   confidence: number;
+  bannedWordsDetected?: Array<{ word: string; position: number }>;
 }

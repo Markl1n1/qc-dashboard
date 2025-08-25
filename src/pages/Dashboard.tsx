@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
@@ -253,7 +252,8 @@ const Dashboard = () => {
     }
   };
 
-  return <div className="space-y-6">
+  return (
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Dialog History</h1>
@@ -350,21 +350,21 @@ const Dashboard = () => {
                       </TableCell>
                       
                       <TableCell>
-                        {dialog.analysis ? (
+                        {dialog.lemurEvaluation ? (
                           <div className="flex items-center space-x-1">
                             <Star className={`h-4 w-4 ${
-                              dialog.analysis.overallScore >= 80 ? 'text-green-500' :
-                              dialog.analysis.overallScore >= 60 ? 'text-yellow-500' :
-                              dialog.analysis.overallScore >= 40 ? 'text-orange-500' :
+                              dialog.lemurEvaluation.overallScore >= 80 ? 'text-green-500' :
+                              dialog.lemurEvaluation.overallScore >= 60 ? 'text-yellow-500' :
+                              dialog.lemurEvaluation.overallScore >= 40 ? 'text-orange-500' :
                               'text-red-500'
                             }`} />
                             <span className={`text-sm font-medium ${
-                              dialog.analysis.overallScore >= 80 ? 'text-green-600' :
-                              dialog.analysis.overallScore >= 60 ? 'text-yellow-600' :
-                              dialog.analysis.overallScore >= 40 ? 'text-orange-600' :
+                              dialog.lemurEvaluation.overallScore >= 80 ? 'text-green-600' :
+                              dialog.lemurEvaluation.overallScore >= 60 ? 'text-yellow-600' :
+                              dialog.lemurEvaluation.overallScore >= 40 ? 'text-orange-600' :
                               'text-red-600'
                             }`}>
-                              {dialog.analysis.overallScore}/100
+                              {dialog.lemurEvaluation.overallScore}/100
                             </span>
                           </div>
                         ) : (
@@ -399,7 +399,8 @@ const Dashboard = () => {
           </div>
         </CardContent>
       </Card>
-    </div>;
+    </div>
+  );
 };
 
 export default Dashboard;

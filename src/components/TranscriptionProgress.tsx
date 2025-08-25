@@ -1,113 +1,87 @@
-
 import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Progress } from './ui/progress';
 import { Badge } from './ui/badge';
 import { UnifiedTranscriptionProgress } from '../types';
-import { Download, Cpu, CheckCircle, AlertCircle, Upload, Clock } from 'lucide-react';
+import { Download, Cpu, CheckCircle, AlertCircle, Upload, Clock, Loader2, XCircle, X } from 'lucide-react';
 
 interface TranscriptionProgressProps {
-  progress: UnifiedTranscriptionProgress;
-  modelSize?: string;
-  error?: string | null;
+  progress: UnifiedTranscriptionProgress | null;
+  fileName?: string;
+  onCancel?: () => void;
 }
 
 const TranscriptionProgress: React.FC<TranscriptionProgressProps> = ({ 
   progress, 
-  modelSize,
-  error 
+  fileName, 
+  onCancel 
 }) => {
-  const getIcon = () => {
-    if (error) return <AlertCircle className="h-5 w-5 text-destructive" />;
-    
-    switch (progress.stage) {
-      case 'loading':
-        return <Cpu className="h-5 w-5 text-blue-500 animate-pulse" />;
-      case 'downloading':
-        return <Download className="h-5 w-5 text-blue-500 animate-pulse" />;
+  if (!progress) return null;
+
+  const getStageIcon = (stage: UnifiedTranscriptionProgress['stage']) => {
+    switch (stage) {
       case 'uploading':
-        return <Upload className="h-5 w-5 text-blue-500 animate-pulse" />;
-      case 'queued':
-        return <Clock className="h-5 w-5 text-orange-500 animate-pulse" />;
+        return <Upload className="h-4 w-4 text-blue-500 animate-pulse" />;
       case 'processing':
-        return <Cpu className="h-5 w-5 text-orange-500 animate-pulse" />;
+        return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />;
       case 'complete':
-        return <CheckCircle className="h-5 w-5 text-green-500" />;
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case 'error':
+        return <XCircle className="h-4 w-4 text-red-500" />;
       default:
-        return null;
+        return <Clock className="h-4 w-4 text-yellow-500" />;
     }
   };
 
-  const getStageLabel = () => {
-    switch (progress.stage) {
-      case 'loading':
-        return 'Loading Model';
-      case 'downloading':
-        return 'Downloading Model';
+  const getStageColor = (stage: UnifiedTranscriptionProgress['stage']) => {
+    switch (stage) {
       case 'uploading':
-        return 'Uploading Audio';
-      case 'queued':
-        return 'Queued';
       case 'processing':
-        return 'Processing Audio';
+        return 'blue';
       case 'complete':
-        return 'Complete';
+        return 'green';
+      case 'error':
+        return 'red';
       default:
-        return 'Processing';
+        return 'yellow';
     }
   };
 
-  const getVariant = () => {
-    if (error) return 'destructive';
-    return progress.stage === 'complete' ? 'default' : 'secondary';
-  };
-
-  const getProviderTitle = () => {
-    if (modelSize === 'cloud') return 'Cloud Transcription';
-    return 'Local Transcription';
-  };
+  const color = getStageColor(progress.stage);
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium">
-            {getProviderTitle()}
-          </CardTitle>
-          <Badge variant={getVariant()} className="flex items-center gap-1">
-            {getIcon()}
-            {error ? 'Error' : getStageLabel()}
-          </Badge>
+    <Card className="w-full max-w-md">
+      <CardContent className="pt-6">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              {getStageIcon(progress.stage)}
+              <span className="font-medium">
+                {progress.stage.charAt(0).toUpperCase() + progress.stage.slice(1)}
+              </span>
+            </div>
+            {onCancel && progress.stage !== 'complete' && progress.stage !== 'error' && (
+              <Button variant="ghost" size="sm" onClick={onCancel}>
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+
+          {fileName && (
+            <p className="text-sm text-muted-foreground truncate">
+              {fileName}
+            </p>
+          )}
+
+          <Progress value={progress.progress} className="w-full" />
+          
+          <div className="flex justify-between items-center text-sm">
+            <span className="text-muted-foreground">{progress.message}</span>
+            <span className={`font-medium text-${color}-600`}>
+              {progress.progress}%
+            </span>
+          </div>
         </div>
-        {modelSize && modelSize !== 'cloud' && (
-          <CardDescription>
-            Using {modelSize} Whisper model
-          </CardDescription>
-        )}
-        {modelSize === 'cloud' && (
-          <CardDescription>
-            Using AssemblyAI cloud service
-          </CardDescription>
-        )}
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <Progress 
-          value={progress.progress} 
-          className="h-2"
-        />
-        <p className="text-sm text-muted-foreground">
-          {error || progress.message}
-        </p>
-        {progress.stage === 'downloading' && (
-          <p className="text-xs text-muted-foreground">
-            This is a one-time download. Subsequent uses will be instant.
-          </p>
-        )}
-        {progress.stage === 'uploading' && (
-          <p className="text-xs text-muted-foreground">
-            Uploading audio to AssemblyAI for cloud processing.
-          </p>
-        )}
       </CardContent>
     </Card>
   );
