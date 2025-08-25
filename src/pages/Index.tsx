@@ -2,7 +2,7 @@
 import React, { useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Upload, FileText, BarChart3, RefreshCw } from 'lucide-react';
+import { FileText, RefreshCw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Dialog } from '../types';
 import { useDatabaseDialogs } from '../hooks/useDatabaseDialogs';
@@ -26,10 +26,6 @@ const Index = () => {
         return 'text-gray-600 bg-gray-50 border-gray-200';
     }
   };
-
-  const recentDialogs = dialogs.slice(0, 5);
-  const completedDialogs = dialogs.filter(d => d.status === 'completed').length;
-  const processingDialogs = dialogs.filter(d => d.status === 'processing').length;
 
   if (isLoading && dialogs.length === 0) {
     return (
@@ -68,114 +64,29 @@ const Index = () => {
         </Card>
       )}
 
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Dialogs</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{dialogs.length}</div>
-            <p className="text-xs text-muted-foreground">
-              All uploaded recordings
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Completed</CardTitle>
-            <BarChart3 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{completedDialogs}</div>
-            <p className="text-xs text-muted-foreground">
-              Fully analyzed recordings
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Processing</CardTitle>
-            <RefreshCw className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{processingDialogs}</div>
-            <p className="text-xs text-muted-foreground">
-              Currently being analyzed
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Upload className="h-5 w-5" />
-              <span>Upload New Recording</span>
-            </CardTitle>
-            <CardDescription>
-              Upload and analyze a new voice recording
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link to="/upload">
-              <Button className="w-full">
-                <Upload className="h-4 w-4 mr-2" />
-                Start Upload
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <BarChart3 className="h-5 w-5" />
-              <span>View All Dialogs</span>
-            </CardTitle>
-            <CardDescription>
-              Browse and manage all your recordings
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button variant="outline" className="w-full" asChild>
-              <Link to="/dialogs">
-                <FileText className="h-4 w-4 mr-2" />
-                Browse Dialogs
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Recent Dialogs */}
+      {/* Dialog History */}
       <Card>
         <CardHeader>
-          <CardTitle>Recent Dialogs</CardTitle>
+          <CardTitle>Dialog History</CardTitle>
           <CardDescription>
-            Your most recently uploaded recordings
+            Your transcribed recordings and analysis results
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {recentDialogs.length === 0 ? (
+          {dialogs.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No dialogs uploaded yet</p>
+              <p>No dialogs transcribed yet</p>
               <p className="text-sm">Upload your first recording to get started</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {recentDialogs.map((dialog) => (
+              {dialogs.map((dialog) => (
                 <div key={dialog.id} className="flex items-center justify-between p-4 border rounded-lg">
                   <div className="flex-1">
                     <h3 className="font-medium">{dialog.fileName}</h3>
                     <div className="flex items-center space-x-4 text-sm text-muted-foreground">
-                      <span>Agent: {dialog.assignedAgent}</span>
+                      <span>Supervisor: {dialog.assignedSupervisor}</span>
                       <span>•</span>
                       <span>{new Date(dialog.uploadDate).toLocaleDateString()}</span>
                       {dialog.qualityScore && (
@@ -191,19 +102,11 @@ const Index = () => {
                       {dialog.status}
                     </span>
                     <Button variant="ghost" size="sm" asChild>
-                      <Link to={`/dialog/${dialog.id}`}>View</Link>
+                      <Link to={`/dialog/${dialog.id}`}>View Details</Link>
                     </Button>
                   </div>
                 </div>
               ))}
-              
-              {dialogs.length > 5 && (
-                <div className="text-center pt-4">
-                  <Button variant="outline" asChild>
-                    <Link to="/dialogs">View All Dialogs</Link>
-                  </Button>
-                </div>
-              )}
             </div>
           )}
         </CardContent>

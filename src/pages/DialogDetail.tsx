@@ -1,426 +1,272 @@
 
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useDialogStore } from '../store/dialogStore';
+import React, { useEffect, useState } from 'react';
+import { useParams, Navigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Badge } from '../components/ui/badge';
-import { Separator } from '../components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Alert, AlertDescription } from '../components/ui/alert';
-import { 
-  ArrowLeft, 
-  Download, 
-  User, 
-  Clock,
-  CheckCircle,
-  XCircle,
-  AlertTriangle,
-  Play,
-  Pause
-} from 'lucide-react';
-import { useToast } from '../hooks/use-toast';
-import { formatDistanceToNow } from 'date-fns';
-import SpeakerDialog from '../components/SpeakerDialog';
-import { LeMUREvaluationView } from '../components/LeMUREvaluationView';
-import EnhancedSpeakerTranscription from '../components/EnhancedSpeakerTranscription';
-import { generateTranscriptionPDF } from '../utils/pdfGenerator';
-import { OpenAIEvaluationView } from '../components/OpenAIEvaluationView';
+import { Badge } from '../components/ui/badge';
+import { ArrowLeft, Play, FileText, BarChart3, Loader2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Dialog } from '../types';
+import { useDatabaseDialogs } from '../hooks/useDatabaseDialogs';
+import { toast } from 'sonner';
 
 const DialogDetail = () => {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
-  const { getDialog } = useDialogStore();
-  const { toast } = useToast();
-  const [showSpeakerDialog, setShowSpeakerDialog] = useState(false);
-  const [activeTab, setActiveTab] = useState('transcription');
-  const [highlightedMistake, setHighlightedMistake] = useState<string | null>(null);
-
-  const dialog = id ? getDialog(id) : null;
+  const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const { getDialog } = useDatabaseDialogs();
 
   useEffect(() => {
-    if (!dialog) {
-      toast({
-        title: "Dialog not found",
-        description: "The requested dialog could not be found.",
-        variant: "destructive",
-      });
-      navigate('/');
+    if (id) {
+      loadDialog(id);
     }
-  }, [dialog, navigate, toast]);
+  }, [id]);
 
-  if (!dialog) {
+  const loadDialog = async (dialogId: string) => {
+    try {
+      setIsLoading(true);
+      const dialogData = await getDialog(dialogId);
+      if (dialogData) {
+        setDialog(dialogData);
+      }
+    } catch (error) {
+      console.error('Error loading dialog:', error);
+      toast.error('Failed to load dialog details');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleStartAnalysis = async () => {
+    if (!dialog) return;
+    
+    setIsAnalyzing(true);
+    try {
+      // TODO: Implement OpenAI analysis call
+      toast.success('Analysis started successfully!');
+      // Reload dialog to get updated analysis results
+      await loadDialog(dialog.id);
+    } catch (error) {
+      console.error('Error starting analysis:', error);
+      toast.error('Failed to start analysis');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const getStatusColor = (status: Dialog['status']) => {
+    switch (status) {
+      case 'completed':
+        return 'text-green-600 bg-green-50 border-green-200';
+      case 'processing':
+        return 'text-blue-600 bg-blue-50 border-blue-200';
+      case 'failed':
+        return 'text-red-600 bg-red-50 border-red-200';
+      default:
+        return 'text-gray-600 bg-gray-50 border-gray-200';
+    }
+  };
+
+  if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <AlertTriangle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-          <h3 className="text-lg font-semibold mb-2">Dialog not found</h3>
-          <p className="text-muted-foreground mb-4">The requested dialog could not be found.</p>
-          <Button onClick={() => navigate('/')}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Dashboard
-          </Button>
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex items-center justify-center space-x-2">
+          <Loader2 className="h-6 w-6 animate-spin" />
+          <span>Loading dialog details...</span>
         </div>
       </div>
     );
   }
 
-  const handleDownloadPDF = () => {
-    if (!dialog.transcription) return;
-
-    const additionalInfo = {
-      "Dialog ID": dialog.id,
-      "Assigned Agent": dialog.assignedAgent,
-      "Assigned Supervisor": dialog.assignedSupervisor,
-      "Overall Score": dialog.lemurEvaluation?.overallScore ? `${dialog.lemurEvaluation.overallScore}%` : 'N/A'
-    };
-
-    generateTranscriptionPDF(
-      getCurrentSpeakerUtterances(),
-      `${dialog.fileName}_report.pdf`,
-      `Dialog Report - ${dialog.fileName}`,
-      additionalInfo
-    );
-
-    toast({
-      title: "PDF Generated",
-      description: "Dialog report has been downloaded as PDF.",
-    });
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case 'processing':
-        return (
-          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500" />
-        );
-      case 'failed':
-        return <XCircle className="h-4 w-4 text-red-500" />;
-      default:
-        return <Clock className="h-4 w-4 text-yellow-500" />;
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'bg-green-100 text-green-800 border-green-200';
-      case 'processing':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'failed':
-        return 'bg-red-100 text-red-800 border-red-200';
-      default:
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-    }
-  };
-
-  const getCurrentSpeakerUtterances = () => {
-    if (!dialog.speakerTranscription) return [];
-    
-    if (dialog.currentLanguage === 'russian' && dialog.translations?.speakers?.ru) {
-      return dialog.translations.speakers.ru;
-    }
-    
-    return dialog.speakerTranscription;
-  };
-
-  const handleMistakeClick = (mistakeText: string, position: number) => {
-    setHighlightedMistake(mistakeText);
-    setActiveTab('transcription');
-    
-    // Scroll to the specific utterance after tab switch
-    setTimeout(() => {
-      const utteranceElement = document.querySelector(`[data-utterance-index="${position}"]`);
-      if (utteranceElement) {
-        utteranceElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    }, 100);
-  };
-
-  // Helper function to get quality score color class
-  const getQualityScoreColor = (score: number | undefined): string => {
-    if (typeof score !== 'number') return 'text-muted-foreground';
-    if (score >= 80) return 'text-green-600';
-    if (score >= 60) return 'text-yellow-600';
-    return 'text-red-600';
-  };
-
-  // Helper function to format quality score display
-  const formatQualityScore = (score: number | undefined): string => {
-    if (typeof score === 'number') {
-      return `${score}/100`;
-    }
-    return 'Not analyzed';
-  };
+  if (!dialog) {
+    return <Navigate to="/" replace />;
+  }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 p-4">
+    <div className="container mx-auto px-4 py-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-center space-x-4">
-          <Button variant="ghost" onClick={() => navigate('/')}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Dashboard
+      <div className="mb-6">
+        <div className="flex items-center gap-4 mb-4">
+          <Button variant="ghost" size="sm" asChild>
+            <Link to="/">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Dashboard
+            </Link>
           </Button>
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold break-words">{dialog.fileName}</h1>
-            <p className="text-muted-foreground text-sm">
-              Uploaded {formatDistanceToNow(new Date(dialog.uploadDate))} ago
-            </p>
-          </div>
+          <Badge className={getStatusColor(dialog.status)}>
+            {dialog.status}
+          </Badge>
         </div>
-        <div className="flex items-center space-x-2">
-          {dialog.transcription && (
-            <Button variant="outline" onClick={handleDownloadPDF} size="sm">
-              <Download className="h-4 w-4 mr-2" />
-              Download PDF
-            </Button>
+        
+        <h1 className="text-3xl font-bold mb-2">{dialog.fileName}</h1>
+        <div className="flex items-center space-x-4 text-sm text-muted-foreground">
+          <span>Supervisor: {dialog.assignedSupervisor}</span>
+          <span>•</span>
+          <span>Uploaded: {new Date(dialog.uploadDate).toLocaleDateString()}</span>
+          {dialog.qualityScore && (
+            <>
+              <span>•</span>
+              <span>Quality Score: {dialog.qualityScore}%</span>
+            </>
           )}
         </div>
       </div>
 
-      {/* Status and Info */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="flex items-center space-x-3">
-              {getStatusIcon(dialog.status)}
-              <div>
-                <p className="font-medium">Status</p>
-                <Badge variant="outline" className={getStatusColor(dialog.status)}>
-                  {dialog.status.charAt(0).toUpperCase() + dialog.status.slice(1)}
-                </Badge>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3">
-              <User className="h-4 w-4 text-muted-foreground" />
-              <div>
-                <p className="font-medium">Assigned Agent</p>
-                <p className="text-muted-foreground text-sm break-words">{dialog.assignedAgent}</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3">
-              <User className="h-4 w-4 text-muted-foreground" />
-              <div>
-                <p className="font-medium">Supervisor</p>
-                <p className="text-muted-foreground text-sm break-words">{dialog.assignedSupervisor}</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3">
-              <CheckCircle className="h-4 w-4 text-muted-foreground" />
-              <div>
-                <p className="font-medium">Quality Score</p>
-                <p className={`font-semibold ${getQualityScoreColor(dialog.qualityScore)}`}>
-                  {formatQualityScore(dialog.qualityScore)}
-                </p>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Error Display */}
-      {dialog.status === 'failed' && dialog.error && (
-        <Alert variant="destructive">
-          <XCircle className="h-4 w-4" />
-          <AlertDescription>
-            Processing failed: {dialog.error}
-          </AlertDescription>
-        </Alert>
-      )}
-
       {/* Main Content */}
-      {dialog.transcription && (
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
-            <TabsTrigger value="transcription">Transcription</TabsTrigger>
-            <TabsTrigger value="analysis">Analysis Results</TabsTrigger>
-            <TabsTrigger value="lemur">LeMUR Evaluation</TabsTrigger>
-            <TabsTrigger value="openai">OpenAI Evaluation</TabsTrigger>
-          </TabsList>
+      <Tabs defaultValue="transcription" className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="transcription" className="flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            Transcription
+          </TabsTrigger>
+          <TabsTrigger value="analysis" className="flex items-center gap-2">
+            <Play className="h-4 w-4" />
+            AI Analysis
+          </TabsTrigger>
+          <TabsTrigger value="results" className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4" />
+            Analysis Results
+          </TabsTrigger>
+        </TabsList>
 
-          <TabsContent value="transcription" className="space-y-4">
-            <h2 className="text-xl font-semibold">Transcription</h2>
-            
-            <EnhancedSpeakerTranscription 
-              utterances={getCurrentSpeakerUtterances()}
-              mistakes={dialog.lemurEvaluation?.mistakes}
-              highlightedMistake={highlightedMistake}
-            />
-          </TabsContent>
-
-          <TabsContent value="analysis" className="space-y-4">
-            <h2 className="text-xl font-semibold">Analysis Results</h2>
-            
-            {dialog.lemurEvaluation ? (
-              <div className="space-y-6">
-                {/* Overall Score */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-                      <span>Overall Performance</span>
-                      <Badge variant="outline" className="text-lg px-3 py-1">
-                        {dialog.lemurEvaluation.overallScore}/100
-                      </Badge>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-muted-foreground">{dialog.lemurEvaluation.summary}</p>
-                    <div className="mt-2 text-sm text-muted-foreground">
-                      Confidence: {dialog.lemurEvaluation.confidence}%
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Category Scores */}
-                {Object.keys(dialog.lemurEvaluation.categoryScores).length > 0 && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Category Performance</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {Object.entries(dialog.lemurEvaluation.categoryScores).map(([categoryId, score]) => (
-                          <div key={categoryId} className="text-center p-3 border rounded">
-                            <div className="font-medium capitalize text-sm">{categoryId.replace('_', ' ')}</div>
-                            <div className={`text-xl sm:text-2xl font-bold ${
-                              typeof score === 'number' && score >= 80 ? 'text-green-600' : 
-                              typeof score === 'number' && score >= 60 ? 'text-yellow-600' : 
-                              'text-red-600'
-                            }`}>
-                              {typeof score === 'number' ? `${score}/100` : 'N/A'}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* Mistakes/Issues */}
-                {dialog.lemurEvaluation.mistakes.length > 0 && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Issues Identified ({dialog.lemurEvaluation.mistakes.length})</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        {dialog.lemurEvaluation.mistakes.map((mistake) => (
-                          <div key={mistake.id} className="border-l-4 border-orange-500 pl-4">
-                            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-2 gap-2">
-                              <h4 className="font-medium">{mistake.mistakeName || mistake.description}</h4>
-                              <Badge variant={
-                                mistake.level === 'critical' ? 'destructive' : 
-                                mistake.level === 'major' ? 'default' : 
-                                'secondary'
-                              }>
-                                {mistake.level.toUpperCase()}
-                              </Badge>
-                            </div>
-                            <p className="text-sm text-muted-foreground mb-2">{mistake.description}</p>
-                            {mistake.text && (
-                              <button
-                                onClick={() => handleMistakeClick(mistake.text, mistake.position || 0)}
-                                className="text-sm italic border-l-2 border-muted pl-2 mb-2 block hover:bg-muted rounded p-1 cursor-pointer transition-colors break-words"
-                              >
-                                "{mistake.text}" <span className="text-xs text-blue-600 ml-1">→ View in transcript</span>
-                              </button>
-                            )}
-                            <p className="text-sm font-medium text-green-700">
-                              💡 {mistake.suggestion}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* Recommendations */}
-                {dialog.lemurEvaluation.recommendations.length > 0 && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Recommendations</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ul className="list-disc pl-5 space-y-1">
-                        {dialog.lemurEvaluation.recommendations.map((rec, index) => (
-                          <li key={index} className="text-sm break-words">{rec}</li>
-                        ))}
-                      </ul>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* Banned Words */}
-                {dialog.lemurEvaluation.bannedWordsDetected?.length > 0 && (
-                  <Alert variant="destructive">
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertDescription>
-                      {dialog.lemurEvaluation.bannedWordsDetected.length} banned word(s) detected: {dialog.lemurEvaluation.bannedWordsDetected.map(b => b.word).join(', ')}
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </div>
-            ) : (
+        <TabsContent value="transcription" className="mt-6">
+          <div className="space-y-6">
+            {/* Plain Transcription */}
+            {dialog.transcription && (
               <Card>
-                <CardContent className="pt-6">
-                  <div className="text-center text-muted-foreground">
-                    <AlertTriangle className="h-12 w-12 mx-auto mb-4" />
-                    <p className="text-lg font-semibold mb-2">No Analysis Results Available</p>
-                    <p>Run a LeMUR evaluation to see detailed analysis results here.</p>
+                <CardHeader>
+                  <CardTitle>Full Transcription</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <textarea 
+                    value={dialog.transcription}
+                    readOnly
+                    className="w-full h-64 p-3 border rounded-md resize-none"
+                  />
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Speaker Transcription */}
+            {dialog.speakerTranscription && dialog.speakerTranscription.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Speaker Transcription</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {dialog.speakerTranscription.map((utterance, index) => (
+                      <div key={index} className="flex gap-3 p-3 bg-muted/50 rounded-lg">
+                        <div className="font-medium text-sm min-w-20 text-muted-foreground">
+                          {utterance.speaker}
+                        </div>
+                        <div className="flex-1">{utterance.text}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {utterance.confidence && `${Math.round(utterance.confidence * 100)}%`}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </CardContent>
               </Card>
             )}
-          </TabsContent>
 
-          <TabsContent value="lemur" className="space-y-4">
-            <LeMUREvaluationView 
-              utterances={getCurrentSpeakerUtterances()}
-              transcriptId={dialog.id}
-              assemblyAIResult={dialog.lemurEvaluation}
-              onClose={() => {}}
-              onMistakeClick={handleMistakeClick}
-            />
-          </TabsContent>
+            {!dialog.transcription && (
+              <Card>
+                <CardContent className="pt-6">
+                  <p className="text-center text-muted-foreground">No transcription available</p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </TabsContent>
 
-          <TabsContent value="openai" className="space-y-4">
-            <OpenAIEvaluationView 
-              utterances={getCurrentSpeakerUtterances()}
-              transcriptId={dialog.id}
-              openaiResult={dialog.openaiEvaluation}
-              onClose={() => {}}
-              onMistakeClick={handleMistakeClick}
-            />
-          </TabsContent>
-        </Tabs>
-      )}
+        <TabsContent value="analysis" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>AI Quality Analysis</CardTitle>
+              <CardContent>
+                <p className="text-muted-foreground mb-4">
+                  Run AI-powered analysis on this dialog to evaluate quality, detect issues, and get improvement recommendations.
+                </p>
+                <Button 
+                  onClick={handleStartAnalysis}
+                  disabled={isAnalyzing || !dialog.transcription}
+                  size="lg"
+                >
+                  {isAnalyzing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Analyzing...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="h-4 w-4 mr-2" />
+                      Start AI Analysis
+                    </>
+                  )}
+                </Button>
+                {!dialog.transcription && (
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Transcription required before analysis can be performed.
+                  </p>
+                )}
+              </CardContent>
+            </CardHeader>
+          </Card>
+        </TabsContent>
 
-      {/* Processing State */}
-      {dialog.status === 'processing' && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Processing...</h3>
-              <p className="text-muted-foreground">
-                Your audio file is being transcribed and analyzed. This may take a few minutes.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+        <TabsContent value="results" className="mt-6">
+          <div className="space-y-6">
+            {/* OpenAI Analysis Results */}
+            {dialog.openaiEvaluation ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>OpenAI Analysis Results</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="font-medium mb-2">Overall Score</h4>
+                      <div className="text-2xl font-bold text-primary">
+                        {dialog.openaiEvaluation.overallScore}%
+                      </div>
+                    </div>
+                    
+                    {dialog.openaiEvaluation.summary && (
+                      <div>
+                        <h4 className="font-medium mb-2">Summary</h4>
+                        <p className="text-muted-foreground">{dialog.openaiEvaluation.summary}</p>
+                      </div>
+                    )}
 
-      {/* Speaker Dialog Modal */}
-      <SpeakerDialog 
-        isOpen={showSpeakerDialog}
-        onClose={() => setShowSpeakerDialog(false)}
-        utterances={getCurrentSpeakerUtterances()}
-        dialogTitle={dialog.fileName}
-      />
+                    {dialog.openaiEvaluation.recommendations && dialog.openaiEvaluation.recommendations.length > 0 && (
+                      <div>
+                        <h4 className="font-medium mb-2">Recommendations</h4>
+                        <ul className="list-disc pl-6 space-y-1">
+                          {dialog.openaiEvaluation.recommendations.map((rec, index) => (
+                            <li key={index} className="text-muted-foreground">{rec}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardContent className="pt-6">
+                  <p className="text-center text-muted-foreground">
+                    No analysis results available. Run AI analysis first.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

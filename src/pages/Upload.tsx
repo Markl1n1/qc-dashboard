@@ -2,8 +2,6 @@
 import React, { useState, useCallback } from 'react';
 import { useDropzone, Accept } from 'react-dropzone';
 import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
 import { Progress } from '../components/ui/progress';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
@@ -13,11 +11,14 @@ import { Badge } from '../components/ui/badge';
 import { CheckedState } from '@radix-ui/react-checkbox';
 import { useSimplifiedTranscription } from '../hooks/useSimplifiedTranscription';
 import { useDeepgramTranscription } from '../hooks/useDeepgramTranscription';
+import { useDatabaseDialogs } from '../hooks/useDatabaseDialogs';
+import { useAuthStore } from '../store/authStore';
 import { Mic, Zap, Users, Globe } from 'lucide-react';
 import DeepgramOptions from '../components/DeepgramOptions';
 import DeepgramResultsTabs from '../components/DeepgramResultsTabs';
 import { DeepgramOptions as DeepgramOptionsType } from '../types/deepgram';
 import { SpeakerUtterance } from '../types';
+import { toast } from 'sonner';
 
 interface UploadProps {}
 
@@ -30,9 +31,6 @@ const Upload: React.FC<UploadProps> = () => {
     metadata?: { duration: number; model: string };
   } | null>(null);
   const [provider, setProvider] = useState<'assemblyai' | 'deepgram'>('assemblyai');
-  const [assignedAgent, setAssignedAgent] = useState<string>('');
-  const [assignedSupervisor, setAssignedSupervisor] = useState<string>('');
-  const [tokenEstimate, setTokenEstimate] = useState<{ audioLengthMinutes: number; estimatedCost: number } | null>(null);
 
   // AssemblyAI options
   const [assemblyModel, setAssemblyModel] = useState<string>('assemblyai-universal');
@@ -48,6 +46,9 @@ const Upload: React.FC<UploadProps> = () => {
     profanity_filter: false,
     punctuation: true
   });
+
+  const { user } = useAuthStore();
+  const { addDialog, saveTranscription, saveSpeakerTranscription } = useDatabaseDialogs();
 
   const { 
     transcribe: transcribeAssembly, 
@@ -75,7 +76,6 @@ const Upload: React.FC<UploadProps> = () => {
     const file = acceptedFiles[0];
     setAudioFile(file);
     setTranscriptionResults(null);
-    setTokenEstimate(null);
     console.log('File dropped:', file.name);
   }, []);
 
@@ -87,13 +87,33 @@ const Upload: React.FC<UploadProps> = () => {
 
   const handleTranscribe = async () => {
     if (!audioFile) {
-      alert('Please upload an audio file first.');
+      toast.error('Please upload an audio file first.');
+      return;
+    }
+
+    if (!user) {
+      toast.error('You must be logged in to transcribe files.');
       return;
     }
 
     console.log(`Starting ${provider} transcription for file:`, audioFile.name);
     
     try {
+      // Create dialog record first
+      const dialogId = await addDialog({
+        fileName: audioFile.name,
+        status: 'processing',
+        assignedAgent: user.email || 'Unknown',
+        assignedSupervisor: user.email || 'Unknown',
+        uploadDate: new Date().toISOString(),
+        tokenEstimation: {
+          audioLengthMinutes: 0,
+          estimatedCost: 0
+        },
+        isSegmented: false,
+        currentLanguage: 'original'
+      });
+
       let result;
       
       if (provider === 'assemblyai') {
@@ -102,6 +122,12 @@ const Upload: React.FC<UploadProps> = () => {
           language: assemblyLanguage,
         });
         
+        // Save transcription to database
+        await saveTranscription(dialogId, result.text, 'plain');
+        if (result.speakerUtterances && result.speakerUtterances.length > 0) {
+          await saveSpeakerTranscription(dialogId, result.speakerUtterances, 'speaker');
+        }
+
         // Format for display
         setTranscriptionResults({
           text: result.text,
@@ -110,6 +136,12 @@ const Upload: React.FC<UploadProps> = () => {
       } else {
         result = await transcribeDeepgram(audioFile, deepgramOptions);
         
+        // Save transcription to database
+        await saveTranscription(dialogId, result.text, 'plain');
+        if (result.speakerUtterances && result.speakerUtterances.length > 0) {
+          await saveSpeakerTranscription(dialogId, result.speakerUtterances, 'speaker');
+        }
+
         // Enhanced results with metadata
         setTranscriptionResults({
           text: result.text,
@@ -118,22 +150,30 @@ const Upload: React.FC<UploadProps> = () => {
           metadata: result.metadata
         });
       }
-      
-      console.log('Transcription completed, setting result');
+
+      // Update dialog status to completed
+      await addDialog({
+        ...{
+          fileName: audioFile.name,
+          status: 'completed',
+          assignedAgent: user.email || 'Unknown',
+          assignedSupervisor: user.email || 'Unknown',
+          uploadDate: new Date().toISOString(),
+          tokenEstimation: {
+            audioLengthMinutes: result.metadata?.duration || 0,
+            estimatedCost: 0
+          },
+          isSegmented: false,
+          currentLanguage: 'original'
+        }
+      });
+
+      toast.success('Transcription completed successfully!');
+      console.log('Transcription completed and saved to database');
     } catch (err: any) {
       console.error('Transcription failed', err);
-      alert(`Transcription failed: ${err.message}`);
+      toast.error(`Transcription failed: ${err.message}`);
     }
-  };
-
-  const handleEstimateTokenCost = async () => {
-    if (!audioFile) {
-      alert('Please upload an audio file first.');
-      return;
-    }
-
-    console.log('Estimating token cost for:', audioFile.name);
-    setTokenEstimate({ audioLengthMinutes: 10, estimatedCost: 0.5 });
   };
 
   const handleAssemblySpeakerLabelsChange = (checked: CheckedState) => {
@@ -190,7 +230,7 @@ const Upload: React.FC<UploadProps> = () => {
                   </div>
                   <div className="flex items-center gap-1">
                     <Users className="h-4 w-4" />
-                    Color-coded Agent/Customer
+                    Color-coded Speakers
                   </div>
                 </div>
               )}
@@ -276,48 +316,9 @@ const Upload: React.FC<UploadProps> = () => {
         </CardContent>
       </Card>
 
-      {/* Agent Assignment */}
-      <Card className="mb-4">
-        <CardHeader>
-          <CardTitle>Agent and Supervisor Assignment</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4">
-            <div className="grid grid-cols-3 items-center gap-4">
-              <Label htmlFor="agent" className="text-right">
-                Assigned Agent
-              </Label>
-              <Input id="agent" value={assignedAgent} onChange={(e) => setAssignedAgent(e.target.value)} className="col-span-2" />
-            </div>
-            <div className="grid grid-cols-3 items-center gap-4">
-              <Label htmlFor="supervisor" className="text-right">
-                Assigned Supervisor
-              </Label>
-              <Input id="supervisor" value={assignedSupervisor} onChange={(e) => setAssignedSupervisor(e.target.value)} className="col-span-2" />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Token Estimation */}
-      {tokenEstimate && (
-        <Card className="mb-4">
-          <CardHeader>
-            <CardTitle>Token Estimation</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p>Estimated audio length: {tokenEstimate.audioLengthMinutes} minutes</p>
-            <p>Estimated cost: ${tokenEstimate.estimatedCost.toFixed(5)}</p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Action Buttons */}
-      <div className="flex justify-between mb-4">
-        <Button onClick={handleEstimateTokenCost} disabled={!audioFile}>
-          Estimate Token Cost
-        </Button>
-        <Button onClick={handleTranscribe} disabled={!audioFile || isTranscribing}>
+      {/* Action Button */}
+      <div className="flex justify-center mb-4">
+        <Button onClick={handleTranscribe} disabled={!audioFile || isTranscribing} size="lg">
           {isTranscribing ? `Transcribing with ${provider}...` : `Transcribe with ${provider}`}
         </Button>
       </div>
