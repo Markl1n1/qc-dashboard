@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDialogStore } from '../store/dialogStore';
@@ -14,7 +15,7 @@ import EnhancedSpeakerTranscription from '../components/EnhancedSpeakerTranscrip
 import LeMUREvaluationView from '../components/LeMUREvaluationView';
 import OpenAIEvaluationView from '../components/OpenAIEvaluationView';
 import SalesAnalysisView from '../components/SalesAnalysisView';
-import LanguageToggle from '../components/LanguageToggle';
+import { LanguageToggle } from '../components/LanguageToggle';
 import SimpleTranslationButton from '../components/SimpleTranslationButton';
 
 interface DialogDetailParams {
