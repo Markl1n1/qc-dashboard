@@ -1,18 +1,20 @@
-import { LeMUREvaluationResult } from './lemurEvaluation';
-import { OpenAIEvaluationResult } from './openaiEvaluation';
-import { SalesAnalysisResult } from './salesAnalysis';
-import { TranslationProgress } from './translation';
+export type TranscriptionProvider = 'assemblyai';
 
-export interface FileInfo {
-  name: string;
-  size: number;
-  type: string;
-  lastModified: number;
-  url?: string;
+export interface AssemblyAIConfig {
+  speaker_labels?: boolean;
+  speakers_expected?: number;
+  language_detection?: boolean;
+  zeroDataRetention?: boolean;
+}
+
+export interface UnifiedTranscriptionProgress {
+  stage: 'uploading' | 'queued' | 'processing' | 'complete' | 'error';
+  progress: number;
+  message: string;
 }
 
 export interface SpeakerUtterance {
-  speaker: 'Agent' | 'Customer';
+  speaker: string;
   text: string;
   confidence: number;
   start: number;
@@ -21,39 +23,45 @@ export interface SpeakerUtterance {
 
 export interface Dialog {
   id: string;
-  name: string;
-  createdAt: string;
-  status: 'uploading' | 'transcribing' | 'processing' | 'completed' | 'failed';
-  files: FileInfo[];
-  originalText?: string;
-  speakerUtterances: SpeakerUtterance[];
-  translations?: Record<string, {
-    raw: string;
-    speakers: SpeakerUtterance[];
-  }>;
-  translationProgress?: TranslationProgress;
-  lemurEvaluation?: LeMUREvaluationResult;
-  openaiEvaluation?: OpenAIEvaluationResult;
-  salesAnalysis?: SalesAnalysisResult;
-  qualityScore?: number;
+  fileName: string;
+  transcription?: string;
+  speakerTranscription?: SpeakerUtterance[];
+  status: 'processing' | 'completed' | 'failed';
+  assignedAgent: string;
+  assignedSupervisor: string;
+  uploadDate: string;
   error?: string;
   tokenEstimation?: {
-    assemblyAI?: {
-      audioLengthMinutes: number;
-      estimatedCost: number;
-    };
-    openAI?: {
-      estimatedInputTokens: number;
-      actualInputTokens: number;
-      outputTokens: number;
-      totalTokens: number;
-      cost: number;
-    };
-    lemur?: {
-      inputTokens: number;
-      outputTokens: number;
-      totalTokens: number;
-      cost: number;
-    };
+    audioLengthMinutes: number;
+    estimatedCost: number;
   };
+}
+
+export interface MistakeHighlight {
+  id: string;
+  level: 'minor' | 'major' | 'critical';
+  category: string;
+  mistakeName: string;
+  description: string;
+  text: string;
+  position: number;
+  speaker: string;
+  suggestion: string;
+  impact: 'low' | 'medium' | 'high';
+  confidence: number;
+}
+
+export interface AIAnalysis {
+  overallScore: number;
+  categoryScores: {
+    communication: number;
+    professionalism: number;
+    problem_solving: number;
+    compliance: number;
+    customer_satisfaction: number;
+  };
+  mistakes: MistakeHighlight[];
+  recommendations: string[];
+  summary: string;
+  confidence: number;
 }

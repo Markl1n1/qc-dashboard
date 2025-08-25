@@ -1,4 +1,3 @@
-
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { supabase } from '../integrations/supabase/client';
@@ -62,7 +61,8 @@ export const useAuthStore = create<AuthStore>()(
             return { success: false, error: 'Passcode incorrect, request your passcode' };
           }
 
-          const redirectUrl = `${window.location.origin}/`;
+          // Use the email-confirmed page as redirect URL
+          const redirectUrl = `${window.location.origin}/email-confirmed`;
           
           const { data, error } = await supabase.auth.signUp({
             email,

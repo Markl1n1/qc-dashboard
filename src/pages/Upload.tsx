@@ -54,12 +54,11 @@ const Upload = () => {
   const [files, setFiles] = useState<FileWithMetadata[]>([]);
   const [uploading, setUploading] = useState(false);
   const [transcriptionProvider, setTranscriptionProvider] = useState<TranscriptionProvider>('assemblyai');
-  // Use hardcoded API key for testing
-  const [apiKey, setApiKey] = useState(simpleApiKeyService.getAPIKey('assemblyai') || '');
+  const [apiKey, setApiKey] = useState('');
   const [speakerLabels, setSpeakerLabels] = useState(true);
   const [speakersExpected, setSpeakersExpected] = useState(2);
   const [languageDetection, setLanguageDetection] = useState(true);
-  const [zeroDataRetention, setZeroDataRetention] = useState(false);
+  const [zeroDataRetention, setZeroDataRetention] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [conversionDialogFile, setConversionDialogFile] = useState<{ file: File; metadata: AudioMetadata } | null>(null);
   const [processingFiles, setProcessingFiles] = useState<Set<string>>(new Set());
@@ -185,16 +184,6 @@ const Upload = () => {
       return;
     }
 
-    if (!apiKey) {
-      toast.error('API key not configured');
-      return;
-    }
-
-    if (!validateApiKey(apiKey)) {
-      toast.error('Invalid API key format');
-      return;
-    }
-
     setUploading(true);
     const processingIds = new Set<string>();
 
@@ -245,7 +234,6 @@ const Upload = () => {
           updateUploadProgress(fileName, 'upload', 'in-progress', 'Uploading to AssemblyAI...', 0);
 
           const assemblyAIConfig: AssemblyAIConfig = {
-            apiKey,
             speaker_labels: speakerLabels,
             speakers_expected: speakersExpected,
             language_detection: languageDetection,
@@ -417,28 +405,6 @@ const Upload = () => {
         </div>
 
         <div className="space-y-6">
-          {/* API Configuration */}
-          <Card>
-            <CardHeader>
-              <CardTitle>API Configuration</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>AssemblyAI API Key</Label>
-                <Input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="Hardcoded for testing"
-                  disabled
-                />
-                <p className="text-xs text-muted-foreground">
-                  API key is hardcoded for testing purposes
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
           {/* Transcription Settings */}
           <Card>
             <CardHeader>
@@ -501,7 +467,7 @@ const Upload = () => {
           {/* Process Button */}
           <Button
             onClick={handleSubmit}
-            disabled={files.length === 0 || uploading || !apiKey}
+            disabled={files.length === 0 || uploading}
             className="w-full"
             size="lg"
           >

@@ -1,55 +1,81 @@
 
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
+import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { Suspense, lazy } from "react";
-
-// Lazy load components
-const Layout = lazy(() => import("./components/Layout"));
-const LazyProtectedRoute = lazy(() => import("./components/LazyProtectedRoute"));
-const Login = lazy(() => import("./pages/Login"));
-const Auth = lazy(() => import("./pages/Auth"));
-const Dashboard = lazy(() => import("./pages/Dashboard"));
-const Upload = lazy(() => import("./pages/Upload"));
-const DialogDetail = lazy(() => import("./pages/DialogDetail"));
-const NotFound = lazy(() => import("./pages/NotFound"));
+import { useEffect } from "react";
+import Layout from "./components/Layout";
+import Index from "./pages/Index";
+import Upload from "./pages/Upload";
+import Auth from "./pages/Auth";
+import DialogDetail from "./pages/DialogDetail";
+import EmailConfirmed from "./pages/EmailConfirmed";
+import NotFound from "./pages/NotFound";
+import ProtectedRoute from "./components/ProtectedRoute";
+import { useAuthStore } from "./store/authStore";
+import { supabase } from "./integrations/supabase/client";
 
 const queryClient = new QueryClient();
 
-// Loading component for suspense fallback
-const LoadingSpinner = () => (
-  <div className="flex items-center justify-center min-h-screen">
-    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-  </div>
-);
+const App = () => {
+  const { setAuth } = useAuthStore();
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Suspense fallback={<LoadingSpinner />}>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/" element={
-              <LazyProtectedRoute>
-                <Layout />
-              </LazyProtectedRoute>
-            }>
-              <Route index element={<Dashboard />} />
-              <Route path="upload" element={<Upload />} />
-              <Route path="dialog/:id" element={<DialogDetail />} />
-            </Route>
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </Suspense>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+  useEffect(() => {
+    // Set up auth state listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setAuth(session);
+      }
+    );
+
+    // Check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setAuth(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, [setAuth]);
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Toaster />
+        <BrowserRouter>
+          <Layout>
+            <Routes>
+              <Route path="/auth" element={<Auth />} />
+              <Route path="/email-confirmed" element={<EmailConfirmed />} />
+              <Route
+                path="/"
+                element={
+                  <ProtectedRoute>
+                    <Index />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/upload"
+                element={
+                  <ProtectedRoute>
+                    <Upload />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/dialog/:id"
+                element={
+                  <ProtectedRoute>
+                    <DialogDetail />
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Layout>
+        </BrowserRouter>
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+};
 
 export default App;

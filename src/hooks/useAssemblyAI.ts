@@ -55,8 +55,9 @@ export const useAssemblyAI = () => {
     }
   }, []);
 
+  // Remove API key validation since it's handled by Supabase secrets
   const validateApiKey = useCallback((apiKey: string): boolean => {
-    return assemblyAIService.validateApiKey(apiKey);
+    return true; // Always return true since validation is handled server-side
   }, []);
 
   return {
