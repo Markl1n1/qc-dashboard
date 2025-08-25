@@ -1,4 +1,3 @@
-
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { LeMUREvaluationResult } from '../types/lemurEvaluation';
@@ -67,6 +66,17 @@ export const useDialogStore = create<DialogStore>()(
           // Calculate quality score based on LeMUR evaluation results
           const qualityScore = calculateQualityScore(evaluation);
           
+          // Add LeMUR token estimation if available
+          const tokenEstimation = dialog.tokenEstimation || {};
+          if (evaluation.tokenUsage) {
+            tokenEstimation.lemur = {
+              inputTokens: evaluation.tokenUsage.input,
+              outputTokens: evaluation.tokenUsage.output,
+              totalTokens: evaluation.tokenUsage.input + evaluation.tokenUsage.output,
+              cost: evaluation.tokenUsage.cost || 0
+            };
+          }
+          
           return {
             dialogs: state.dialogs.map((d) =>
               d.id === id 
@@ -74,7 +84,8 @@ export const useDialogStore = create<DialogStore>()(
                     ...d, 
                     lemurEvaluation: evaluation,
                     qualityScore: qualityScore,
-                    status: 'completed' as const
+                    status: 'completed' as const,
+                    tokenEstimation
                   } 
                 : d
             )
@@ -84,11 +95,26 @@ export const useDialogStore = create<DialogStore>()(
 
       updateOpenAIEvaluation: (id: string, evaluation: OpenAIEvaluationResult) => {
         set((state) => ({
-          dialogs: state.dialogs.map((dialog) =>
-            dialog.id === id 
-              ? { ...dialog, openaiEvaluation: evaluation }
-              : dialog
-          )
+          dialogs: state.dialogs.map((dialog) => {
+            if (dialog.id === id) {
+              // Add OpenAI token estimation
+              const tokenEstimation = dialog.tokenEstimation || {};
+              tokenEstimation.openAI = {
+                estimatedInputTokens: 0, // Will be updated when we have the estimation
+                actualInputTokens: evaluation.tokenUsage.input,
+                outputTokens: evaluation.tokenUsage.output,
+                totalTokens: evaluation.tokenUsage.input + evaluation.tokenUsage.output,
+                cost: evaluation.tokenUsage.cost || 0
+              };
+
+              return { 
+                ...dialog, 
+                openaiEvaluation: evaluation,
+                tokenEstimation
+              };
+            }
+            return dialog;
+          })
         }));
       },
 
