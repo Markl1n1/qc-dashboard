@@ -33,19 +33,28 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
   };
 
   const getSpeakerStyle = (speaker: string) => {
-    if (speaker.toLowerCase().includes('agent')) {
+    // Use different colors for Speaker 0 and Speaker 1
+    if (speaker === 'Speaker 0') {
       return {
         backgroundColor: 'hsl(210, 100%, 97%)', // Light blue background
         borderColor: 'hsl(210, 100%, 85%)', // Blue border
         textColor: 'hsl(210, 100%, 25%)', // Dark blue text
         icon: User
       };
-    } else {
+    } else if (speaker === 'Speaker 1') {
       return {
         backgroundColor: 'hsl(120, 60%, 97%)', // Light green background  
         borderColor: 'hsl(120, 60%, 85%)', // Green border
         textColor: 'hsl(120, 60%, 25%)', // Dark green text
         icon: Headphones
+      };
+    } else {
+      // Fallback for other speakers (Speaker 2, 3, etc.)
+      return {
+        backgroundColor: 'hsl(280, 60%, 97%)', // Light purple background
+        borderColor: 'hsl(280, 60%, 85%)', // Purple border
+        textColor: 'hsl(280, 60%, 25%)', // Dark purple text
+        icon: User
       };
     }
   };

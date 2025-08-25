@@ -62,10 +62,11 @@ Deno.serve(async (req) => {
       params.append('language', options.language);
     }
 
-    // Speaker diarization
+    // Speaker diarization - CRITICAL: Ensure both parameters are set
     if (options.diarize) {
       params.append('diarize', 'true');
       params.append('utterances', 'true');
+      console.log('✅ Diarization enabled: diarize=true, utterances=true');
     }
 
     // Additional options
@@ -107,6 +108,7 @@ Deno.serve(async (req) => {
     console.log('✅ Deepgram response received', {
       hasResults: !!deepgramResult.results,
       hasUtterances: !!deepgramResult.results?.utterances,
+      utteranceCount: deepgramResult.results?.utterances?.length || 0,
       model: model,
       detectedLanguage: deepgramResult.metadata?.model_info?.language
     });
@@ -117,9 +119,14 @@ Deno.serve(async (req) => {
     // Process speaker utterances if available
     let speakerUtterances: any[] = [];
     if (deepgramResult.results?.utterances) {
+      console.log('📊 Processing utterances, count:', deepgramResult.results.utterances.length);
+      
       speakerUtterances = deepgramResult.results.utterances.map((utterance: any, index: number) => {
-        // Enhanced speaker detection for Agent/Customer
-        const speakerLabel = detectSpeakerRole(utterance.transcript, utterance.speaker, index);
+        // Use actual speaker numbers from Deepgram
+        const speakerNumber = utterance.speaker !== undefined ? utterance.speaker : 0;
+        const speakerLabel = `Speaker ${speakerNumber}`;
+        
+        console.log(`🎤 Utterance ${index}: speaker=${speakerNumber}, confidence=${utterance.confidence}, text="${utterance.transcript.substring(0, 50)}..."`);
         
         return {
           speaker: speakerLabel,
@@ -129,6 +136,13 @@ Deno.serve(async (req) => {
           end: utterance.end
         };
       });
+
+      // Log speaker distribution for debugging
+      const speakerDistribution = speakerUtterances.reduce((acc: any, utterance: any) => {
+        acc[utterance.speaker] = (acc[utterance.speaker] || 0) + 1;
+        return acc;
+      }, {});
+      console.log('📈 Speaker distribution:', speakerDistribution);
     }
 
     // Detect language if available
@@ -178,58 +192,3 @@ Deno.serve(async (req) => {
     );
   }
 });
-
-// Enhanced speaker role detection function
-function detectSpeakerRole(text: string, speakerNumber: string, utteranceIndex: number): string {
-  const lowerText = text.toLowerCase();
-  
-  // Keywords that suggest agent role
-  const agentKeywords = [
-    'thank you for calling',
-    'how can i help',
-    'my name is',
-    'i can assist',
-    'let me check',
-    'i understand',
-    'is there anything else',
-    'have a great day',
-    'i apologize',
-    'let me transfer',
-    'i can help you with',
-    'thank you for holding'
-  ];
-
-  // Keywords that suggest customer role
-  const customerKeywords = [
-    'i have a problem',
-    'i need help',
-    'my account',
-    'i want to',
-    'can you help me',
-    'i\'m calling about',
-    'i received',
-    'my order',
-    'i can\'t',
-    'what happened to'
-  ];
-
-  // Check for agent patterns
-  const isAgent = agentKeywords.some(keyword => lowerText.includes(keyword));
-  if (isAgent) {
-    return 'Agent';
-  }
-
-  // Check for customer patterns
-  const isCustomer = customerKeywords.some(keyword => lowerText.includes(keyword));
-  if (isCustomer) {
-    return 'Customer';
-  }
-
-  // Fallback logic: first speaker is usually agent in customer service
-  if (utteranceIndex < 3) {
-    return speakerNumber === '0' ? 'Agent' : 'Customer';
-  }
-
-  // Default labeling based on speaker number
-  return speakerNumber === '0' ? 'Agent' : 'Customer';
-}
