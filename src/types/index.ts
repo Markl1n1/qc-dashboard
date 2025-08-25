@@ -1,125 +1,193 @@
-
-export type TranscriptionProvider = 'assemblyai';
-
-export interface AssemblyAIConfig {
-  speaker_labels?: boolean;
-  speakers_expected?: number;
-  language_detection?: boolean;
-  zeroDataRetention?: boolean;
-}
-
-export interface UnifiedTranscriptionProgress {
-  stage: 'uploading' | 'queued' | 'processing' | 'complete' | 'error';
-  progress: number;
-  message: string;
-}
-
-export interface TranslationProgress {
-  stage: 'translating_text' | 'translating_speakers' | 'complete' | 'error';
-  progress: number;
-  message: string;
-  currentProvider?: string;
-  currentUtterance?: number;
-  totalUtterances?: number;
-}
-
-export interface TranslationQueueItem {
-  dialogId: string;
-  priority: number;
-  createdAt: Date;
+export interface Dialog {
+  id: string;
+  fileName: string;
+  uploadDate: Date;
+  transcription: string;
+  speakerTranscription: SpeakerUtterance[];
+  error?: string;
+  status: 'uploaded' | 'processing' | 'completed' | 'failed';
+  assignedAgent: string;
+  assignedSupervisor: string;
+  qualityScore?: number;
+  lemurEvaluation?: LeMUREvaluationResult;
+  openaiEvaluation?: OpenAIEvaluationResult;
+  salesAnalysis?: SalesAnalysisResult;
+  currentLanguage?: 'original' | 'russian';
+  translations?: {
+    russian?: {
+      transcription?: string;
+      speakers?: SpeakerUtterance[];
+    };
+  };
 }
 
 export interface SpeakerUtterance {
   speaker: string;
   text: string;
+  position: number;
+}
+
+export interface LeMUREvaluationResult {
+  id: string;
+  overallScore: number;
   confidence: number;
-  start: number;
-  end: number;
+  summary: string;
+  recommendations: string[];
+  mistakes: Mistake[];
+  bannedWordsDetected: BannedWord[];
+  processingTime: number;
+  tokenUsage: {
+    input: number;
+    output: number;
+    cost?: number;
+  };
+  detectedLanguage?: string;
+  analysisId?: string;
+}
+
+export interface Mistake {
+  id: string;
+  text: string;
+  mistakeName: string;
+  description: string;
+  suggestion: string;
+  category: string;
+  level: 'critical' | 'major' | 'minor';
+  speaker: string;
+  position: number;
+  confidence: number;
+}
+
+export interface BannedWord {
+  word: string;
+  count: number;
+}
+
+export interface LeMUREvaluationProgress {
+  progress: number;
+  message: string;
+  currentStep?: string;
+  estimatedTimeRemaining?: number;
+}
+
+export interface EvaluationConfiguration {
+  id: string;
+  name: string;
+  description: string;
+  prompt: string;
+  categories: Category[];
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  weight: number;
+  enabled: boolean;
+}
+
+export interface OpenAIEvaluationResult {
+  id: string;
+  overallScore: number;
+  confidence: number;
+  summary: string;
+  recommendations: string[];
+  mistakes: Mistake[];
+  categoryScores: { [key: string]: number };
+  modelUsed: string;
+  processingTime: number;
+  tokenUsage: {
+    input: number;
+    output: number;
+    cost?: number;
+  };
+}
+
+export interface OpenAIEvaluationProgress {
+  progress: number;
+  message: string;
+  stage: 'initializing' | 'analyzing' | 'processing_response' | 'complete' | 'error';
+}
+
+export interface OpenAIModel {
+  id: string;
+  name: string;
+  description: string;
+  costPer1kTokens: number;
+  category: 'flagship' | 'fast' | 'reasoning' | 'economic';
+  recommended?: boolean;
+}
+
+export interface SalesAnalysisResult {
+  overallScore: number;
+  sentiment: {
+    overall: string;
+    agent: string;
+    customer: string;
+  };
+  talkRatio: {
+    agent: number;
+    customer: number;
+  };
+  salesStages: {
+    [stage: string]: {
+      score: number;
+      feedback: string;
+      keyPhases: string[];
+      improvements: string[];
+    };
+  };
+  keyMoments: KeyMoment[];
+  buyingSignals: BuyingSignal[];
+  objections: Objection[];
+  actionItems: string[];
+  recommendations: string[];
+  summary: string;
+  confidence: number;
+  processingTime: number;
+}
+
+export interface KeyMoment {
+  type: string;
+  speaker: string;
+  description: string;
+  context: string;
+  importance: string;
+}
+
+export interface BuyingSignal {
+  signal: string;
+  context: string;
+  strength: string;
+  confidence: number;
+}
+
+export interface Objection {
+  objection: string;
+  agentResponse: string;
+  category: string;
+  handled: boolean;
+  effectiveness: number;
+}
+
+export interface TranslationProgress {
+  progress: number;
+  message: string;
+  stage: 'initializing' | 'translating_text' | 'translating_speakers' | 'complete' | 'error';
+  currentStep?: string;
+  estimatedTimeRemaining?: number;
 }
 
 export interface TokenEstimation {
   audioLengthMinutes: number;
   estimatedCost: number;
-  lemur?: {
-    inputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-    cost: number;
-  };
-  openAI?: {
-    estimatedInputTokens: number;
-    actualInputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-    cost: number;
-  };
+  lemur?: number;
+  openAI?: number;
 }
 
-export interface Dialog {
-  id: string;
-  fileName: string;
-  transcription?: string;
-  speakerTranscription?: SpeakerUtterance[];
-  status: 'processing' | 'completed' | 'failed' | 'pending';
-  assignedAgent: string;
-  assignedSupervisor: string;
-  uploadDate: string;
-  error?: string;
-  tokenEstimation?: TokenEstimation;
-  
-  // Translation properties
-  russianTranscription?: string;
-  russianSpeakerTranscription?: SpeakerUtterance[];
-  isTranslating?: boolean;
-  translationStatus?: 'processing' | 'completed' | 'failed';
-  translationProgress?: number;
-  currentLanguage?: 'original' | 'russian';
-  translations?: {
-    speakers?: {
-      ru?: SpeakerUtterance[];
-    };
-  };
-  
-  // Segmentation properties
-  isSegmented?: boolean;
-  parentDialogId?: string;
-  childDialogIds?: string[];
-  segmentCount?: number;
-  segmentIndex?: number;
-  
-  // Analysis properties
-  analysis?: AIAnalysis;
-  lemurEvaluation?: any;
-  openaiEvaluation?: any;
-  qualityScore?: number;
-}
-
-export interface MistakeHighlight {
-  id: string;
-  level: 'minor' | 'major' | 'critical';
-  category: string;
-  mistakeName: string;
-  description: string;
-  text: string;
-  position: number;
-  speaker: string;
-  suggestion: string;
-  impact: 'low' | 'medium' | 'high';
-  confidence: number;
-}
-
-export interface AIAnalysis {
-  overallScore: number;
-  categoryScores: {
-    communication: number;
-    professionalism: number;
-    problem_solving: number;
-    compliance: number;
-    customer_satisfaction: number;
-  };
-  mistakes: MistakeHighlight[];
-  recommendations: string[];
-  summary: string;
-  confidence: number;
-  bannedWordsDetected?: Array<{ word: string; position: number }>;
+export interface UnifiedTranscriptionProgress {
+  progress: number;
+  message: string;
+  stage: 'uploading' | 'processing' | 'transcribing' | 'analyzing' | 'complete' | 'error';
+  currentStep?: string;
+  estimatedTimeRemaining?: number;
 }

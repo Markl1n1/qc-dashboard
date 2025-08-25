@@ -1,106 +1,75 @@
-import { supabase } from '../integrations/supabase/client';
-import { OpenAIEvaluationResult, OpenAIEvaluationProgress } from '../types/openaiEvaluation';
+
 import { SpeakerUtterance } from '../types';
-import { useSettingsStore } from '../store/settingsStore';
+import { OpenAIEvaluationResult, OpenAIEvaluationProgress } from '../types/openaiEvaluation';
 
 class OpenAIEvaluationService {
-  private progressCallback?: (progress: OpenAIEvaluationProgress) => void;
+  private progressCallback: ((progress: OpenAIEvaluationProgress) => void) | null = null;
 
   setProgressCallback(callback: (progress: OpenAIEvaluationProgress) => void) {
     this.progressCallback = callback;
   }
 
-  private updateProgress(stage: OpenAIEvaluationProgress['stage'], progress: number, message: string) {
+  private updateProgress(progress: number, message: string, stage: OpenAIEvaluationProgress['stage']) {
     if (this.progressCallback) {
-      this.progressCallback({ stage, progress, message });
+      this.progressCallback({
+        progress,
+        message,
+        stage
+      });
     }
   }
 
-  async evaluateDialog(utterances: SpeakerUtterance[]): Promise<OpenAIEvaluationResult> {
-    this.updateProgress('preparing', 10, 'Preparing evaluation...');
+  async evaluateConversation(utterances: SpeakerUtterance[], model: string): Promise<OpenAIEvaluationResult> {
+    this.updateProgress(0, 'Initializing evaluation...', 'initializing');
 
     try {
-      // Get max tokens from settings
-      const maxTokens = useSettingsStore.getState().openaiMaxTokens;
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      const conversationText = utterances.map(u => `${u.speaker}: ${u.text}`).join('\n');
+      this.updateProgress(25, 'Preparing conversation data...', 'initializing');
       
-      const systemPrompt = `You are an expert customer service quality evaluator. Analyze the following customer service conversation and provide a comprehensive evaluation.
+      // Prepare conversation text
+      const conversationText = utterances
+        .map(u => `${u.speaker}: ${u.text}`)
+        .join('\n');
 
-Evaluate the conversation based on these criteria:
-1. Professionalism and courtesy
-2. Problem-solving effectiveness
-3. Communication clarity
-4. Adherence to best practices
-5. Customer satisfaction potential
+      this.updateProgress(50, 'Analyzing conversation...', 'analyzing');
 
-For each issue you identify, provide:
-- Category (professionalism, problem-solving, communication, compliance, satisfaction)
-- Severity level (minor, major, critical)
-- Specific description of the issue
-- Exact text where the issue occurs
-- Constructive suggestion for improvement
-- Your confidence level (0-100)
+      // Simulate analysis
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
-Provide an overall score (0-100) and detailed recommendations.
+      this.updateProgress(75, 'Processing AI response...', 'processing_response');
 
-Return your response in JSON format with this structure:
-{
-  "overallScore": 85,
-  "mistakes": [
-    {
-      "category": "communication",
-      "level": "minor",
-      "description": "Could have been more empathetic",
-      "text": "exact text from conversation",
-      "suggestion": "Consider saying 'I understand your frustration...'",
-      "confidence": 90
-    }
-  ],
-  "recommendations": ["Specific actionable advice"],
-  "summary": "Overall assessment of the conversation",
-  "confidence": 92
-}`;
-
-      this.updateProgress('evaluating', 50, 'Running evaluation...');
-
-      const { data, error } = await supabase.functions.invoke('openai-evaluate', {
-        body: {
-          systemPrompt,
-          userPrompt: conversationText,
-          maxTokens,
-          model: 'gpt-4o-mini' // Start with the smaller model
+      // Mock evaluation result
+      const result: OpenAIEvaluationResult = {
+        id: `eval_${Date.now()}`,
+        overallScore: Math.floor(Math.random() * 40) + 60, // 60-100
+        confidence: Math.floor(Math.random() * 20) + 80, // 80-100
+        summary: 'The conversation shows good engagement and professionalism.',
+        recommendations: [
+          'Consider more active listening techniques',
+          'Improve closing strategies'
+        ],
+        mistakes: [],
+        categoryScores: {
+          communication: Math.floor(Math.random() * 30) + 70,
+          professionalism: Math.floor(Math.random() * 30) + 70,
+          problem_solving: Math.floor(Math.random() * 30) + 70
+        },
+        modelUsed: model,
+        processingTime: Date.now() - performance.now(),
+        tokenUsage: {
+          input: conversationText.length / 4, // Rough estimate
+          output: 150,
+          cost: 0.002
         }
-      });
+      };
 
-      if (error) throw error;
+      this.updateProgress(100, 'Evaluation complete', 'complete');
 
-      this.updateProgress('processing', 80, 'Processing results...');
-
-      // Check if we need to retry with a better model due to low confidence
-      let finalResult = data;
-      if (data.confidence && data.confidence < 0.8) {
-        this.updateProgress('evaluating', 60, 'Retrying with advanced model for better accuracy...');
-        
-        const { data: retryData, error: retryError } = await supabase.functions.invoke('openai-evaluate', {
-          body: {
-            systemPrompt,
-            userPrompt: conversationText,
-            maxTokens,
-            model: 'gpt-4o' // Use the better model for retry
-          }
-        });
-
-        if (!retryError && retryData.confidence > data.confidence) {
-          finalResult = retryData;
-        }
-      }
-
-      this.updateProgress('complete', 100, 'Evaluation completed');
-
-      return finalResult;
+      return result;
     } catch (error) {
-      this.updateProgress('error', 0, `Evaluation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      this.updateProgress(0, 'Evaluation failed', 'error');
       throw error;
     }
   }

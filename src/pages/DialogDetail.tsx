@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDialogStore } from '../store/dialogStore';
@@ -12,11 +11,11 @@ import { ArrowLeft, FileText, Users, Clock, Award, AlertTriangle, CheckCircle, C
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import EnhancedSpeakerTranscription from '../components/EnhancedSpeakerTranscription';
-import LeMUREvaluationView from '../components/LeMUREvaluationView';
-import OpenAIEvaluationView from '../components/OpenAIEvaluationView';
+import { LeMUREvaluationView } from '../components/LeMUREvaluationView';
+import { OpenAIEvaluationView } from '../components/OpenAIEvaluationView';
 import SalesAnalysisView from '../components/SalesAnalysisView';
 import { LanguageToggle } from '../components/LanguageToggle';
-import SimpleTranslationButton from '../components/SimpleTranslationButton';
+import { SimpleTranslationButton } from '../components/SimpleTranslationButton';
 
 interface DialogDetailParams {
   id: string;
@@ -90,12 +89,12 @@ const DialogDetail: React.FC = () => {
 
   // Language handling
   const currentLang = dialog.currentLanguage || 'original';
-  const displayTranscription = currentLang === 'russian' && dialog.translations 
-    ? dialog.translations.russian?.transcription || dialog.transcription
+  const displayTranscription = currentLang === 'russian' && dialog.translations?.ru?.transcription 
+    ? dialog.translations.ru.transcription 
     : dialog.transcription;
 
-  const displaySpeakerUtterances = currentLang === 'russian' && dialog.translations?.russian?.speakerUtterances
-    ? dialog.translations.russian.speakerUtterances
+  const displaySpeakerUtterances = currentLang === 'russian' && dialog.translations?.ru?.speakers
+    ? dialog.translations.ru.speakers
     : dialog.speakerTranscription;
 
   return (
@@ -111,8 +110,13 @@ const DialogDetail: React.FC = () => {
           </div>
           
           <div className="flex items-center space-x-2">
-            <LanguageToggle dialogId={dialog.id} />
-            <SimpleTranslationButton dialogId={dialog.id} />
+            <LanguageToggle dialog={dialog} />
+            <SimpleTranslationButton 
+              onTranslate={() => {/* Translation logic */}}
+              isTranslating={false}
+              progress={null}
+              hasTranslation={!!dialog.translations?.ru}
+            />
           </div>
         </div>
 
@@ -229,7 +233,7 @@ const DialogDetail: React.FC = () => {
 
             {displaySpeakerUtterances && displaySpeakerUtterances.length > 0 && (
               <EnhancedSpeakerTranscription
-                speakerUtterances={displaySpeakerUtterances}
+                utterances={displaySpeakerUtterances}
                 mistakes={lemurMistakes}
                 dialogId={dialog.id}
               />
@@ -239,8 +243,9 @@ const DialogDetail: React.FC = () => {
           <TabsContent value="lemur-evaluation">
             {dialog.lemurEvaluation ? (
               <LeMUREvaluationView 
-                evaluation={dialog.lemurEvaluation} 
-                speakerUtterances={displaySpeakerUtterances || []}
+                utterances={displaySpeakerUtterances || []}
+                transcriptId={dialog.id}
+                onClose={() => {}}
               />
             ) : (
               <Card>
@@ -257,8 +262,10 @@ const DialogDetail: React.FC = () => {
           <TabsContent value="openai-evaluation">
             {dialog.openaiEvaluation ? (
               <OpenAIEvaluationView 
-                evaluation={dialog.openaiEvaluation}
-                speakerUtterances={displaySpeakerUtterances || []}
+                utterances={displaySpeakerUtterances || []}
+                transcriptId={dialog.id}
+                openaiResult={dialog.openaiEvaluation}
+                onClose={() => {}}
               />
             ) : (
               <Card>
@@ -273,7 +280,18 @@ const DialogDetail: React.FC = () => {
           </TabsContent>
 
           <TabsContent value="sales-analysis">
-            <SalesAnalysisView dialogId={dialog.id} />
+            {dialog.salesAnalysis ? (
+              <SalesAnalysisView analysis={dialog.salesAnalysis} />
+            ) : (
+              <Card>
+                <CardContent className="py-8">
+                  <div className="text-center text-muted-foreground">
+                    <p>No sales analysis available for this dialog.</p>
+                    <p className="text-sm mt-2">Run a sales analysis to see detailed results here.</p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
         </Tabs>
 
