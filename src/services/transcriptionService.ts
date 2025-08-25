@@ -14,9 +14,11 @@ class TranscriptionService {
 
   setProgressCallback(callback: (progress: UnifiedTranscriptionProgress) => void) {
     this.progressCallback = callback;
+    console.log('[TranscriptionService] Progress callback set');
   }
 
   private updateProgress(stage: UnifiedTranscriptionProgress['stage'], progress: number, message: string) {
+    console.log(`[TranscriptionService] Progress: ${stage} (${progress}%) - ${message}`);
     if (this.progressCallback) {
       try {
         this.progressCallback({ stage, progress, message });
@@ -32,6 +34,14 @@ class TranscriptionService {
     assignedSupervisor: string,
     config?: AssemblyAIConfig
   ): Promise<string> {
+    console.log('[TranscriptionService] transcribeAudio called with:', {
+      fileName: file.name,
+      fileSize: file.size,
+      assignedAgent,
+      assignedSupervisor,
+      config
+    });
+
     try {
       if (!file) {
         throw new Error('No file provided');
@@ -54,6 +64,7 @@ class TranscriptionService {
 
       this.updateProgress('processing', 30, 'Processing audio file...');
 
+      console.log('[TranscriptionService] Making request to transcribe endpoint...');
       const response = await fetch('https://sahudeguwojdypmmlbkd.supabase.co/functions/v1/transcribe', {
         method: 'POST',
         body: formData,
@@ -61,22 +72,27 @@ class TranscriptionService {
 
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('[TranscriptionService] Transcription request failed:', errorData);
         throw new Error(errorData.message || `Transcription failed: ${response.statusText}`);
       }
 
       const { dialogId } = await response.json();
+      console.log('[TranscriptionService] Transcription request successful, dialogId:', dialogId);
       
       this.updateProgress('complete', 100, 'Transcription completed successfully');
       
       return dialogId;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Transcription failed';
+      console.error('[TranscriptionService] Transcription error:', errorMessage);
       this.updateProgress('error', 0, errorMessage);
       throw error;
     }
   }
 
   async processTranscription(dialogId: string): Promise<void> {
+    console.log('[TranscriptionService] processTranscription called with dialogId:', dialogId);
+    
     try {
       const response = await fetch(`https://sahudeguwojdypmmlbkd.supabase.co/functions/v1/process-transcription/${dialogId}`, {
         method: 'POST',
@@ -87,18 +103,21 @@ class TranscriptionService {
   
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('[TranscriptionService] Process transcription failed:', errorData);
         throw new Error(errorData.message || `Transcription processing failed: ${response.statusText}`);
       }
   
       const data = await response.json();
-      console.log('Transcription processed:', data);
+      console.log('[TranscriptionService] Transcription processed successfully:', data);
     } catch (error) {
-      console.error('Error processing transcription:', error);
+      console.error('[TranscriptionService] Error processing transcription:', error);
       throw error;
     }
   }
 
   async estimateTokenCost(file: File): Promise<{ audioLengthMinutes: number; estimatedCost: number }> {
+    console.log('[TranscriptionService] estimateTokenCost called with file:', file.name);
+    
     try {
       const formData = new FormData();
       formData.append('audio', file);
@@ -110,24 +129,28 @@ class TranscriptionService {
   
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('[TranscriptionService] Token estimation failed:', errorData);
         throw new Error(errorData.message || `Token estimation failed: ${response.statusText}`);
       }
   
-      return await response.json();
+      const result = await response.json();
+      console.log('[TranscriptionService] Token estimation result:', result);
+      return result;
     } catch (error) {
-      console.error('Error estimating token cost:', error);
+      console.error('[TranscriptionService] Error estimating token cost:', error);
       throw error;
     }
   }
 
-  // Fixed mock methods - no recursive calls
+  // Local transcription method - returns error since it's not implemented
   async transcribe(file: File, options: TranscriptionOptions): Promise<string> {
-    console.log('Local transcription called with:', file.name, options);
+    console.log('[TranscriptionService] Local transcribe called - not implemented');
+    console.log('File:', file.name, 'Options:', options);
     throw new Error('Local transcription not implemented - use transcribeAudio instead');
   }
 
   async loadModel(options: TranscriptionOptions): Promise<void> {
-    console.log('Loading model with options:', options);
+    console.log('[TranscriptionService] Loading model with options:', options);
     this.updateProgress('queued', 50, 'Loading transcription model...');
     
     // Simulate loading time
@@ -135,6 +158,7 @@ class TranscriptionService {
     
     this.currentModel = options.model || 'default';
     this.modelLoaded = true;
+    console.log('[TranscriptionService] Model loaded:', this.currentModel);
     this.updateProgress('complete', 100, 'Model loaded successfully');
   }
 
