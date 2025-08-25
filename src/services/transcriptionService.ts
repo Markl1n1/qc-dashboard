@@ -81,20 +81,9 @@ class TranscriptionService {
 
       this.updateProgress('processing', 30, 'Processing audio file...');
 
-      console.log('[TranscriptionService] Making request to transcribe endpoint...');
-      console.log('[TranscriptionService] Request details:', {
-        url: 'https://sahudeguwojdypmmlbkd.supabase.co/functions/v1/transcribe',
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${session.access_token}`
-        },
-        formDataEntries: Array.from(formData.entries()).map(([key, value]) => [
-          key, 
-          value instanceof File ? `File: ${value.name} (${value.size} bytes)` : value
-        ])
-      });
-
-      const response = await fetch('https://sahudeguwojdypmmlbkd.supabase.co/functions/v1/transcribe', {
+      console.log('[TranscriptionService] Making request to process-dialog endpoint...');
+      
+      const response = await fetch('https://sahudeguwojdypmmlbkd.supabase.co/functions/v1/process-dialog', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
@@ -103,7 +92,6 @@ class TranscriptionService {
       });
 
       console.log('[TranscriptionService] Response status:', response.status);
-      console.log('[TranscriptionService] Response headers:', Object.fromEntries(response.headers.entries()));
 
       if (!response.ok) {
         const responseText = await response.text();
@@ -117,15 +105,6 @@ class TranscriptionService {
         }
         
         console.error('[TranscriptionService] Transcription request failed:', errorData);
-        
-        if (response.status === 401) {
-          throw new Error('Authentication failed. Please log in and try again.');
-        } else if (response.status === 403) {
-          throw new Error('Access denied. Please check your permissions.');
-        } else if (response.status === 500) {
-          throw new Error('Server error. Please try again later.');
-        }
-        
         throw new Error(errorData.message || `Transcription failed: ${response.statusText}`);
       }
 
@@ -141,7 +120,6 @@ class TranscriptionService {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Transcription failed';
       console.error('[TranscriptionService] Transcription error:', errorMessage);
-      console.error('[TranscriptionService] Full error details:', error);
       
       this.updateProgress('error', 0, errorMessage);
       throw error;
@@ -152,7 +130,6 @@ class TranscriptionService {
     console.log('[TranscriptionService] processTranscription called with dialogId:', dialogId);
     
     try {
-      // Ensure user is authenticated
       const { supabase } = await import('../integrations/supabase/client');
       const { data: { session }, error: authError } = await supabase.auth.getSession();
       
@@ -174,16 +151,7 @@ class TranscriptionService {
       if (!response.ok) {
         const responseText = await response.text();
         console.error('[TranscriptionService] Process error response:', responseText);
-        
-        let errorData;
-        try {
-          errorData = JSON.parse(responseText);
-        } catch {
-          errorData = { message: responseText || `Transcription processing failed: ${response.statusText}` };
-        }
-        
-        console.error('[TranscriptionService] Process transcription failed:', errorData);
-        throw new Error(errorData.message || `Transcription processing failed: ${response.statusText}`);
+        throw new Error(`Transcription processing failed: ${response.statusText}`);
       }
 
       const data = await response.json();
@@ -198,7 +166,6 @@ class TranscriptionService {
     console.log('[TranscriptionService] estimateTokenCost called with file:', file.name);
     
     try {
-      // Ensure user is authenticated
       const { supabase } = await import('../integrations/supabase/client');
       const { data: { session }, error: authError } = await supabase.auth.getSession();
       
@@ -223,16 +190,7 @@ class TranscriptionService {
       if (!response.ok) {
         const responseText = await response.text();
         console.error('[TranscriptionService] Estimation error response:', responseText);
-        
-        let errorData;
-        try {
-          errorData = JSON.parse(responseText);
-        } catch {
-          errorData = { message: responseText || `Token estimation failed: ${response.statusText}` };
-        }
-        
-        console.error('[TranscriptionService] Token estimation failed:', errorData);
-        throw new Error(errorData.message || `Token estimation failed: ${response.statusText}`);
+        throw new Error(`Token estimation failed: ${response.statusText}`);
       }
 
       const result = await response.json();
@@ -244,18 +202,10 @@ class TranscriptionService {
     }
   }
 
-  // Local transcription method - returns error since it's not implemented
-  async transcribe(file: File, options: TranscriptionOptions): Promise<string> {
-    console.log('[TranscriptionService] Local transcribe called - not implemented');
-    console.log('File:', file.name, 'Options:', options);
-    throw new Error('Local transcription not implemented - use transcribeAudio instead');
-  }
-
   async loadModel(options: TranscriptionOptions): Promise<void> {
     console.log('[TranscriptionService] Loading model with options:', options);
     this.updateProgress('queued', 50, 'Loading transcription model...');
     
-    // Simulate loading time
     await new Promise(resolve => setTimeout(resolve, 1000));
     
     this.currentModel = options.model || 'default';

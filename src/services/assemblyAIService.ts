@@ -46,6 +46,9 @@ export interface AssemblyAIResult {
 
 class AssemblyAIService {
   private progressCallback?: (progress: UnifiedTranscriptionProgress) => void;
+  private isProcessing = false;
+  private errorCount = 0;
+  private readonly maxErrors = 3;
 
   setProgressCallback(callback: (progress: UnifiedTranscriptionProgress) => void) {
     this.progressCallback = callback;
@@ -55,7 +58,11 @@ class AssemblyAIService {
   private updateProgress(stage: UnifiedTranscriptionProgress['stage'], progress: number, message: string) {
     console.log(`[AssemblyAI] Progress: ${stage} (${progress}%) - ${message}`);
     if (this.progressCallback) {
-      this.progressCallback({ stage, progress, message });
+      try {
+        this.progressCallback({ stage, progress, message });
+      } catch (error) {
+        console.error('[AssemblyAI] Error in progress callback:', error);
+      }
     }
   }
 
@@ -83,16 +90,27 @@ class AssemblyAIService {
   }
 
   async transcribe(audioFile: File, options: AssemblyAIOptions): Promise<AssemblyAIResult> {
-    console.log(`[AssemblyAI] Starting transcription process...`);
-    console.log(`[AssemblyAI] File details:`, {
-      name: audioFile.name,
-      type: audioFile.type,
-      size: audioFile.size,
-      lastModified: new Date(audioFile.lastModified).toISOString()
-    });
-    console.log(`[AssemblyAI] Options:`, options);
+    // Circuit breaker pattern
+    if (this.isProcessing) {
+      throw new Error('Another transcription is already in progress. Please wait.');
+    }
+
+    if (this.errorCount >= this.maxErrors) {
+      throw new Error('Too many failed attempts. Please refresh the page and try again.');
+    }
+
+    this.isProcessing = true;
 
     try {
+      console.log(`[AssemblyAI] Starting transcription process...`);
+      console.log(`[AssemblyAI] File details:`, {
+        name: audioFile.name,
+        type: audioFile.type,
+        size: audioFile.size,
+        lastModified: new Date(audioFile.lastModified).toISOString()
+      });
+      console.log(`[AssemblyAI] Options:`, options);
+
       // Step 1: Ensure user is authenticated
       await this.ensureAuthenticated();
       
@@ -104,16 +122,7 @@ class AssemblyAIService {
       }
 
       // Step 3: Prepare file for upload
-      let fileToUpload = audioFile;
-      if (audioFile.name.includes('_converted.wav')) {
-        console.log(`[AssemblyAI] Handling converted WAV file: ${audioFile.name}`);
-        fileToUpload = new File([audioFile], audioFile.name, {
-          type: 'audio/wav',
-          lastModified: audioFile.lastModified
-        });
-      } else {
-        fileToUpload = createFileWithCorrectMimeType(audioFile);
-      }
+      let fileToUpload = createFileWithCorrectMimeType(audioFile);
       
       console.log(`[AssemblyAI] Final file to upload:`, {
         name: fileToUpload.name,
@@ -155,11 +164,14 @@ class AssemblyAIService {
         utteranceCount: result.speakerUtterances.length,
         transcriptId: result.transcriptId
       });
+
+      // Reset error count on success
+      this.errorCount = 0;
       
       return result;
     } catch (error) {
-      console.error(`[AssemblyAI] Transcription error:`, error);
-      console.error(`[AssemblyAI] Error stack:`, error instanceof Error ? error.stack : 'No stack trace');
+      this.errorCount++;
+      console.error(`[AssemblyAI] Transcription error (attempt ${this.errorCount}):`, error);
       
       let errorMessage = 'Transcription failed';
       if (error instanceof Error) {
@@ -177,6 +189,8 @@ class AssemblyAIService {
       
       this.updateProgress('error', 0, errorMessage);
       throw new Error(errorMessage);
+    } finally {
+      this.isProcessing = false;
     }
   }
 
