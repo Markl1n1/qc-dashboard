@@ -2,11 +2,12 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from './ui/button';
-import { Upload, Home } from 'lucide-react';
+import { Upload, Home, Settings } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useUserRole } from '../hooks/useUserRole';
 import UserProfileMenu from './UserProfileMenu';
 import PasscodeManager from './PasscodeManager';
+import VoiceQCLogo from './VoiceQCLogo';
 
 const Layout = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
@@ -21,8 +22,8 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-6">
-              <Link to="/" className="text-2xl font-bold text-primary">
-                TranscribeAI
+              <Link to="/" className="flex items-center">
+                <VoiceQCLogo />
               </Link>
               
               {isAuthenticated && (
@@ -47,6 +48,18 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                       Upload
                     </Link>
                   </Button>
+                  {isAdmin && (
+                    <Button
+                      variant={isActive('/settings') ? 'default' : 'ghost'}
+                      size="sm"
+                      asChild
+                    >
+                      <Link to="/settings">
+                        <Settings className="mr-2 h-4 w-4" />
+                        Settings
+                      </Link>
+                    </Button>
+                  )}
                 </nav>
               )}
             </div>

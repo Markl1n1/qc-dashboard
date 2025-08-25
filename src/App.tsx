@@ -8,6 +8,8 @@ import Layout from "./components/Layout";
 import Index from "./pages/Index";
 import Upload from "./pages/Upload";
 import Auth from "./pages/Auth";
+import Login from "./pages/Login";
+import Settings from "./pages/Settings";
 import DialogDetail from "./pages/DialogDetail";
 import EmailConfirmed from "./pages/EmailConfirmed";
 import NotFound from "./pages/NotFound";
@@ -44,6 +46,7 @@ const App = () => {
           <Layout>
             <Routes>
               <Route path="/auth" element={<Auth />} />
+              <Route path="/login" element={<Login />} />
               <Route path="/email-confirmed" element={<EmailConfirmed />} />
               <Route
                 path="/"
@@ -58,6 +61,14 @@ const App = () => {
                 element={
                   <ProtectedRoute>
                     <Upload />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/settings"
+                element={
+                  <ProtectedRoute>
+                    <Settings />
                   </ProtectedRoute>
                 }
               />

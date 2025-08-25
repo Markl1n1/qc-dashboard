@@ -30,6 +30,28 @@ const UserProfileMenu = () => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [userName, setUserName] = useState<string>('');
+
+  // Get user name from profile
+  React.useEffect(() => {
+    const fetchUserName = async () => {
+      if (user) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('name')
+          .eq('id', user.id)
+          .single();
+
+        if (data && !error) {
+          setUserName(data.name || user.email || 'User');
+        } else {
+          setUserName(user.email || 'User');
+        }
+      }
+    };
+
+    fetchUserName();
+  }, [user]);
 
   const handleChangePassword = async () => {
     if (newPassword !== confirmPassword) {
@@ -82,7 +104,7 @@ const UserProfileMenu = () => {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuLabel>My Account</DropdownMenuLabel>
+          <DropdownMenuLabel>{userName}</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => {}}>
             <Moon className="mr-2 h-4 w-4" />

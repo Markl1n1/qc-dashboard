@@ -9,6 +9,7 @@ export const useTranscription = () => {
   const [error, setError] = useState<string | null>(null);
 
   const transcribe = useCallback(async (audioFile: File, options: TranscriptionOptions): Promise<string> => {
+    // Reset state before starting
     setIsLoading(true);
     setError(null);
     setProgress(null);
@@ -17,9 +18,16 @@ export const useTranscription = () => {
       console.log('Starting local transcription for file:', audioFile.name);
       console.log('Transcription options:', options);
 
-      // Set up progress tracking
-      transcriptionService.setProgressCallback((progress) => {
-        setProgress(progress);
+      // Clear any existing progress callback to prevent memory leaks
+      transcriptionService.setProgressCallback(() => {});
+
+      // Set up new progress tracking with error boundary
+      transcriptionService.setProgressCallback((progressData) => {
+        try {
+          setProgress(progressData);
+        } catch (err) {
+          console.error('Error in progress callback:', err);
+        }
       });
 
       const result = await transcriptionService.transcribe(audioFile, options);
@@ -34,6 +42,8 @@ export const useTranscription = () => {
       throw err;
     } finally {
       setIsLoading(false);
+      // Clear progress callback to prevent memory leaks
+      transcriptionService.setProgressCallback(() => {});
     }
   }, []);
 
@@ -44,8 +54,15 @@ export const useTranscription = () => {
     try {
       console.log('Loading transcription model with options:', options);
       
-      transcriptionService.setProgressCallback((progress) => {
-        setProgress(progress);
+      // Clear any existing progress callback
+      transcriptionService.setProgressCallback(() => {});
+
+      transcriptionService.setProgressCallback((progressData) => {
+        try {
+          setProgress(progressData);
+        } catch (err) {
+          console.error('Error in model loading progress callback:', err);
+        }
       });
 
       await transcriptionService.loadModel(options);
@@ -57,6 +74,8 @@ export const useTranscription = () => {
       throw err;
     } finally {
       setIsLoading(false);
+      // Clear progress callback
+      transcriptionService.setProgressCallback(() => {});
     }
   }, []);
 
