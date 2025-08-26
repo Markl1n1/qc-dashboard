@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -27,15 +28,14 @@ const Index = () => {
   const { isAdmin, isSupervisor } = useUserRole();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [agentFilter, setAgentFilter] = useState<string>('all');
-  const [supervisorFilter, setSupervisorFilter] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<string>('date');
 
   const {
     dialogs,
     isLoading,
     error,
-    refetch
-  } = useDatabaseDialogs(isAdmin ? undefined : user?.id);
+    loadDialogs
+  } = useDatabaseDialogs();
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -70,15 +70,29 @@ const Index = () => {
                          dialog.assignedSupervisor.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesStatus = statusFilter === 'all' || dialog.status === statusFilter;
-    const matchesAgent = agentFilter === 'all' || dialog.assignedAgent === agentFilter;
-    const matchesSupervisor = supervisorFilter === 'all' || dialog.assignedSupervisor === supervisorFilter;
     
-    return matchesSearch && matchesStatus && matchesAgent && matchesSupervisor;
+    return matchesSearch && matchesStatus;
   });
 
-  // Get unique values for filters
-  const uniqueAgents = [...new Set(dialogs.map(d => d.assignedAgent))];
-  const uniqueSupervisors = [...new Set(dialogs.map(d => d.assignedSupervisor))];
+  // Sort dialogs
+  const sortedDialogs = [...filteredDialogs].sort((a, b) => {
+    switch (sortBy) {
+      case 'name':
+        return a.fileName.localeCompare(b.fileName);
+      case 'agent':
+        return a.assignedAgent.localeCompare(b.assignedAgent);
+      case 'status':
+        return a.status.localeCompare(b.status);
+      case 'score':
+        // Handle cases where analysis might not exist
+        const scoreA = a.analysis?.overallScore || 0;
+        const scoreB = b.analysis?.overallScore || 0;
+        return scoreB - scoreA;
+      case 'date':
+      default:
+        return new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime();
+    }
+  });
 
   if (isLoading) {
     return (
@@ -100,7 +114,7 @@ const Index = () => {
               <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
               <h3 className="text-lg font-semibold mb-2">Error Loading Dialogs</h3>
               <p className="text-muted-foreground mb-4">{error}</p>
-              <Button onClick={refetch}>Try Again</Button>
+              <Button onClick={loadDialogs}>Try Again</Button>
             </div>
           </CardContent>
         </Card>
@@ -175,7 +189,7 @@ const Index = () => {
         </Card>
       </div>
 
-      {/* Filters and Search */}
+      {/* Dialog History */}
       <Card>
         <CardHeader>
           <CardTitle>Dialog History</CardTitle>
@@ -198,31 +212,29 @@ const Index = () => {
             </div>
             
             <DialogFilters
+              searchTerm={searchTerm}
+              onSearchChange={setSearchTerm}
               statusFilter={statusFilter}
-              agentFilter={agentFilter}
-              supervisorFilter={supervisorFilter}
               onStatusChange={setStatusFilter}
-              onAgentChange={setAgentFilter}
-              onSupervisorChange={setSupervisorFilter}
-              uniqueAgents={uniqueAgents}
-              uniqueSupervisors={uniqueSupervisors}
+              sortBy={sortBy}
+              onSortChange={setSortBy}
             />
           </div>
 
           {/* Dialogs List */}
           <div className="space-y-3">
-            {filteredDialogs.length === 0 ? (
+            {sortedDialogs.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 No dialogs found matching your criteria.
               </div>
             ) : (
-              filteredDialogs.map((dialog) => (
+              sortedDialogs.map((dialog) => (
                 <Card key={dialog.id} className="hover:shadow-md transition-shadow">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       {/* Left side - File info and status */}
                       <div className="flex items-center space-x-4 flex-1 min-w-0">
-                        <div className="flex items-center space-x-2">
+                        <div className="flex items-center space-x-2 flex-shrink-0">
                           {getStatusIcon(dialog.status)}
                           <Badge variant={getStatusBadgeVariant(dialog.status)} className="text-xs">
                             {dialog.status}
@@ -233,12 +245,12 @@ const Index = () => {
                           <h3 className="font-semibold truncate">{dialog.fileName}</h3>
                           <div className="flex items-center space-x-4 text-sm text-muted-foreground mt-1">
                             <div className="flex items-center space-x-1">
-                              <Calendar className="h-3 w-3" />
+                              <Calendar className="h-3 w-3 flex-shrink-0" />
                               <span>{format(new Date(dialog.uploadDate), 'MMM dd, yyyy')}</span>
                             </div>
                             {dialog.tokenEstimation?.audioLengthMinutes && (
                               <div className="flex items-center space-x-1">
-                                <Clock className="h-3 w-3" />
+                                <Clock className="h-3 w-3 flex-shrink-0" />
                                 <span>{dialog.tokenEstimation.audioLengthMinutes.toFixed(1)} min</span>
                               </div>
                             )}
@@ -248,25 +260,25 @@ const Index = () => {
 
                       {/* Middle - Agent and Supervisor info */}
                       <div className="hidden md:flex items-center space-x-6 px-4">
-                        <div className="text-center">
-                          <div className="flex items-center space-x-1 text-xs text-muted-foreground mb-1">
-                            <User className="h-3 w-3" />
+                        <div className="text-center min-w-0">
+                          <div className="flex items-center justify-center space-x-1 text-xs text-muted-foreground mb-1">
+                            <User className="h-3 w-3 flex-shrink-0" />
                             <span>Agent</span>
                           </div>
-                          <div className="text-sm font-medium">{dialog.assignedAgent}</div>
+                          <div className="text-sm font-medium truncate">{dialog.assignedAgent}</div>
                         </div>
                         
-                        <div className="text-center">
-                          <div className="flex items-center space-x-1 text-xs text-muted-foreground mb-1">
-                            <Users className="h-3 w-3" />
+                        <div className="text-center min-w-0">
+                          <div className="flex items-center justify-center space-x-1 text-xs text-muted-foreground mb-1">
+                            <Users className="h-3 w-3 flex-shrink-0" />
                             <span>Supervisor</span>
                           </div>
-                          <div className="text-sm font-medium">{dialog.assignedSupervisor}</div>
+                          <div className="text-sm font-medium truncate">{dialog.assignedSupervisor}</div>
                         </div>
                       </div>
 
                       {/* Right side - Actions */}
-                      <div className="flex items-center space-x-2">
+                      <div className="flex items-center space-x-2 flex-shrink-0">
                         <Button variant="outline" size="sm" asChild>
                           <Link to={`/dialog/${dialog.id}`}>
                             <Eye className="h-4 w-4 mr-1" />
@@ -279,13 +291,13 @@ const Index = () => {
                     {/* Mobile view for agent/supervisor info */}
                     <div className="md:hidden mt-3 pt-3 border-t border-border">
                       <div className="flex justify-between text-sm">
-                        <div>
+                        <div className="flex-1 min-w-0 mr-2">
                           <span className="text-muted-foreground">Agent: </span>
-                          <span className="font-medium">{dialog.assignedAgent}</span>
+                          <span className="font-medium truncate">{dialog.assignedAgent}</span>
                         </div>
-                        <div>
+                        <div className="flex-1 min-w-0">
                           <span className="text-muted-foreground">Supervisor: </span>
-                          <span className="font-medium">{dialog.assignedSupervisor}</span>
+                          <span className="font-medium truncate">{dialog.assignedSupervisor}</span>
                         </div>
                       </div>
                     </div>

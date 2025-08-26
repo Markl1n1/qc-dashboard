@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,9 +24,9 @@ import { useUserRole } from '../hooks/useUserRole';
 import { supabase } from '../integrations/supabase/client';
 import { databaseService } from '../services/databaseService';
 import ApiKeyManager from '../components/ApiKeyManager';
-import CategoryManager from '../components/CategoryManager';
-import EvaluationConfigurationManager from '../components/EvaluationConfigurationManager';
-import LanguageAwareRuleManager from '../components/LanguageAwareRuleManager';
+import { CategoryManager } from '../components/CategoryManager';
+import { EvaluationConfigurationManager } from '../components/EvaluationConfigurationManager';
+import { LanguageAwareRuleManager } from '../components/LanguageAwareRuleManager';
 import AIInstructionsManager from '../components/AIInstructionsManager';
 
 const Settings = () => {
