@@ -1,47 +1,42 @@
-
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Separator } from '@/components/ui/separator';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { 
-  Settings as SettingsIcon, 
-  Save, 
-  Trash2, 
-  RefreshCw,
-  AlertCircle,
-  CheckCircle,
-  Database,
-  HelpCircle,
-  Cpu,
-  FileText
-} from 'lucide-react';
-import { toast } from 'sonner';
-import { useAuthStore } from '../store/authStore';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Switch } from '../components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { useToast } from '../hooks/use-toast';
 import { useUserRole } from '../hooks/useUserRole';
-import { databaseService } from '../services/databaseService';
-import AIInstructionsManager from '../components/AIInstructionsManager';
+import { Settings as SettingsIcon, Trash2, RefreshCw, Database, Clock, ExternalLink, Brain } from 'lucide-react';
 import { useEnhancedSettingsStore } from '../store/enhancedSettingsStore';
-
+import { useSettingsStore } from '../store/settingsStore';
+import { Separator } from '../components/ui/separator';
+import { Alert, AlertDescription } from '../components/ui/alert';
+import { supabase } from '../integrations/supabase/client';
+import AIInstructionsManager from '../components/AIInstructionsManager';
 const Settings = () => {
-  const { user } = useAuthStore();
-  const { isAdmin } = useUserRole();
-  const [isLoading, setIsLoading] = useState(false);
-
-  // Enhanced settings store for GPT parameters
   const {
-    maxTokens,
+    isAdmin
+  } = useUserRole();
+  const {
+    toast
+  } = useToast();
+
+  // Use both stores for backward compatibility
+  const {
+    maxTokens: localMaxTokens,
+    setMaxTokens: setLocalMaxTokens
+  } = useSettingsStore();
+  const {
+    maxTokens: dbMaxTokens,
     dataRetentionDays,
     maxFileSizeMb,
     maxConcurrentTranscriptions,
     autoDeleteEnabled,
-    isLoading: storeLoading,
-    error: storeError,
+    isLoading,
+    error,
     loadSettings,
-    updateMaxTokens,
+    updateMaxTokens: updateDbMaxTokens,
     updateDataRetentionDays,
     updateMaxFileSizeMb,
     updateMaxConcurrentTranscriptions,
@@ -51,340 +46,382 @@ const Settings = () => {
   } = useEnhancedSettingsStore();
 
   // Local state for form inputs
-  const [localMaxTokens, setLocalMaxTokens] = useState<number>(maxTokens);
+  const [localInputMaxTokens, setLocalInputMaxTokens] = useState<number>(localMaxTokens);
   const [localDataRetentionDays, setLocalDataRetentionDays] = useState<number>(dataRetentionDays);
   const [localMaxFileSizeMb, setLocalMaxFileSizeMb] = useState<number>(maxFileSizeMb);
   const [localMaxConcurrentTranscriptions, setLocalMaxConcurrentTranscriptions] = useState<number>(maxConcurrentTranscriptions);
   const [localAutoDeleteEnabled, setLocalAutoDeleteEnabled] = useState<boolean>(autoDeleteEnabled);
-  
+
+  // AI Configuration state
+  const [aiConfidenceThreshold, setAiConfidenceThreshold] = useState<number>(0.8);
+  const [aiMaxTokensGpt5Mini, setAiMaxTokensGpt5Mini] = useState<number>(1000);
+  const [aiMaxTokensGpt5, setAiMaxTokensGpt5] = useState<number>(2000);
+  const [aiTemperature, setAiTemperature] = useState<number>(0.7);
+  const [aiReasoningEffort, setAiReasoningEffort] = useState<string>('medium');
   const [isUpdating, setIsUpdating] = useState(false);
   const [isCleaning, setIsCleaning] = useState(false);
   const [isUpdatingExpirations, setIsUpdatingExpirations] = useState(false);
-
   useEffect(() => {
     if (isAdmin) {
       loadSettings();
+      loadAISettings();
     }
   }, [isAdmin, loadSettings]);
-
   useEffect(() => {
-    setLocalMaxTokens(maxTokens);
+    // Sync between local and database max tokens
+    setLocalInputMaxTokens(Math.max(localMaxTokens, dbMaxTokens));
     setLocalDataRetentionDays(dataRetentionDays);
     setLocalMaxFileSizeMb(maxFileSizeMb);
     setLocalMaxConcurrentTranscriptions(maxConcurrentTranscriptions);
     setLocalAutoDeleteEnabled(autoDeleteEnabled);
-  }, [maxTokens, dataRetentionDays, maxFileSizeMb, maxConcurrentTranscriptions, autoDeleteEnabled]);
-
-  const handleUpdateAllSettings = async () => {
+  }, [localMaxTokens, dbMaxTokens, dataRetentionDays, maxFileSizeMb, maxConcurrentTranscriptions, autoDeleteEnabled]);
+  const loadAISettings = async () => {
+    if (!isAdmin) return;
+    try {
+      const {
+        data,
+        error
+      } = await supabase.from('system_config').select('key, value').in('key', ['ai_confidence_threshold', 'ai_max_tokens_gpt5_mini', 'ai_max_tokens_gpt5', 'ai_temperature', 'ai_reasoning_effort']);
+      if (error) throw error;
+      data?.forEach(({
+        key,
+        value
+      }) => {
+        switch (key) {
+          case 'ai_confidence_threshold':
+            setAiConfidenceThreshold(parseFloat(value) || 0.8);
+            break;
+          case 'ai_max_tokens_gpt5_mini':
+            setAiMaxTokensGpt5Mini(parseInt(value) || 1000);
+            break;
+          case 'ai_max_tokens_gpt5':
+            setAiMaxTokensGpt5(parseInt(value) || 2000);
+            break;
+          case 'ai_temperature':
+            setAiTemperature(parseFloat(value) || 0.7);
+            break;
+          case 'ai_reasoning_effort':
+            setAiReasoningEffort(value || 'medium');
+            break;
+        }
+      });
+    } catch (error) {
+      console.error('Error loading AI settings:', error);
+    }
+  };
+  const updateMaxTokens = async () => {
     setIsUpdating(true);
     try {
-      await Promise.all([
-        updateMaxTokens(localMaxTokens),
-        updateDataRetentionDays(localDataRetentionDays),
-        updateMaxFileSizeMb(localMaxFileSizeMb),
-        updateMaxConcurrentTranscriptions(localMaxConcurrentTranscriptions),
-        updateAutoDeleteEnabled(localAutoDeleteEnabled)
-      ]);
-      
-      toast.success('All settings updated successfully');
+      // Update both local and database stores
+      setLocalMaxTokens(localInputMaxTokens);
+      if (isAdmin) {
+        await updateDbMaxTokens(localInputMaxTokens);
+      }
+      toast({
+        title: "Success",
+        description: "Max tokens setting updated successfully"
+      });
     } catch (error) {
-      console.error('Error updating settings:', error);
-      toast.error('Failed to update settings');
+      toast({
+        title: "Error",
+        description: "Failed to update max tokens setting",
+        variant: "destructive"
+      });
     } finally {
       setIsUpdating(false);
     }
   };
-
-  const handleUpdateExpirationDates = async () => {
+  const handleUpdateAdminSettings = async () => {
+    if (!isAdmin) return;
+    setIsUpdating(true);
     try {
-      setIsUpdatingExpirations(true);
-      const updatedCount = await updateDialogExpirationDates();
-      toast.success(`Updated expiration dates for ${updatedCount} dialogs`);
+      await Promise.all([updateDataRetentionDays(localDataRetentionDays), updateMaxFileSizeMb(localMaxFileSizeMb), updateMaxConcurrentTranscriptions(localMaxConcurrentTranscriptions), updateAutoDeleteEnabled(localAutoDeleteEnabled)]);
+      toast({
+        title: "Success",
+        description: "Admin settings updated successfully"
+      });
     } catch (error) {
-      console.error('Error updating expiration dates:', error);
-      toast.error('Failed to update expiration dates');
+      toast({
+        title: "Error",
+        description: "Failed to update admin settings",
+        variant: "destructive"
+      });
     } finally {
-      setIsUpdatingExpirations(false);
+      setIsUpdating(false);
     }
   };
-
-  const handleCleanupExpiredData = async () => {
+  const handleUpdateAISettings = async () => {
+    if (!isAdmin) return;
+    setIsUpdating(true);
     try {
-      setIsCleaning(true);
-      const deletedCount = await cleanupExpiredDialogs();
-      toast.success(`Cleaned up ${deletedCount} expired dialogs`);
+      const updates = [{
+        key: 'ai_confidence_threshold',
+        value: aiConfidenceThreshold.toString()
+      }, {
+        key: 'ai_max_tokens_gpt5_mini',
+        value: aiMaxTokensGpt5Mini.toString()
+      }, {
+        key: 'ai_max_tokens_gpt5',
+        value: aiMaxTokensGpt5.toString()
+      }, {
+        key: 'ai_temperature',
+        value: aiTemperature.toString()
+      }, {
+        key: 'ai_reasoning_effort',
+        value: aiReasoningEffort
+      }];
+      for (const update of updates) {
+        const {
+          error
+        } = await supabase.from('system_config').update({
+          value: update.value
+        }).eq('key', update.key);
+        if (error) throw error;
+      }
+      toast({
+        title: "Success",
+        description: "AI settings updated successfully"
+      });
     } catch (error) {
-      console.error('Error cleaning up expired data:', error);
-      toast.error('Failed to cleanup expired data');
+      toast({
+        title: "Error",
+        description: "Failed to update AI settings",
+        variant: "destructive"
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+  const handleCleanupExpiredDialogs = async () => {
+    setIsCleaning(true);
+    try {
+      const deletedCount = await cleanupExpiredDialogs();
+      toast({
+        title: "Cleanup Complete",
+        description: `Deleted ${deletedCount} expired dialogs`
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to cleanup expired dialogs",
+        variant: "destructive"
+      });
     } finally {
       setIsCleaning(false);
     }
   };
-
-  if (!isAdmin) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <AlertCircle className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Access Restricted</h3>
-              <p className="text-muted-foreground">
-                You need admin privileges to access the settings page.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (storeLoading) {
-    return (
-      <div className="container mx-auto px-4 py-8">
+  const handleUpdateExpirationDates = async () => {
+    setIsUpdatingExpirations(true);
+    try {
+      const updatedCount = await updateDialogExpirationDates();
+      toast({
+        title: "Update Complete",
+        description: `Updated expiration dates for ${updatedCount} dialogs`
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update expiration dates",
+        variant: "destructive"
+      });
+    } finally {
+      setIsUpdatingExpirations(false);
+    }
+  };
+  if (!isAdmin && isLoading) {
+    return <div className="container mx-auto px-4 py-8">
         <div className="flex items-center justify-center">
           <RefreshCw className="h-6 w-6 animate-spin" />
-          <span className="ml-2">Loading settings...</span>
+          
         </div>
-      </div>
-    );
+      </div>;
   }
-
-  return (
-    <TooltipProvider>
-      <div className="container mx-auto px-4 py-8 space-y-6">
-        {/* Header */}
-        <div className="flex items-center gap-3">
-          <SettingsIcon className="h-8 w-8" />
-          <div>
-            <h1 className="text-3xl font-bold">Admin Settings</h1>
-            <p className="text-muted-foreground">
-              Configure system settings and manage application behavior
-            </p>
-          </div>
+  return <div className="container mx-auto px-4 py-8">
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div className="flex items-center space-x-2 mb-6">
+          <SettingsIcon className="h-6 w-6" />
+          <h1 className="text-2xl font-bold">
+            {isAdmin ? 'Admin Settings' : 'User Settings'}
+          </h1>
         </div>
 
-        {storeError && (
-          <Card className="border-destructive">
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-2 text-destructive">
-                <AlertCircle className="h-4 w-4" />
-                <span>{storeError}</span>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {error && <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>}
 
-        {/* AI System Configuration */}
+        {/* OpenAI Configuration - Available to all users */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Cpu className="h-5 w-5" />
-              AI System Configuration
-            </CardTitle>
-            <CardDescription>
-              Configure OpenAI parameters and system limitations
-            </CardDescription>
+            <CardTitle>OpenAI Configuration</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <Label htmlFor="max-tokens">Max Output Tokens</Label>
-                <Input
-                  id="max-tokens"
-                  type="number"
-                  min="100"
-                  max="4000"
-                  value={localMaxTokens}
-                  onChange={(e) => setLocalMaxTokens(parseInt(e.target.value) || 1000)}
-                  placeholder="1000"
-                />
-                <p className="text-sm text-muted-foreground mt-1">
-                  Maximum number of tokens for AI response (100-4000)
-                </p>
-              </div>
-
-              <div>
-                <Label htmlFor="max-file-size">Max File Size (MB)</Label>
-                <Input
-                  id="max-file-size"
-                  type="number"
-                  min="1"
-                  max="1000"
-                  value={localMaxFileSizeMb}
-                  onChange={(e) => setLocalMaxFileSizeMb(parseInt(e.target.value) || 100)}
-                  placeholder="100"
-                />
-                <p className="text-sm text-muted-foreground mt-1">
-                  Maximum file size allowed for uploads (1-1000 MB)
-                </p>
-              </div>
-
-              <div>
-                <Label htmlFor="max-concurrent">Max Concurrent Transcriptions</Label>
-                <Input
-                  id="max-concurrent"
-                  type="number"
-                  min="1"
-                  max="20"
-                  value={localMaxConcurrentTranscriptions}
-                  onChange={(e) => setLocalMaxConcurrentTranscriptions(parseInt(e.target.value) || 5)}
-                  placeholder="5"
-                />
-                <p className="text-sm text-muted-foreground mt-1">
-                  Maximum number of transcriptions that can run simultaneously (1-20)
-                </p>
-              </div>
+          <CardContent className="space-y-4">
+            <div>
+              <Label htmlFor="max-tokens">Max Output Tokens</Label>
+              <Input id="max-tokens" type="number" min="100" max="4000" value={localInputMaxTokens} onChange={e => setLocalInputMaxTokens(parseInt(e.target.value) || 1000)} placeholder="1000" />
+              <p className="text-sm text-muted-foreground mt-1">
+                Maximum number of tokens for OpenAI response (100-4000)
+              </p>
             </div>
+            <Button onClick={updateMaxTokens} disabled={isUpdating}>
+              {isUpdating ? 'Updating...' : 'Update Max Tokens'}
+            </Button>
           </CardContent>
         </Card>
 
-        {/* AI Instructions Management */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5" />
-              AI Instructions Management
-            </CardTitle>
-            <CardDescription>
-              Manage AI system instructions and evaluation rules
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+        {/* Admin-only settings */}
+        {isAdmin && <>
+            {/* AI Configuration for Admins */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  
+                  AI Analysis Configuration
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="ai-confidence">Confidence Threshold</Label>
+                    <Input id="ai-confidence" type="number" min="0.1" max="1.0" step="0.1" value={aiConfidenceThreshold} onChange={e => setAiConfidenceThreshold(parseFloat(e.target.value) || 0.8)} />
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Switch to GPT-5 if confidence below this value (0.1-1.0)
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="ai-temperature">Temperature</Label>
+                    <Input id="ai-temperature" type="number" min="0.0" max="2.0" step="0.1" value={aiTemperature} onChange={e => setAiTemperature(parseFloat(e.target.value) || 0.7)} />
+                    
+                  </div>
+
+                  <div>
+                    <Label htmlFor="ai-tokens-mini">GPT-5 Mini Max Tokens</Label>
+                    <Input id="ai-tokens-mini" type="number" min="100" max="4000" value={aiMaxTokensGpt5Mini} onChange={e => setAiMaxTokensGpt5Mini(parseInt(e.target.value) || 1000)} />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="ai-tokens-full">GPT-5 Max Tokens</Label>
+                    <Input id="ai-tokens-full" type="number" min="100" max="4000" value={aiMaxTokensGpt5} onChange={e => setAiMaxTokensGpt5(parseInt(e.target.value) || 2000)} />
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="ai-reasoning">Reasoning Effort</Label>
+                  <Select value={aiReasoningEffort} onValueChange={setAiReasoningEffort}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  
+                </div>
+
+                <Button onClick={handleUpdateAISettings} disabled={isUpdating}>
+                  {isUpdating ? 'Updating...' : 'Update AI Settings'}
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* AI Instructions Management */}
             <AIInstructionsManager />
-          </CardContent>
-        </Card>
 
-        {/* Data Retention & Storage */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Database className="h-5 w-5" />
-              Data Retention & Storage
-            </CardTitle>
-            <CardDescription>
-              Configure data retention policies and manage storage
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="retention-days">Data Retention (Days)</Label>
-                <Input
-                  id="retention-days"
-                  type="number"
-                  value={localDataRetentionDays}
-                  onChange={(e) => setLocalDataRetentionDays(parseInt(e.target.value) || 30)}
-                  min="1"
-                  max="365"
-                  className="w-32"
-                />
-                <p className="text-sm text-muted-foreground mt-1">
-                  Number of days to keep dialog data before expiration (1-365 days)
-                </p>
-              </div>
+            {/* Data Retention Configuration */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Database className="h-5 w-5" />
+                  Data Retention & Storage
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label htmlFor="retention-days">Data Retention Period (Days)</Label>
+                  <Input id="retention-days" type="number" min="1" max="365" value={localDataRetentionDays} onChange={e => setLocalDataRetentionDays(parseInt(e.target.value) || 30)} placeholder="30" />
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Number of days to retain dialog data before automatic deletion (1-365 days)
+                  </p>
+                </div>
 
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="auto-delete"
-                  checked={localAutoDeleteEnabled}
-                  onCheckedChange={setLocalAutoDeleteEnabled}
-                />
-                <Label htmlFor="auto-delete">Enable Automatic Cleanup</Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <HelpCircle className="h-4 w-4 text-muted-foreground" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Automatically delete expired dialogs based on retention period</p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-            </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label htmlFor="auto-delete">Automatic Data Cleanup</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Automatically delete expired dialogs based on retention period
+                    </p>
+                  </div>
+                  <Switch id="auto-delete" checked={localAutoDeleteEnabled} onCheckedChange={setLocalAutoDeleteEnabled} />
+                </div>
 
-            <Separator />
+                <Separator />
 
-            <div className="space-y-4">
-              <h4 className="text-sm font-semibold">Data Management Actions</h4>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      onClick={handleUpdateExpirationDates}
-                      disabled={isUpdatingExpirations}
-                      className="flex items-center gap-2"
-                    >
-                      {isUpdatingExpirations ? (
-                        <RefreshCw className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <RefreshCw className="h-4 w-4" />
-                      )}
-                      Update Expiration Dates
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Updates expiration dates for all existing dialogs based on current retention policy</p>
-                  </TooltipContent>
-                </Tooltip>
+                <div className="flex gap-2">
+                  <Button onClick={handleUpdateExpirationDates} disabled={isUpdatingExpirations} variant="outline" size="sm">
+                    {isUpdatingExpirations ? <>
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        Updating...
+                      </> : <>
+                        <Clock className="h-4 w-4 mr-2" />
+                        Update Expiration Dates
+                      </>}
+                  </Button>
+                  
+                  <Button onClick={handleCleanupExpiredDialogs} disabled={isCleaning} variant="outline" size="sm">
+                    {isCleaning ? <>
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        Cleaning...
+                      </> : <>
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Cleanup Expired Data
+                      </>}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
 
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="destructive"
-                      onClick={handleCleanupExpiredData}
-                      disabled={isCleaning}
-                      className="flex items-center gap-2"
-                    >
-                      {isCleaning ? (
-                        <RefreshCw className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-4 w-4" />
-                      )}
-                      Cleanup Expired Data
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Manually deletes dialogs that have passed their expiration date</p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            {/* System Configuration */}
+            <Card>
+              <CardHeader>
+                <CardTitle>System Configuration</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label htmlFor="max-file-size">Max File Size (MB)</Label>
+                  <Input id="max-file-size" type="number" min="1" max="1000" value={localMaxFileSizeMb} onChange={e => setLocalMaxFileSizeMb(parseInt(e.target.value) || 100)} placeholder="100" />
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Maximum file size allowed for uploads (1-1000 MB)
+                  </p>
+                </div>
 
-        {/* Save All Settings Button */}
-        <Button 
-          onClick={handleUpdateAllSettings} 
-          disabled={isUpdating} 
-          className="w-full"
-          size="lg"
-        >
-          {isUpdating ? (
-            <>
-              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-              Updating Settings...
-            </>
-          ) : (
-            <>
-              <Save className="h-4 w-4 mr-2" />
-              Save All Settings
-            </>
-          )}
-        </Button>
+                <div>
+                  <Label htmlFor="max-concurrent">Max Concurrent Transcriptions</Label>
+                  <Input id="max-concurrent" type="number" min="1" max="20" value={localMaxConcurrentTranscriptions} onChange={e => setLocalMaxConcurrentTranscriptions(parseInt(e.target.value) || 5)} placeholder="5" />
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Maximum number of transcriptions that can run simultaneously (1-20)
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
 
-        {/* Status Indicator */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-              <CheckCircle className="h-4 w-4 text-green-500" />
-              Settings page loaded successfully
-            </div>
-          </CardContent>
-        </Card>
+            {/* Save Admin Settings Button */}
+            <Button onClick={handleUpdateAdminSettings} disabled={isUpdating} className="w-full">
+              {isUpdating ? <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Updating Settings...
+                </> : 'Save Admin Settings'}
+            </Button>
+          </>}
+
+        {!isAdmin && <Alert>
+            <ExternalLink className="h-4 w-4" />
+            <AlertDescription>
+              You have user-level access. Additional administrative settings are available to admin users only.
+            </AlertDescription>
+          </Alert>}
       </div>
-    </TooltipProvider>
-  );
+    </div>;
 };
-
 export default Settings;
