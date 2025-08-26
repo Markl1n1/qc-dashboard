@@ -330,7 +330,7 @@ const DialogDetail = () => {
                             <div className="text-sm font-medium capitalize mb-1">
                               {category.replace(/_/g, ' ')}
                             </div>
-                            <div className="text-2xl font-bold">{score}%</div>
+                            <div className="text-2xl font-bold">{String(score)}%</div>
                           </div>
                         ))}
                       </div>
