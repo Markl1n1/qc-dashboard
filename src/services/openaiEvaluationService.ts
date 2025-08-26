@@ -1,6 +1,7 @@
 
 import { supabase } from '../integrations/supabase/client';
 import { logger } from './loggingService';
+import { OpenAIEvaluationProgress } from '../types/openaiEvaluation';
 
 interface EvaluationRequest {
   transcript: string;
@@ -19,6 +20,119 @@ interface EvaluationResult {
 }
 
 export class OpenAIEvaluationService {
+  private progressCallback?: (progress: OpenAIEvaluationProgress) => void;
+
+  /**
+   * Set progress callback for evaluation updates
+   */
+  setProgressCallback(callback: (progress: OpenAIEvaluationProgress) => void): void {
+    this.progressCallback = callback;
+  }
+
+  /**
+   * Evaluate a conversation using OpenAI
+   */
+  async evaluateConversation(utterances: any[], model: string = 'gpt-4'): Promise<any> {
+    if (!utterances || utterances.length === 0) {
+      throw new Error('No utterances provided for evaluation');
+    }
+
+    logger.info('Starting OpenAI conversation evaluation', {
+      utteranceCount: utterances.length,
+      model
+    });
+
+    this.progressCallback?.({
+      stage: 'initializing',
+      progress: 10,
+      message: 'Preparing conversation for analysis...',
+      currentStep: 'Processing utterances'
+    });
+
+    try {
+      const startTime = Date.now();
+
+      // Convert utterances to transcript format
+      const transcript = utterances.map(u => `${u.speaker}: ${u.text}`).join('\n');
+
+      this.progressCallback?.({
+        stage: 'analyzing',
+        progress: 30,
+        message: 'Analyzing conversation with AI...',
+        currentStep: 'Sending to OpenAI API'
+      });
+
+      const { data, error } = await supabase.functions
+        .invoke('openai-evaluate', {
+          body: {
+            transcript,
+            criteria: ['professionalism', 'clarity', 'helpfulness', 'resolution'],
+            context: 'Customer service conversation analysis',
+            language: 'en',
+            model,
+            temperature: 0.3
+          }
+        });
+
+      if (error) {
+        logger.error('OpenAI evaluation failed', error, {
+          utteranceCount: utterances.length,
+          model
+        });
+        this.progressCallback?.({
+          stage: 'error',
+          progress: 0,
+          message: `Evaluation failed: ${error.message}`
+        });
+        throw new Error(`Evaluation failed: ${error.message}`);
+      }
+
+      this.progressCallback?.({
+        stage: 'processing_response',
+        progress: 80,
+        message: 'Processing analysis results...',
+        currentStep: 'Formatting response'
+      });
+
+      const duration = Date.now() - startTime;
+      logger.info('OpenAI conversation evaluation completed', {
+        duration: `${duration}ms`,
+        model
+      });
+
+      this.progressCallback?.({
+        stage: 'complete',
+        progress: 100,
+        message: 'Analysis completed successfully!'
+      });
+
+      return {
+        overallScore: data.overall_score || 0,
+        categoryScores: data.scores || {},
+        mistakes: data.mistakes || [],
+        recommendations: data.suggestions || [],
+        summary: data.feedback || '',
+        confidence: 85,
+        processingTime: duration,
+        tokenUsage: data.metadata?.token_usage || { input: 0, output: 0 },
+        modelUsed: model,
+        analysisId: data.id || Math.random().toString(36)
+      };
+
+    } catch (error) {
+      logger.error('OpenAI conversation evaluation service error', error as Error, {
+        utteranceCount: utterances.length,
+        model
+      });
+      this.progressCallback?.({
+        stage: 'error',
+        progress: 0,
+        message: `Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+      throw error;
+    }
+  }
+
   /**
    * Evaluate a transcript using OpenAI
    */
@@ -87,10 +201,10 @@ export class OpenAIEvaluationService {
 
     try {
       const { data, error } = await supabase
-        .from('evaluations')
+        .from('dialog_analysis')
         .select('*')
         .eq('dialog_id', dialogId)
-        .eq('evaluation_type', 'openai')
+        .eq('analysis_type', 'openai')
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -100,11 +214,11 @@ export class OpenAIEvaluationService {
 
       return data.map(item => ({
         id: item.id,
-        scores: item.scores || {},
-        feedback: item.feedback || '',
-        suggestions: item.suggestions || [],
+        scores: item.category_scores || {},
+        feedback: item.summary || '',
+        suggestions: item.recommendations || [],
         overall_score: item.overall_score || 0,
-        metadata: item.metadata
+        metadata: item.token_usage
       }));
 
     } catch (error) {

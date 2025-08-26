@@ -29,18 +29,7 @@ export class TranscriptionService {
       diarize?: boolean;
     } = {}
   ): Promise<TranscriptionResult> {
-    if (!file) {
-      throw new Error('File is required for transcription');
-    }
-
-    if (file.size > 100 * 1024 * 1024) { // 100MB limit
-      throw new Error('File size exceeds maximum limit of 100MB');
-    }
-
-    const allowedTypes = ['audio/wav', 'audio/mp3', 'audio/mpeg', 'audio/mp4', 'audio/m4a'];
-    if (!allowedTypes.includes(file.type)) {
-      throw new Error(`Unsupported file type: ${file.type}. Supported types: ${allowedTypes.join(', ')}`);
-    }
+    this.validateFile(file);
 
     logger.info('Starting transcription', {
       fileName: file.name,
@@ -137,7 +126,7 @@ export class TranscriptionService {
 
     try {
       const { data, error } = await supabase
-        .from('transcriptions')
+        .from('dialog_transcriptions')
         .select('*')
         .eq('id', transcriptionId)
         .single();
@@ -147,19 +136,21 @@ export class TranscriptionService {
         throw new Error(`Failed to get status: ${error.message}`);
       }
 
+      // Map the stored data to expected format
+      const status = this.mapTranscriptionStatus(data);
+      
       return {
-        status: data.status,
-        result: data.status === 'completed' ? {
+        status,
+        result: status === 'completed' ? {
           id: data.id,
-          transcript: data.transcript,
-          confidence: data.confidence,
-          speaker_labels: data.speaker_labels,
-          metadata: data.metadata
+          transcript: data.content || '',
+          confidence: data.confidence || 0,
+          speaker_labels: [],
+          metadata: {}
         } : undefined,
-        error: data.status === 'failed' ? {
-          message: data.error_message || 'Transcription failed',
-          code: data.error_code,
-          details: data.error_details
+        error: status === 'failed' ? {
+          message: 'Transcription failed',
+          code: 'TRANSCRIPTION_ERROR'
         } : undefined
       };
 
@@ -167,6 +158,29 @@ export class TranscriptionService {
       logger.error('Error getting transcription status', error as Error, { transcriptionId });
       throw error;
     }
+  }
+
+  private validateFile(file: File): void {
+    if (!file) {
+      throw new Error('File is required for transcription');
+    }
+
+    if (file.size > 100 * 1024 * 1024) { // 100MB limit
+      throw new Error('File size exceeds maximum limit of 100MB');
+    }
+
+    const allowedTypes = ['audio/wav', 'audio/mp3', 'audio/mpeg', 'audio/mp4', 'audio/m4a'];
+    if (!allowedTypes.includes(file.type)) {
+      throw new Error(`Unsupported file type: ${file.type}. Supported types: ${allowedTypes.join(', ')}`);
+    }
+  }
+
+  private mapTranscriptionStatus(data: any): 'pending' | 'processing' | 'completed' | 'failed' {
+    // Map database status to expected status
+    if (data.content && data.content.trim()) {
+      return 'completed';
+    }
+    return 'pending';
   }
 }
 
