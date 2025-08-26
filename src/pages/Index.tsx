@@ -9,20 +9,12 @@ import { formatDistanceToNow } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { toast } from "sonner";
 import DialogFilters from '@/components/DialogFilters';
-
-interface Dialog {
-  id: string;
-  filename: string;
-  status: string;
-  created_at: string;
-  duration?: number;
-  audio_url?: string;
-}
+import { Dialog as TypesDialog } from '@/types';
 
 const Index = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [dialogs, setDialogs] = useState<Dialog[]>([]);
+  const [dialogs, setDialogs] = useState<TypesDialog[]>([]);
   const [filters, setFilters] = useState({
     searchTerm: '',
     statusFilter: 'all',
@@ -54,7 +46,7 @@ const Index = () => {
   const filteredDialogs = dialogs.filter((dialog) => {
     const statusFilter = filters.statusFilter === 'all' || dialog.status.toLowerCase() === filters.statusFilter.toLowerCase();
     const searchFilter = !filters.searchTerm ||
-      dialog.filename.toLowerCase().includes(filters.searchTerm.toLowerCase());
+      dialog.fileName.toLowerCase().includes(filters.searchTerm.toLowerCase());
 
     return statusFilter && searchFilter;
   });
@@ -63,21 +55,13 @@ const Index = () => {
     handleLoadDialogs();
   };
 
-  const handleView = (dialog: Dialog) => {
+  const handleView = (dialog: TypesDialog) => {
     navigate(`/dialog/${dialog.id}`);
   };
 
-  const handleDownload = (dialog: Dialog) => {
-    if (dialog.audio_url) {
-      const link = document.createElement('a');
-      link.href = dialog.audio_url;
-      link.download = dialog.filename || 'audio.wav';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } else {
-      toast.error('Audio file not available for download.');
-    }
+  const handleDownload = (dialog: TypesDialog) => {
+    // Note: This would need to be implemented with proper audio URL handling
+    toast.error('Audio download not implemented yet.');
   };
 
   const handleDelete = async (dialogId: string) => {
@@ -188,7 +172,7 @@ const Index = () => {
 
                     <div className="min-w-0 flex-1 flex flex-col justify-center">
                       <div className="flex items-center gap-3 mb-1">
-                        <h3 className="font-semibold text-lg truncate">{dialog.filename}</h3>
+                        <h3 className="font-semibold text-lg truncate">{dialog.fileName}</h3>
                         <Badge variant={getStatusBadgeVariant(dialog.status)}>
                           {capitalizeStatus(dialog.status)}
                         </Badge>
@@ -197,15 +181,8 @@ const Index = () => {
                       <div className="flex items-center gap-4 text-sm text-muted-foreground">
                         <div className="flex items-center gap-1">
                           <Calendar className="h-4 w-4" />
-                          <span>{formatDistanceToNow(new Date(dialog.created_at), { addSuffix: true })}</span>
+                          <span>{formatDistanceToNow(new Date(dialog.uploadDate), { addSuffix: true })}</span>
                         </div>
-
-                        {dialog.duration && (
-                          <div className="flex items-center gap-1">
-                            <Clock className="h-4 w-4" />
-                            <span>{Math.round(dialog.duration)}s</span>
-                          </div>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -220,15 +197,13 @@ const Index = () => {
                       <Eye className="h-4 w-4" />
                     </Button>
 
-                    {dialog.audio_url && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDownload(dialog)}
-                      >
-                        <Download className="h-4 w-4" />
-                      </Button>
-                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDownload(dialog)}
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
 
                     <Button
                       variant="outline"

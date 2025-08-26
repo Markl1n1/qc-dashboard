@@ -23,7 +23,6 @@ import { useAuthStore } from '../store/authStore';
 import { useUserRole } from '../hooks/useUserRole';
 import { supabase } from '../integrations/supabase/client';
 import { databaseService } from '../services/databaseService';
-import ApiKeyManager from '../components/ApiKeyManager';
 import { CategoryManager } from '../components/CategoryManager';
 import { EvaluationConfigurationManager } from '../components/EvaluationConfigurationManager';
 import { LanguageAwareRuleManager } from '../components/LanguageAwareRuleManager';
@@ -138,7 +137,7 @@ const Settings = () => {
         </Card>
       </div>
     );
-  }
+  };
 
   return (
     <TooltipProvider>
@@ -153,19 +152,6 @@ const Settings = () => {
             </p>
           </div>
         </div>
-
-        {/* API Configuration */}
-        <Card>
-          <CardHeader>
-            <CardTitle>API Configuration</CardTitle>
-            <CardDescription>
-              Manage API keys for external services
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ApiKeyManager />
-          </CardContent>
-        </Card>
 
         {/* AI Analysis Configuration */}
         <Card>

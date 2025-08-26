@@ -8,7 +8,6 @@ import Upload from './pages/Upload';
 import DialogDetail from './pages/DialogDetail';
 import Settings from './pages/Settings';
 import EnhancedSettings from './pages/EnhancedSettings';
-import EnhancedTranscription from './pages/EnhancedTranscription';
 import Auth from './pages/Auth';
 import Login from './pages/Login';
 import EmailConfirmed from './pages/EmailConfirmed';
@@ -66,13 +65,6 @@ function App() {
             <ProtectedRoute>
               <Layout>
                 <EnhancedSettings />
-              </Layout>
-            </ProtectedRoute>
-          } />
-          <Route path="/enhanced-transcription" element={
-            <ProtectedRoute>
-              <Layout>
-                <EnhancedTranscription />
               </Layout>
             </ProtectedRoute>
           } />
