@@ -1,118 +1,88 @@
 
-import React, { useEffect, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
-import { Switch } from '../components/ui/switch';
-import { Separator } from '../components/ui/separator';
-import { Badge } from '../components/ui/badge';
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
   Settings as SettingsIcon, 
+  Save, 
   Trash2, 
-  RefreshCw, 
-  HardDrive, 
-  Clock,
-  Database,
-  FileText,
-  AlertTriangle,
+  RefreshCw,
+  AlertCircle,
   CheckCircle,
-  Info
+  Database,
+  HelpCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useSettingsStore } from '../store/settingsStore';
+import { useAuthStore } from '../store/authStore';
+import { useUserRole } from '../hooks/useUserRole';
+import { supabase } from '../integrations/supabase/client';
+import { databaseService } from '../services/databaseService';
+import ApiKeyManager from '../components/ApiKeyManager';
 import { CategoryManager } from '../components/CategoryManager';
+import { EvaluationConfigurationManager } from '../components/EvaluationConfigurationManager';
 import { LanguageAwareRuleManager } from '../components/LanguageAwareRuleManager';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
-import { useDialogStore } from '../store/dialogStore';
-import { EvaluationCategory } from '../types/evaluationCategories';
+import AIInstructionsManager from '../components/AIInstructionsManager';
+import { EvaluationCategory, EvaluationConfiguration } from '../types/lemurEvaluation';
+import { evaluationCategoriesService } from '../services/evaluationCategoriesService';
 
 const Settings = () => {
-  const { maxTokens, setMaxTokens } = useSettingsStore();
-  const { dialogs } = useDialogStore();
-
-  // Local state for form inputs
-  const [localMaxTokens, setLocalMaxTokens] = useState(maxTokens);
-  const [dataRetentionDays, setDataRetentionDays] = useState(30);
-  const [maxFileSizeMb, setMaxFileSizeMb] = useState(100);
-  const [maxConcurrentTranscriptions, setMaxConcurrentTranscriptions] = useState(5);
-  const [autoDeleteEnabled, setAutoDeleteEnabled] = useState(false);
+  const { user } = useAuthStore();
+  const { isAdmin } = useUserRole();
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  // Category management state
+  // Data Retention Settings
+  const [dataRetentionDays, setDataRetentionDays] = useState('30');
+  const [autoDeleteEnabled, setAutoDeleteEnabled] = useState(false);
+  const [isUpdatingRetention, setIsUpdatingRetention] = useState(false);
+  const [isCleaningUp, setIsCleaningUp] = useState(false);
+
+  // Categories state
   const [categories, setCategories] = useState<EvaluationCategory[]>([]);
 
   useEffect(() => {
-    loadCategories();
-  }, []);
+    if (isAdmin) {
+      loadSystemConfig();
+      loadCategories();
+    }
+  }, [isAdmin]);
 
-  useEffect(() => {
-    setLocalMaxTokens(maxTokens);
-  }, [maxTokens]);
-
-  const loadCategories = async () => {
-    // Mock categories for now - in real app this would come from a service
-    const mockCategories: EvaluationCategory[] = [
-      {
-        id: '1',
-        name: 'Sales',
-        type: 'positive',
-        weight: 8,
-        enabled: true,
-        rules: []
-      },
-      {
-        id: '2',
-        name: 'Support',
-        type: 'positive',
-        weight: 7,
-        enabled: true,
-        rules: []
-      },
-      {
-        id: '3',
-        name: 'Complaint',
-        type: 'negative',
-        weight: 9,
-        enabled: true,
-        rules: []
-      },
-      {
-        id: '4',
-        name: 'General',
-        type: 'positive',
-        weight: 5,
-        enabled: true,
-        rules: []
-      }
-    ];
-    setCategories(mockCategories);
-  };
-
-  const handleSaveSettings = async () => {
+  const loadSystemConfig = async () => {
     try {
       setIsLoading(true);
-      setMaxTokens(localMaxTokens);
-      toast.success('Settings saved successfully');
+      const config = await databaseService.getAllSystemConfig();
+      
+      setDataRetentionDays(config.data_retention_days || '30');
+      setAutoDeleteEnabled(config.auto_delete_enabled === 'true');
     } catch (error) {
-      console.error('Error saving settings:', error);
-      toast.error('Failed to save settings');
-      setError('Failed to save settings');
+      console.error('Error loading system config:', error);
+      toast.error('Failed to load system configuration');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleCleanupExpiredDialogs = async () => {
+  const loadCategories = () => {
+    const loadedCategories = evaluationCategoriesService.getCategories();
+    setCategories(loadedCategories);
+  };
+
+  const saveDataRetentionSettings = async () => {
     try {
       setIsLoading(true);
-      // Mock cleanup
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      toast.success('Cleaned up 0 expired dialogs');
+      
+      await databaseService.updateSystemConfig('data_retention_days', dataRetentionDays);
+      await databaseService.updateSystemConfig('auto_delete_enabled', autoDeleteEnabled.toString());
+      
+      toast.success('Data retention settings saved successfully');
     } catch (error) {
-      console.error('Error cleaning up dialogs:', error);
-      toast.error('Failed to cleanup expired dialogs');
+      console.error('Error saving data retention settings:', error);
+      toast.error('Failed to save data retention settings');
     } finally {
       setIsLoading(false);
     }
@@ -120,231 +90,247 @@ const Settings = () => {
 
   const handleUpdateExpirationDates = async () => {
     try {
-      setIsLoading(true);
-      // Mock update
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      toast.success('Updated expiration dates for 0 dialogs');
+      setIsUpdatingRetention(true);
+      const updatedCount = await databaseService.updateDialogExpirationDates();
+      toast.success(`Updated expiration dates for ${updatedCount} dialogs`);
     } catch (error) {
       console.error('Error updating expiration dates:', error);
       toast.error('Failed to update expiration dates');
     } finally {
-      setIsLoading(false);
+      setIsUpdatingRetention(false);
     }
   };
 
-  const onCategoriesChange = (newCategories: EvaluationCategory[]) => {
-    setCategories(newCategories);
+  const handleCleanupExpiredData = async () => {
+    try {
+      setIsCleaningUp(true);
+      const deletedCount = await databaseService.cleanupExpiredDialogs();
+      toast.success(`Cleaned up ${deletedCount} expired dialogs`);
+    } catch (error) {
+      console.error('Error cleaning up expired data:', error);
+      toast.error('Failed to cleanup expired data');
+    } finally {
+      setIsCleaningUp(false);
+    }
   };
 
-  return (
-    <div className="container mx-auto px-4 py-8 space-y-6">
-      <div className="flex items-center gap-3 mb-6">
-        <SettingsIcon className="h-8 w-8" />
-        <div>
-          <h1 className="text-3xl font-bold">Admin Settings</h1>
-          <p className="text-muted-foreground">Configure system settings and preferences</p>
-        </div>
-      </div>
+  const handleConfigurationSave = (config: EvaluationConfiguration) => {
+    toast.success(`Configuration "${config.name}" saved successfully`);
+  };
 
-      {error && (
-        <Card className="border-destructive">
+  const handleCategoriesChange = (updatedCategories: EvaluationCategory[]) => {
+    setCategories(updatedCategories);
+  };
+
+  if (!isAdmin) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-destructive" />
-              <p className="text-destructive">{error}</p>
+            <div className="text-center">
+              <AlertCircle className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2">Access Restricted</h3>
+              <p className="text-muted-foreground">
+                You need admin privileges to access the settings page.
+              </p>
             </div>
           </CardContent>
         </Card>
-      )}
+      </div>
+    );
+  }
 
-      {/* System Configuration */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <SettingsIcon className="h-5 w-5" />
-            System Configuration
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label htmlFor="maxTokens">Max Tokens per Analysis</Label>
-              <Input
-                id="maxTokens"
-                type="number"
-                value={localMaxTokens}
-                onChange={(e) => setLocalMaxTokens(Number(e.target.value))}
-                min={100}
-                max={10000}
-              />
-              <p className="text-sm text-muted-foreground">
-                Maximum tokens to use for AI analysis per dialog
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="maxFileSizeMb">Max File Size (MB)</Label>
-              <Input
-                id="maxFileSizeMb"
-                type="number"
-                value={maxFileSizeMb}
-                onChange={(e) => setMaxFileSizeMb(Number(e.target.value))}
-                min={1}
-                max={500}
-              />
-              <p className="text-sm text-muted-foreground">
-                Maximum allowed file size for uploads
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="dataRetentionDays">Data Retention (Days)</Label>
-              <Input
-                id="dataRetentionDays"
-                type="number"
-                value={dataRetentionDays}
-                onChange={(e) => setDataRetentionDays(Number(e.target.value))}
-                min={1}
-                max={365}
-              />
-              <p className="text-sm text-muted-foreground">
-                How long to keep dialog data before automatic deletion
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="maxConcurrentTranscriptions">Max Concurrent Transcriptions</Label>
-              <Input
-                id="maxConcurrentTranscriptions"
-                type="number"
-                value={maxConcurrentTranscriptions}
-                onChange={(e) => setMaxConcurrentTranscriptions(Number(e.target.value))}
-                min={1}
-                max={20}
-              />
-              <p className="text-sm text-muted-foreground">
-                Maximum number of simultaneous transcriptions
-              </p>
-            </div>
+  return (
+    <TooltipProvider>
+      <div className="container mx-auto px-4 py-8 space-y-6">
+        {/* Header */}
+        <div className="flex items-center gap-3">
+          <SettingsIcon className="h-8 w-8" />
+          <div>
+            <h1 className="text-3xl font-bold">Admin Settings</h1>
+            <p className="text-muted-foreground">
+              Configure system settings and manage application behavior
+            </p>
           </div>
+        </div>
 
-          <Separator />
+        {/* API Configuration */}
+        <Card>
+          <CardHeader>
+            <CardTitle>API Configuration</CardTitle>
+            <CardDescription>
+              Manage API keys for external services
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ApiKeyManager />
+          </CardContent>
+        </Card>
 
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <Label>Auto-Delete Expired Dialogs</Label>
-              <p className="text-sm text-muted-foreground">
-                Automatically delete dialogs after retention period
-              </p>
-            </div>
-            <Switch
-              checked={autoDeleteEnabled}
-              onCheckedChange={setAutoDeleteEnabled}
-              disabled={isLoading}
-            />
-          </div>
+        {/* AI Analysis Configuration */}
+        <Card>
+          <CardHeader>
+            <CardTitle>AI Analysis Configuration</CardTitle>
+            <CardDescription>
+              Configure AI evaluation parameters and thresholds
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <EvaluationConfigurationManager onConfigurationSave={handleConfigurationSave} />
+          </CardContent>
+        </Card>
 
-          <div className="flex gap-2">
-            <Button 
-              onClick={handleSaveSettings}
-              disabled={isLoading}
-              className="flex items-center gap-2"
-            >
-              {isLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
-              Save Settings
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+        {/* AI Instructions Management */}
+        <Card>
+          <CardHeader>
+            <CardTitle>AI Instructions Management</CardTitle>
+            <CardDescription>
+              Manage AI system instructions and prompts
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AIInstructionsManager />
+          </CardContent>
+        </Card>
 
-      {/* Data Retention & Storage */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <HardDrive className="h-5 w-5" />
-            Data Retention & Storage
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="flex items-center gap-3 p-4 bg-muted rounded-lg">
-              <Database className="h-8 w-8 text-primary" />
+        {/* Evaluation Categories */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Evaluation Categories</CardTitle>
+            <CardDescription>
+              Manage categories used for dialog evaluation
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <CategoryManager categories={categories} onCategoriesChange={handleCategoriesChange} />
+          </CardContent>
+        </Card>
+
+        {/* Language-Aware Rules */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Language-Aware Evaluation Rules</CardTitle>
+            <CardDescription>
+              Configure language-specific evaluation rules and banned words
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <LanguageAwareRuleManager />
+          </CardContent>
+        </Card>
+
+        {/* Data Retention & Storage */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Database className="h-5 w-5" />
+              Data Retention & Storage
+            </CardTitle>
+            <CardDescription>
+              Configure data retention policies and manage storage
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-4">
               <div>
-                <p className="font-medium">{dialogs.length}</p>
-                <p className="text-sm text-muted-foreground">Total Dialogs</p>
+                <Label htmlFor="retention-days">Data Retention (Days)</Label>
+                <Input
+                  id="retention-days"
+                  type="number"
+                  value={dataRetentionDays}
+                  onChange={(e) => setDataRetentionDays(e.target.value)}
+                  min="1"
+                  max="365"
+                  className="w-32"
+                />
+                <p className="text-sm text-muted-foreground mt-1">
+                  Number of days to keep dialog data before expiration
+                </p>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="auto-delete"
+                  checked={autoDeleteEnabled}
+                  onCheckedChange={setAutoDeleteEnabled}
+                />
+                <Label htmlFor="auto-delete">Enable Automatic Cleanup</Label>
+              </div>
+
+              <Button 
+                onClick={saveDataRetentionSettings} 
+                disabled={isLoading}
+                className="w-full sm:w-auto"
+              >
+                <Save className="mr-2 h-4 w-4" />
+                Save Retention Settings
+              </Button>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-4">
+              <h4 className="text-sm font-semibold">Data Management Actions</h4>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      onClick={handleUpdateExpirationDates}
+                      disabled={isUpdatingRetention}
+                      className="flex items-center gap-2"
+                    >
+                      {isUpdatingRetention ? (
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4" />
+                      )}
+                      Update Expiration Dates
+                      <HelpCircle className="h-4 w-4 ml-1" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Updates expiration dates for all existing dialogs based on current retention policy</p>
+                  </TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="destructive"
+                      onClick={handleCleanupExpiredData}
+                      disabled={isCleaningUp}
+                      className="flex items-center gap-2"
+                    >
+                      {isCleaningUp ? (
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                      Cleanup Expired Data
+                      <HelpCircle className="h-4 w-4 ml-1" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Manually deletes dialogs that have passed their expiration date</p>
+                  </TooltipContent>
+                </Tooltip>
               </div>
             </div>
+          </CardContent>
+        </Card>
 
-            <div className="flex items-center gap-3 p-4 bg-muted rounded-lg">
-              <Clock className="h-8 w-8 text-secondary" />
-              <div>
-                <p className="font-medium">{dataRetentionDays} days</p>
-                <p className="text-sm text-muted-foreground">Retention Period</p>
-              </div>
+        {/* Status Indicator */}
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              Settings page loaded successfully
             </div>
-
-            <div className="flex items-center gap-3 p-4 bg-muted rounded-lg">
-              <FileText className="h-8 w-8 text-accent" />
-              <div>
-                <p className="font-medium">{maxFileSizeMb} MB</p>
-                <p className="text-sm text-muted-foreground">Max File Size</p>
-              </div>
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="flex gap-2">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button 
-                    variant="outline"
-                    onClick={handleCleanupExpiredDialogs}
-                    disabled={isLoading}
-                    className="flex items-center gap-2"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Cleanup Expired
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Remove dialogs that have exceeded the retention period</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button 
-                    variant="outline"
-                    onClick={handleUpdateExpirationDates}
-                    disabled={isLoading}
-                    className="flex items-center gap-2"
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                    Update Expiration
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Recalculate expiration dates based on current retention policy</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Category Management */}
-      <CategoryManager 
-        categories={categories}
-        onCategoriesChange={onCategoriesChange}
-      />
-
-      {/* Language-Aware Rule Management */}
-      <LanguageAwareRuleManager />
-    </div>
+          </CardContent>
+        </Card>
+      </div>
+    </TooltipProvider>
   );
 };
 
