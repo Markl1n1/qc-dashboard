@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -273,14 +272,15 @@ const UnifiedDashboard = () => {
                           {getStatusIcon(dialog.status)}
                           <span className="ml-1 capitalize">{dialog.status}</span>
                         </Badge>
+                        <span className="text-sm text-muted-foreground">
+                          {new Date(dialog.uploadDate).toLocaleDateString()}
+                        </span>
                       </div>
                       
                       <div className="text-sm text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span>Agent: {dialog.assignedAgent}</span>
                         <span className="hidden sm:inline">•</span>
                         <span>Supervisor: {dialog.assignedSupervisor}</span>
-                        <span className="hidden sm:inline">•</span>
-                        <span>Uploaded: {new Date(dialog.uploadDate).toLocaleDateString()}</span>
                         {dialog.qualityScore && (
                           <>
                             <span className="hidden sm:inline">•</span>
@@ -292,11 +292,6 @@ const UnifiedDashboard = () => {
                   </div>
                   
                   <div className="flex items-center gap-2 ml-4">
-                    {dialog.tokenEstimation && (
-                      <Badge variant="outline">
-                        ${dialog.tokenEstimation.estimatedCost.toFixed(4)}
-                      </Badge>
-                    )}
                     <Button 
                       variant="ghost" 
                       size="sm"

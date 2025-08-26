@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { ScrollArea } from './ui/scroll-area';
-import { Clock, Copy, User, Headphones, Mic, Users } from 'lucide-react';
+import { Clock, Copy, User, Users } from 'lucide-react';
 import { SpeakerUtterance } from '../types';
 import { copyToClipboard, formatDialogForCopy } from '../utils/dialogFormatting';
 import { toast } from 'sonner';
@@ -38,26 +38,22 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
       {
         backgroundColor: 'hsl(210, 100%, 97%)', // Light blue
         borderColor: 'hsl(210, 100%, 85%)',
-        textColor: 'hsl(210, 100%, 25%)',
-        icon: User
+        textColor: 'hsl(210, 100%, 25%)'
       },
       {
         backgroundColor: 'hsl(120, 60%, 97%)', // Light green
         borderColor: 'hsl(120, 60%, 85%)',
-        textColor: 'hsl(120, 60%, 25%)',
-        icon: Headphones
+        textColor: 'hsl(120, 60%, 25%)'
       },
       {
         backgroundColor: 'hsl(280, 60%, 97%)', // Light purple
         borderColor: 'hsl(280, 60%, 85%)',
-        textColor: 'hsl(280, 60%, 25%)',
-        icon: Mic
+        textColor: 'hsl(280, 60%, 25%)'
       },
       {
         backgroundColor: 'hsl(30, 100%, 97%)', // Light orange
         borderColor: 'hsl(30, 100%, 85%)',
-        textColor: 'hsl(30, 100%, 25%)',
-        icon: Users
+        textColor: 'hsl(30, 100%, 25%)'
       }
     ];
 
@@ -178,7 +174,6 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
           <div className="mt-4 flex flex-wrap gap-4">
             {Object.entries(speakerStats).map(([speaker, stats]) => {
               const style = getSpeakerStyle(speaker);
-              const Icon = style.icon;
               
               return (
                 <div
@@ -190,7 +185,7 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
                     color: style.textColor
                   }}
                 >
-                  <Icon className="h-4 w-4" />
+                  <User className="h-4 w-4" />
                   <span className="font-medium">{speaker}</span>
                   <Badge variant="outline" className="text-xs">
                     {stats.count} segments
@@ -212,7 +207,6 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
             <div className="p-6 space-y-4">
               {mergedUtterances.map((utterance, index) => {
                 const style = getSpeakerStyle(utterance.speaker);
-                const Icon = style.icon;
                 
                 return (
                   <div
@@ -223,12 +217,12 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
                       borderLeftColor: style.borderColor
                     }}
                   >
-                    <div className="flex-shrink-0 mt-1">
+                    <div className="flex-shrink-0 flex items-start">
                       <div
                         className="w-8 h-8 rounded-full flex items-center justify-center"
                         style={{ backgroundColor: style.borderColor }}
                       >
-                        <Icon className="h-4 w-4" style={{ color: style.textColor }} />
+                        <User className="h-4 w-4" style={{ color: style.textColor }} />
                       </div>
                     </div>
                     

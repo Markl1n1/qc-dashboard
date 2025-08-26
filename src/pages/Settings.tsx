@@ -1,457 +1,342 @@
-
-import React, { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import React, { useEffect, useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Separator } from '../components/ui/separator';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { Badge } from '../components/ui/badge';
+import { Alert, AlertDescription } from '../components/ui/alert';
+import { Switch } from '../components/ui/switch';
 import { 
   Settings as SettingsIcon, 
   Save, 
-  Trash2, 
-  RefreshCw,
+  Upload, 
+  Key, 
+  Brain,
+  Users,
+  Shield,
+  FileText,
+  Code,
   AlertCircle,
   CheckCircle,
-  Database,
-  HelpCircle,
-  Cpu,
-  FileText,
-  Shield
+  Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useAuthStore } from '../store/authStore';
-import { useUserRole } from '../hooks/useUserRole';
-import AIInstructionsManager from '../components/AIInstructionsManager';
-import SettingsSection from '../components/SettingsSection';
 import { useEnhancedSettingsStore } from '../store/enhancedSettingsStore';
+import { useUserRole } from '../hooks/useUserRole';
+import { supabase } from '../integrations/supabase/client';
+import AIInstructionsManager from '../components/AIInstructionsManager';
+import OpenAIRequestDemo from '../components/OpenAIRequestDemo';
+
+interface SettingsProps {}
 
 const Settings = () => {
-  const { user } = useAuthStore();
-  const { isAdmin } = useUserRole();
-
+  const { isAdmin, isSupervisor } = useUserRole();
   const {
-    maxTokens,
-    dataRetentionDays,
-    maxFileSizeMb,
-    maxConcurrentTranscriptions,
-    autoDeleteEnabled,
-    aiConfidenceThreshold,
-    aiTemperature,
-    aiReasoningEffort,
-    signupPasscode,
-    isLoading: storeLoading,
-    error: storeError,
-    loadSettings,
-    updateMaxTokens,
-    updateDataRetentionDays,
-    updateMaxFileSizeMb,
-    updateMaxConcurrentTranscriptions,
-    updateAutoDeleteEnabled,
-    updateAiConfidenceThreshold,
-    updateAiTemperature,
-    updateAiReasoningEffort,
-    updateSignupPasscode,
-    cleanupExpiredDialogs,
-    updateDialogExpirationDates
+    systemConfig,
+    isLoading,
+    loadSystemConfig,
+    updateSystemConfig,
+    resetToDefaults
   } = useEnhancedSettingsStore();
 
-  // Local state for form inputs
-  const [localMaxTokens, setLocalMaxTokens] = useState<number>(maxTokens);
-  const [localDataRetentionDays, setLocalDataRetentionDays] = useState<number>(dataRetentionDays);
-  const [localMaxFileSizeMb, setLocalMaxFileSizeMb] = useState<number>(maxFileSizeMb);
-  const [localMaxConcurrentTranscriptions, setLocalMaxConcurrentTranscriptions] = useState<number>(maxConcurrentTranscriptions);
-  const [localAutoDeleteEnabled, setLocalAutoDeleteEnabled] = useState<boolean>(autoDeleteEnabled);
-  const [localAiConfidenceThreshold, setLocalAiConfidenceThreshold] = useState<number>(aiConfidenceThreshold);
-  const [localAiTemperature, setLocalAiTemperature] = useState<number>(aiTemperature);
-  const [localAiReasoningEffort, setLocalAiReasoningEffort] = useState<string>(aiReasoningEffort);
-  const [localSignupPasscode, setLocalSignupPasscode] = useState<string>(signupPasscode);
-  
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [isCleaning, setIsCleaning] = useState(false);
-  const [isUpdatingExpirations, setIsUpdatingExpirations] = useState(false);
+  const [localConfig, setLocalConfig] = useState<Record<string, string>>({});
+  const [isSaving, setIsSaving] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   useEffect(() => {
-    if (isAdmin) {
-      loadSettings();
-    }
-  }, [isAdmin, loadSettings]);
+    loadSystemConfig();
+  }, [loadSystemConfig]);
 
   useEffect(() => {
-    setLocalMaxTokens(maxTokens);
-    setLocalDataRetentionDays(dataRetentionDays);
-    setLocalMaxFileSizeMb(maxFileSizeMb);
-    setLocalMaxConcurrentTranscriptions(maxConcurrentTranscriptions);
-    setLocalAutoDeleteEnabled(autoDeleteEnabled);
-    setLocalAiConfidenceThreshold(aiConfidenceThreshold);
-    setLocalAiTemperature(aiTemperature);
-    setLocalAiReasoningEffort(aiReasoningEffort);
-    setLocalSignupPasscode(signupPasscode);
-  }, [maxTokens, dataRetentionDays, maxFileSizeMb, maxConcurrentTranscriptions, autoDeleteEnabled, aiConfidenceThreshold, aiTemperature, aiReasoningEffort, signupPasscode]);
+    if (systemConfig) {
+      setLocalConfig({ ...systemConfig });
+      setHasUnsavedChanges(false);
+    }
+  }, [systemConfig]);
 
-  const handleUpdateAllSettings = async () => {
-    setIsUpdating(true);
+  const handleConfigChange = (key: string, value: string) => {
+    setLocalConfig(prev => ({ ...prev, [key]: value }));
+    setHasUnsavedChanges(true);
+  };
+
+  const handleSaveConfig = async () => {
+    setIsSaving(true);
     try {
-      await Promise.all([
-        updateMaxTokens(localMaxTokens),
-        updateDataRetentionDays(localDataRetentionDays),
-        updateMaxFileSizeMb(localMaxFileSizeMb),
-        updateMaxConcurrentTranscriptions(localMaxConcurrentTranscriptions),
-        updateAutoDeleteEnabled(localAutoDeleteEnabled),
-        updateAiConfidenceThreshold(localAiConfidenceThreshold),
-        updateAiTemperature(localAiTemperature),
-        updateAiReasoningEffort(localAiReasoningEffort),
-        updateSignupPasscode(localSignupPasscode)
-      ]);
-      
-      toast.success('All settings updated successfully');
+      await updateSystemConfig(localConfig);
+      setHasUnsavedChanges(false);
+      toast.success('Settings saved successfully');
     } catch (error) {
-      console.error('Error updating settings:', error);
-      toast.error('Failed to update settings');
+      console.error('Error saving settings:', error);
+      toast.error('Failed to save settings');
     } finally {
-      setIsUpdating(false);
+      setIsSaving(false);
     }
   };
 
-  const handleUpdateExpirationDates = async () => {
+  const handleResetDefaults = async () => {
     try {
-      setIsUpdatingExpirations(true);
-      const updatedCount = await updateDialogExpirationDates();
-      toast.success(`Updated expiration dates for ${updatedCount} dialogs`);
+      await resetToDefaults();
+      toast.success('Settings reset to defaults');
     } catch (error) {
-      console.error('Error updating expiration dates:', error);
-      toast.error('Failed to update expiration dates');
-    } finally {
-      setIsUpdatingExpirations(false);
+      console.error('Error resetting settings:', error);
+      toast.error('Failed to reset settings');
     }
   };
 
-  const handleCleanupExpiredData = async () => {
-    try {
-      setIsCleaning(true);
-      const deletedCount = await cleanupExpiredDialogs();
-      toast.success(`Cleaned up ${deletedCount} expired dialogs`);
-    } catch (error) {
-      console.error('Error cleaning up expired data:', error);
-      toast.error('Failed to cleanup expired data');
-    } finally {
-      setIsCleaning(false);
-    }
-  };
-
-  if (!isAdmin) {
+  if (!isAdmin && !isSupervisor) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <SettingsSection
-          title="Access Restricted"
-          description="Admin privileges required"
-          icon={AlertCircle}
-        >
-          <div className="text-center py-8">
-            <AlertCircle className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Access Restricted</h3>
-            <p className="text-muted-foreground">
-              You need admin privileges to access the settings page.
-            </p>
-          </div>
-        </SettingsSection>
+        <Alert>
+          <Shield className="h-4 w-4" />
+          <AlertDescription>
+            You don't have permission to access settings. Only administrators and supervisors can modify system settings.
+          </AlertDescription>
+        </Alert>
       </div>
     );
   }
 
-  if (storeLoading) {
+  if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-center">
-          <RefreshCw className="h-6 w-6 animate-spin" />
-          <span className="ml-2">Loading settings...</span>
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+            <p className="text-muted-foreground">Loading settings...</p>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <TooltipProvider>
-      <div className="container mx-auto px-6 py-8 space-y-6">
-        {/* Header */}
-        <div className="flex items-center gap-3">
-          <SettingsIcon className="h-8 w-8" />
-          <div>
-            <h1 className="text-3xl font-bold">Admin Settings</h1>
-            <p className="text-muted-foreground">
-              Configure system settings and manage application behavior
-            </p>
-          </div>
+    <div className="container mx-auto px-6 py-8">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <SettingsIcon className="h-8 w-8" />
+            System Settings
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Configure system parameters and AI analysis settings
+          </p>
         </div>
-
-        {storeError && (
-          <div className="p-4 border border-destructive/20 rounded-lg bg-destructive/5">
-            <div className="flex items-center gap-2 text-destructive">
-              <AlertCircle className="h-4 w-4" />
-              <span>{storeError}</span>
-            </div>
+        
+        {hasUnsavedChanges && (
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-orange-600 border-orange-600">
+              <AlertCircle className="h-3 w-3 mr-1" />
+              Unsaved Changes
+            </Badge>
+            <Button onClick={handleSaveConfig} disabled={isSaving}>
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Changes
+                </>
+              )}
+            </Button>
           </div>
         )}
-
-        {/* AI System Configuration */}
-        <SettingsSection
-          title="AI System Configuration"
-          description="Configure OpenAI parameters and system limitations"
-          icon={Cpu}
-        >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <Label htmlFor="max-tokens">Max Output Tokens</Label>
-              <Input
-                id="max-tokens"
-                type="number"
-                min="100"
-                max="4000"
-                value={localMaxTokens}
-                onChange={(e) => setLocalMaxTokens(parseInt(e.target.value) || 1000)}
-                placeholder="1000"
-              />
-              <p className="text-sm text-muted-foreground mt-1">
-                Maximum number of tokens for AI response (100-4000)
-              </p>
-            </div>
-
-            <div>
-              <Label htmlFor="ai-confidence">AI Confidence Threshold</Label>
-              <Input
-                id="ai-confidence"
-                type="number"
-                min="0"
-                max="1"
-                step="0.1"
-                value={localAiConfidenceThreshold}
-                onChange={(e) => setLocalAiConfidenceThreshold(parseFloat(e.target.value) || 0.8)}
-                placeholder="0.8"
-              />
-              <p className="text-sm text-muted-foreground mt-1">
-                Minimum confidence threshold for AI analysis (0-1)
-              </p>
-            </div>
-
-            <div>
-              <Label htmlFor="ai-temperature">AI Temperature (Legacy Models)</Label>
-              <Input
-                id="ai-temperature"
-                type="number"
-                min="0"
-                max="2"
-                step="0.1"
-                value={localAiTemperature}
-                onChange={(e) => setLocalAiTemperature(parseFloat(e.target.value) || 0.7)}
-                placeholder="0.7"
-              />
-              <p className="text-sm text-muted-foreground mt-1">
-                Controls randomness in AI responses (0-2, for legacy models only)
-              </p>
-            </div>
-
-            <div>
-              <Label htmlFor="ai-reasoning">AI Reasoning Effort</Label>
-              <Select value={localAiReasoningEffort} onValueChange={setLocalAiReasoningEffort}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select reasoning effort" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-sm text-muted-foreground mt-1">
-                Controls the depth of AI reasoning for analysis
-              </p>
-            </div>
-
-            <div>
-              <Label htmlFor="max-file-size">Max File Size (MB)</Label>
-              <Input
-                id="max-file-size"
-                type="number"
-                min="1"
-                max="1000"
-                value={localMaxFileSizeMb}
-                onChange={(e) => setLocalMaxFileSizeMb(parseInt(e.target.value) || 100)}
-                placeholder="100"
-              />
-              <p className="text-sm text-muted-foreground mt-1">
-                Maximum file size allowed for uploads (1-1000 MB)
-              </p>
-            </div>
-
-            <div>
-              <Label htmlFor="max-concurrent">Max Concurrent Transcriptions</Label>
-              <Input
-                id="max-concurrent"
-                type="number"
-                min="1"
-                max="20"
-                value={localMaxConcurrentTranscriptions}
-                onChange={(e) => setLocalMaxConcurrentTranscriptions(parseInt(e.target.value) || 5)}
-                placeholder="5"
-              />
-              <p className="text-sm text-muted-foreground mt-1">
-                Maximum number of transcriptions that can run simultaneously (1-20)
-              </p>
-            </div>
-          </div>
-        </SettingsSection>
-
-        {/* Security Configuration */}
-        <SettingsSection
-          title="Security Configuration"
-          description="Manage authentication and access control settings"
-          icon={Shield}
-        >
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="signup-passcode">Signup Passcode</Label>
-              <Input
-                id="signup-passcode"
-                type="password"
-                value={localSignupPasscode}
-                onChange={(e) => setLocalSignupPasscode(e.target.value)}
-                placeholder="Enter signup passcode"
-              />
-              <p className="text-sm text-muted-foreground mt-1">
-                Required passcode for new user registration
-              </p>
-            </div>
-          </div>
-        </SettingsSection>
-
-        {/* AI Instructions Management */}
-        <SettingsSection
-          title="AI Instructions Management"
-          description="Manage AI system instructions and evaluation rules"
-          icon={FileText}
-        >
-          <AIInstructionsManager />
-        </SettingsSection>
-
-        {/* Data Retention & Storage */}
-        <SettingsSection
-          title="Data Retention & Storage"
-          description="Configure data retention policies and manage storage"
-          icon={Database}
-        >
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="retention-days">Data Retention (Days)</Label>
-              <Input
-                id="retention-days"
-                type="number"
-                value={localDataRetentionDays}
-                onChange={(e) => setLocalDataRetentionDays(parseInt(e.target.value) || 30)}
-                min="1"
-                max="365"
-                className="w-32"
-              />
-              <p className="text-sm text-muted-foreground mt-1">
-                Number of days to keep dialog data before expiration (1-365 days)
-              </p>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="auto-delete"
-                checked={localAutoDeleteEnabled}
-                onCheckedChange={setLocalAutoDeleteEnabled}
-              />
-              <Label htmlFor="auto-delete">Enable Automatic Cleanup</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Automatically delete expired dialogs based on retention period</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="space-y-4">
-            <h4 className="text-sm font-semibold">Data Management Actions</h4>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    onClick={handleUpdateExpirationDates}
-                    disabled={isUpdatingExpirations}
-                    className="flex items-center gap-2"
-                  >
-                    {isUpdatingExpirations ? (
-                      <RefreshCw className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <RefreshCw className="h-4 w-4" />
-                    )}
-                    Update Expiration Dates
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Updates expiration dates for all existing dialogs based on current retention policy</p>
-                </TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="destructive"
-                    onClick={handleCleanupExpiredData}
-                    disabled={isCleaning}
-                    className="flex items-center gap-2"
-                  >
-                    {isCleaning ? (
-                      <RefreshCw className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4" />
-                    )}
-                    Cleanup Expired Data
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Manually deletes dialogs that have passed their expiration date</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-          </div>
-        </SettingsSection>
-
-        {/* Save All Settings Button */}
-        <Button 
-          onClick={handleUpdateAllSettings} 
-          disabled={isUpdating} 
-          className="w-full"
-          size="lg"
-        >
-          {isUpdating ? (
-            <>
-              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-              Updating Settings...
-            </>
-          ) : (
-            <>
-              <Save className="h-4 w-4 mr-2" />
-              Save All Settings
-            </>
-          )}
-        </Button>
-
-        {/* Status Indicator */}
-        <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground p-4 border rounded-lg bg-muted/20">
-          <CheckCircle className="h-4 w-4 text-green-500" />
-          Settings page loaded successfully
-        </div>
       </div>
-    </TooltipProvider>
+
+      <Tabs defaultValue="ai-analysis" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="ai-analysis" className="flex items-center gap-2">
+            <Brain className="h-4 w-4" />
+            AI Analysis
+          </TabsTrigger>
+          <TabsTrigger value="system" className="flex items-center gap-2">
+            <SettingsIcon className="h-4 w-4" />
+            System
+          </TabsTrigger>
+          <TabsTrigger value="instructions" className="flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            AI Instructions
+          </TabsTrigger>
+          <TabsTrigger value="demo" className="flex items-center gap-2">
+            <Code className="h-4 w-4" />
+            API Demo
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="ai-analysis" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Brain className="h-5 w-5" />
+                AI Analysis Configuration
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="ai_confidence_threshold">Confidence Threshold</Label>
+                  <Input
+                    id="ai_confidence_threshold"
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.1"
+                    value={localConfig.ai_confidence_threshold || '0.8'}
+                    onChange={(e) => handleConfigChange('ai_confidence_threshold', e.target.value)}
+                    placeholder="0.8"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Minimum confidence threshold (0-1). Below this, system will retry with GPT-5 flagship.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="ai_reasoning_effort">Reasoning Effort</Label>
+                  <Select
+                    value={localConfig.ai_reasoning_effort || 'medium'}
+                    onValueChange={(value) => handleConfigChange('ai_reasoning_effort', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select reasoning effort" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-sm text-muted-foreground">
+                    Reasoning effort level for newer OpenAI models.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="ai_max_tokens_gpt5_mini">Max Tokens (GPT-5 Mini)</Label>
+                  <Input
+                    id="ai_max_tokens_gpt5_mini"
+                    type="number"
+                    min="100"
+                    max="4000"
+                    value={localConfig.ai_max_tokens_gpt5_mini || '1000'}
+                    onChange={(e) => handleConfigChange('ai_max_tokens_gpt5_mini', e.target.value)}
+                    placeholder="1000"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Maximum completion tokens for GPT-5 Mini model.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="ai_max_tokens_gpt5">Max Tokens (GPT-5)</Label>
+                  <Input
+                    id="ai_max_tokens_gpt5"
+                    type="number"
+                    min="100"
+                    max="8000"
+                    value={localConfig.ai_max_tokens_gpt5 || '2000'}
+                    onChange={(e) => handleConfigChange('ai_max_tokens_gpt5', e.target.value)}
+                    placeholder="2000"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Maximum completion tokens for GPT-5 flagship model.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="ai_temperature">Temperature (Legacy Models)</Label>
+                  <Input
+                    id="ai_temperature"
+                    type="number"
+                    min="0"
+                    max="2"
+                    step="0.1"
+                    value={localConfig.ai_temperature || '0.7'}
+                    onChange={(e) => handleConfigChange('ai_temperature', e.target.value)}
+                    placeholder="0.7"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Temperature for legacy models (GPT-4o family). Not used with GPT-5 models.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="system" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Shield className="h-5 w-5" />
+                Access Control
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="signup_passcode">Signup Passcode</Label>
+                <Input
+                  id="signup_passcode"
+                  type="password"
+                  value={localConfig.signup_passcode || ''}
+                  onChange={(e) => handleConfigChange('signup_passcode', e.target.value)}
+                  placeholder="Enter signup passcode"
+                />
+                <p className="text-sm text-muted-foreground">
+                  Required passcode for new user registration.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Actions</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Button onClick={handleSaveConfig} disabled={isSaving || !hasUnsavedChanges}>
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" />
+                      Save All Settings
+                    </>
+                  )}
+                </Button>
+                
+                <Button variant="outline" onClick={handleResetDefaults}>
+                  Reset to Defaults
+                </Button>
+              </div>
+              
+              {!hasUnsavedChanges && (
+                <div className="flex items-center gap-2 text-sm text-green-600">
+                  <CheckCircle className="h-4 w-4" />
+                  All settings saved
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="instructions" className="space-y-6">
+          <AIInstructionsManager />
+        </TabsContent>
+
+        <TabsContent value="demo" className="space-y-6">
+          <OpenAIRequestDemo />
+        </TabsContent>
+      </Tabs>
+    </div>
   );
 };
 
