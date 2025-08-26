@@ -39,8 +39,7 @@ const Settings = () => {
               <ApiKeyInput 
                 value=""
                 onChange={() => {}}
-                serviceName="OpenAI" 
-                keyName="openai_api_key"
+                label="OpenAI API Key"
                 description="Required for AI-powered evaluations and analysis"
                 placeholder="sk-..."
               />
