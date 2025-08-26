@@ -1,4 +1,3 @@
-
 import { create } from 'zustand';
 import { databaseService } from '../services/databaseService';
 
@@ -14,12 +13,18 @@ interface EnhancedSettingsState {
   aiReasoningEffort: string;
   signupPasscode: string;
   
+  // System config object for easier access
+  systemConfig: Record<string, string> | null;
+  
   // Loading states
   isLoading: boolean;
   error: string | null;
   
   // Actions
   loadSettings: () => Promise<void>;
+  loadSystemConfig: () => Promise<void>;
+  updateSystemConfig: (config: Record<string, string>) => Promise<void>;
+  resetToDefaults: () => Promise<void>;
   updateMaxTokens: (tokens: number) => Promise<void>;
   updateDataRetentionDays: (days: number) => Promise<void>;
   updateMaxFileSizeMb: (sizeMb: number) => Promise<void>;
@@ -45,6 +50,7 @@ export const useEnhancedSettingsStore = create<EnhancedSettingsState>((set, get)
   aiTemperature: 0.7,
   aiReasoningEffort: 'medium',
   signupPasscode: '',
+  systemConfig: null,
   isLoading: false,
   error: null,
 
@@ -66,6 +72,7 @@ export const useEnhancedSettingsStore = create<EnhancedSettingsState>((set, get)
         aiTemperature: parseFloat(config.ai_temperature || '0.7'),
         aiReasoningEffort: config.ai_reasoning_effort || 'medium',
         signupPasscode: config.signup_passcode || '',
+        systemConfig: config,
         isLoading: false
       });
     } catch (error) {
@@ -74,6 +81,74 @@ export const useEnhancedSettingsStore = create<EnhancedSettingsState>((set, get)
         error: error instanceof Error ? error.message : 'Failed to load settings',
         isLoading: false 
       });
+    }
+  },
+
+  loadSystemConfig: async () => {
+    // Alias for loadSettings to maintain compatibility
+    const { loadSettings } = get();
+    await loadSettings();
+  },
+
+  updateSystemConfig: async (config: Record<string, string>) => {
+    try {
+      set({ isLoading: true, error: null });
+      
+      // Update each config value in the database
+      for (const [key, value] of Object.entries(config)) {
+        await databaseService.updateSystemConfig(key, value);
+      }
+      
+      // Reload settings to get the updated values
+      const { loadSettings } = get();
+      await loadSettings();
+      
+      set({ isLoading: false });
+    } catch (error) {
+      console.error('Error updating system config:', error);
+      set({ 
+        error: error instanceof Error ? error.message : 'Failed to update system config',
+        isLoading: false 
+      });
+      throw error;
+    }
+  },
+
+  resetToDefaults: async () => {
+    try {
+      set({ isLoading: true, error: null });
+      
+      const defaults = {
+        max_tokens: '1000',
+        data_retention_days: '30',
+        max_file_size_mb: '100',
+        max_concurrent_transcriptions: '5',
+        auto_delete_enabled: 'true',
+        ai_confidence_threshold: '0.8',
+        ai_temperature: '0.7',
+        ai_reasoning_effort: 'medium',
+        ai_max_tokens_gpt5_mini: '1000',
+        ai_max_tokens_gpt5: '2000',
+        signup_passcode: ''
+      };
+      
+      // Update each default value
+      for (const [key, value] of Object.entries(defaults)) {
+        await databaseService.updateSystemConfig(key, value);
+      }
+      
+      // Reload settings
+      const { loadSettings } = get();
+      await loadSettings();
+      
+      set({ isLoading: false });
+    } catch (error) {
+      console.error('Error resetting to defaults:', error);
+      set({ 
+        error: error instanceof Error ? error.message : 'Failed to reset to defaults',
+        isLoading: false 
+      });
+      throw error;
     }
   },
 
