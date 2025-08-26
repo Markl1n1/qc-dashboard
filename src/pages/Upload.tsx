@@ -140,7 +140,7 @@ const Upload: React.FC<UploadProps> = () => {
         <CardContent>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="agent-name">Agent Name *</Label>
+              <Label htmlFor="agent-name">Agent Name</Label>
               <Input
                 id="agent-name"
                 type="text"
@@ -149,9 +149,6 @@ const Upload: React.FC<UploadProps> = () => {
                 placeholder="Enter the agent's name"
                 className="max-w-md"
               />
-              <p className="text-sm text-muted-foreground mt-1">
-                Name of the agent being evaluated in this recording
-              </p>
             </div>
             <div>
               <Label>Supervisor</Label>
@@ -160,9 +157,6 @@ const Upload: React.FC<UploadProps> = () => {
                 disabled
                 className="max-w-md bg-muted"
               />
-              <p className="text-sm text-muted-foreground mt-1">
-                Supervisor assigned to this evaluation (automatically set to logged-in user)
-              </p>
             </div>
           </div>
         </CardContent>

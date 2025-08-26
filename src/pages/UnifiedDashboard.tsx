@@ -120,10 +120,7 @@ const UnifiedDashboard = () => {
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Voice Quality Dashboard</h1>
-          <p className="text-muted-foreground">
-            Manage and analyze voice recordings and transcriptions
-          </p>
+          <h1 className="text-3xl font-bold">Voice Quality Control</h1>
         </div>
         <div className="flex gap-2">
           <Button onClick={() => navigate('/upload')} className="flex items-center gap-2">

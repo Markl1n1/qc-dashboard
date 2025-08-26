@@ -121,9 +121,6 @@ const Settings = () => {
             <SettingsIcon className="h-8 w-8" />
             System Settings
           </h1>
-          <p className="text-muted-foreground mt-1">
-            Configure system parameters and AI analysis settings
-          </p>
         </div>
         
         {hasUnsavedChanges && (
@@ -223,9 +220,6 @@ const Settings = () => {
                     onChange={(e) => handleConfigChange('ai_max_tokens_gpt5_mini', e.target.value)}
                     placeholder="1000"
                   />
-                  <p className="text-sm text-muted-foreground">
-                    Maximum completion tokens for GPT-5 Mini model.
-                  </p>
                 </div>
 
                 <div className="space-y-2">
@@ -239,9 +233,6 @@ const Settings = () => {
                     onChange={(e) => handleConfigChange('ai_max_tokens_gpt5', e.target.value)}
                     placeholder="2000"
                   />
-                  <p className="text-sm text-muted-foreground">
-                    Maximum completion tokens for GPT-5 flagship model.
-                  </p>
                 </div>
               </div>
             </CardContent>
