@@ -26,6 +26,36 @@ export const formatDialogForCopy = (utterances: SpeakerUtterance[]): string => {
   return formattedText.trim();
 };
 
+export const formatDialogForAIAnalysis = (utterances: SpeakerUtterance[]): string => {
+  let formattedText = '';
+  let currentSpeaker = '';
+
+  for (const utterance of utterances) {
+    // Clean speaker label
+    const cleanSpeaker = utterance.speaker
+      .replace(/^Speaker\s+Speaker\s*/, 'Speaker ')
+      .replace(/^Speaker\s+/, '');
+    
+    // Format timestamp
+    const minutes = Math.floor(utterance.start / 60);
+    const seconds = Math.floor(utterance.start % 60);
+    const timestamp = `[${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}]`;
+    
+    // Only add speaker label if it's different from the previous one
+    if (cleanSpeaker !== currentSpeaker) {
+      if (formattedText) {
+        formattedText += '\n';
+      }
+      formattedText += `Speaker ${cleanSpeaker}:\n`;
+      currentSpeaker = cleanSpeaker;
+    }
+    
+    formattedText += `${timestamp} ${utterance.text}\n`;
+  }
+
+  return formattedText.trim();
+};
+
 export const copyToClipboard = async (text: string): Promise<boolean> => {
   try {
     if (navigator.clipboard && window.isSecureContext) {

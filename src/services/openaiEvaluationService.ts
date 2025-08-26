@@ -1,8 +1,7 @@
-
 import { SpeakerUtterance } from '../types';
 import { OpenAIEvaluationResult, OpenAIEvaluationProgress, OpenAIModel, OPENAI_MODELS, OpenAIEvaluationMistake } from '../types/openaiEvaluation';
 import { supabase } from '../integrations/supabase/client';
-import { formatDialogForCopy } from '../utils/dialogFormatting';
+import { formatDialogForAIAnalysis } from '../utils/dialogFormatting';
 
 interface AISettings {
   confidenceThreshold: number;
@@ -163,7 +162,7 @@ Respond with valid JSON only in this exact structure:
   "confidence": number (0-100)
 }
 
-Focus on actionable feedback and specific examples from the conversation.`;
+Focus on actionable feedback and specific examples from the conversation. Pay attention to the timestamps [MM:SS] provided with each utterance.`;
   }
 
   async evaluateConversation(
@@ -233,8 +232,8 @@ Focus on actionable feedback and specific examples from the conversation.`;
       throw new Error(`Model ${modelId} not found`);
     }
 
-    // Create conversation text using the same format as Copy Dialog
-    const conversationText = formatDialogForCopy(utterances);
+    // Create conversation text with timecodes using the new format
+    const conversationText = formatDialogForAIAnalysis(utterances);
 
     // Get appropriate max tokens for the model
     const maxTokens = modelId.includes('gpt-5-mini') 
@@ -251,7 +250,7 @@ Focus on actionable feedback and specific examples from the conversation.`;
           },
           {
             role: 'user',
-            content: `Please evaluate this customer service conversation:\n\n${conversationText}`
+            content: `Please evaluate this customer service conversation (timestamps in [MM:SS] format):\n\n${conversationText}`
           }
         ],
         max_output_tokens: maxTokens,

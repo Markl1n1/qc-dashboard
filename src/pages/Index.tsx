@@ -1,313 +1,243 @@
-
-import React, { useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { 
-  Clock, 
-  FileAudio, 
-  Users, 
-  CheckCircle, 
-  AlertCircle, 
-  Loader2, 
-  Search,
-  Calendar,
-  User,
-  Eye
-} from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { useDatabaseDialogs } from '../hooks/useDatabaseDialogs';
-import { useAuthStore } from '../store/authStore';
-import { useUserRole } from '../hooks/useUserRole';
-import DialogFilters from '../components/DialogFilters';
-import { format } from 'date-fns';
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Calendar, Clock, FileAudio, Download, Play, Trash2, Eye } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { useDatabaseDialogs } from '@/hooks/useDatabaseDialogs';
+import { formatDistanceToNow } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
+import { toast } from "sonner";
+import { DialogFilters } from '@/components/DialogFilters';
+import { Dialog } from '@/integrations/supabase/types';
 
 const Index = () => {
-  const { user } = useAuthStore();
-  const { isAdmin, isSupervisor } = useUserRole();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<string>('date');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [dialogs, setDialogs] = useState<Dialog[]>([]);
+  const [filters, setFilters] = useState({
+    status: '',
+    dateRange: null as [Date | null, Date | null],
+    searchTerm: ''
+  });
 
-  const {
-    dialogs,
-    isLoading,
-    error,
-    loadDialogs
-  } = useDatabaseDialogs();
+  const navigate = useNavigate();
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case 'failed':
-        return <AlertCircle className="h-4 w-4 text-red-500" />;
-      case 'processing':
-        return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />;
-      default:
-        return <Clock className="h-4 w-4 text-yellow-500" />;
+  useEffect(() => {
+    loadDialogs();
+  }, []);
+
+  const loadDialogs = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data, error } = await useDatabaseDialogs();
+      if (error) {
+        setError(error.message);
+      } else {
+        setDialogs(data || []);
+      }
+    } catch (err) {
+      setError('Failed to load dialogs');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredDialogs = dialogs.filter((dialog) => {
+    const statusFilter = !filters.status || dialog.status.toLowerCase() === filters.status.toLowerCase();
+    const dateFilter = !filters.dateRange ||
+      (new Date(dialog.created_at) >= filters.dateRange[0]! &&
+        new Date(dialog.created_at) <= filters.dateRange[1]!);
+    const searchFilter = !filters.searchTerm ||
+      dialog.filename.toLowerCase().includes(filters.searchTerm.toLowerCase());
+
+    return statusFilter && dateFilter && searchFilter;
+  });
+
+  const handleRefresh = () => {
+    loadDialogs();
+  };
+
+  const handleView = (dialog: Dialog) => {
+    navigate(`/dialog/${dialog.id}`);
+  };
+
+  const handleDownload = (dialog: Dialog) => {
+    if (dialog.audio_url) {
+      const link = document.createElement('a');
+      link.href = dialog.audio_url;
+      link.download = dialog.filename || 'audio.wav';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } else {
+      toast.error('Audio file not available for download.');
+    }
+  };
+
+  const handleDelete = async (dialogId: string) => {
+    if (window.confirm('Are you sure you want to delete this dialog?')) {
+      try {
+        // Optimistically update the UI
+        setDialogs(prevDialogs => prevDialogs.filter(dialog => dialog.id !== dialogId));
+
+        // Call the Supabase function to delete the dialog
+        const response = await fetch(`/api/delete-dialog?id=${dialogId}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          // If the deletion failed, revert the UI update
+          loadDialogs();
+          const errorData = await response.json();
+          toast.error(`Failed to delete dialog: ${errorData.message || response.statusText}`);
+        } else {
+          toast.success('Dialog deleted successfully.');
+        }
+      } catch (error: any) {
+        // If the deletion failed, revert the UI update
+        loadDialogs();
+        toast.error(`Failed to delete dialog: ${error.message || 'Unknown error'}`);
+      }
     }
   };
 
   const getStatusBadgeVariant = (status: string) => {
-    switch (status) {
+    switch (status.toLowerCase()) {
       case 'completed':
         return 'default';
-      case 'failed':
-        return 'destructive';
       case 'processing':
         return 'secondary';
+      case 'failed':
+        return 'destructive';
       default:
         return 'outline';
     }
   };
 
-  // Filter dialogs based on search and filters
-  const filteredDialogs = dialogs.filter(dialog => {
-    const matchesSearch = dialog.fileName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         dialog.assignedAgent.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         dialog.assignedSupervisor.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'all' || dialog.status === statusFilter;
-    
-    return matchesSearch && matchesStatus;
-  });
+  const capitalizeStatus = (status: string) => {
+    return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
+  };
 
-  // Sort dialogs
-  const sortedDialogs = [...filteredDialogs].sort((a, b) => {
-    switch (sortBy) {
-      case 'name':
-        return a.fileName.localeCompare(b.fileName);
-      case 'agent':
-        return a.assignedAgent.localeCompare(b.assignedAgent);
-      case 'status':
-        return a.status.localeCompare(b.status);
-      case 'score':
-        // Handle cases where analysis might not exist
-        const scoreA = a.analysis?.overallScore || 0;
-        const scoreB = b.analysis?.overallScore || 0;
-        return scoreB - scoreA;
-      case 'date':
-      default:
-        return new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime();
-    }
-  });
-
-  if (isLoading) {
+  if (loading) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin" />
-          <span className="ml-2">Loading dialogs...</span>
-        </div>
+      <div className="container mx-auto p-6">
+        <div className="text-center">Loading dialogs...</div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Error Loading Dialogs</h3>
-              <p className="text-muted-foreground mb-4">{error}</p>
-              <Button onClick={loadDialogs}>Try Again</Button>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="container mx-auto p-6">
+        <div className="text-center text-red-600">Error: {error}</div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 space-y-6">
-      {/* Header */}
+    <div className="container mx-auto p-6 space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold">Dashboard</h1>
-          <p className="text-muted-foreground">
-            Manage and review your dialog transcriptions and evaluations
-          </p>
-        </div>
-        <Button asChild>
-          <Link to="/upload">
-            <FileAudio className="mr-2 h-4 w-4" />
-            Upload Audio
-          </Link>
+        <h1 className="text-3xl font-bold">Dialog History</h1>
+        <Button onClick={handleRefresh} variant="outline">
+          Refresh
         </Button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <DialogFilters
+        onFilterChange={setFilters}
+        totalCount={dialogs.length}
+        filteredCount={filteredDialogs.length}
+      />
+
+      {filteredDialogs.length === 0 ? (
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Dialogs</CardTitle>
-            <FileAudio className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{dialogs.length}</div>
+          <CardContent className="p-12 text-center">
+            <FileAudio className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No dialogs found</h3>
+            <p className="text-muted-foreground mb-4">
+              {dialogs.length === 0
+                ? "Upload your first audio file to get started"
+                : "No dialogs match your current filters"
+              }
+            </p>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Completed</CardTitle>
-            <CheckCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {dialogs.filter(d => d.status === 'completed').length}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Processing</CardTitle>
-            <Loader2 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {dialogs.filter(d => d.status === 'processing').length}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Failed</CardTitle>
-            <AlertCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {dialogs.filter(d => d.status === 'failed').length}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Dialog History */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Dialog History</CardTitle>
-          <CardDescription>
-            View and manage all dialog transcriptions and evaluations
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col lg:flex-row gap-4 mb-6">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                <Input
-                  placeholder="Search dialogs..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-            
-            <DialogFilters
-              searchTerm={searchTerm}
-              onSearchChange={setSearchTerm}
-              statusFilter={statusFilter}
-              onStatusChange={setStatusFilter}
-              sortBy={sortBy}
-              onSortChange={setSortBy}
-            />
-          </div>
-
-          {/* Dialogs List */}
-          <div className="space-y-3">
-            {sortedDialogs.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                No dialogs found matching your criteria.
-              </div>
-            ) : (
-              sortedDialogs.map((dialog) => (
-                <Card key={dialog.id} className="hover:shadow-md transition-shadow">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      {/* Left side - File info and status */}
-                      <div className="flex items-center space-x-4 flex-1 min-w-0">
-                        <div className="flex items-center space-x-2 flex-shrink-0">
-                          {getStatusIcon(dialog.status)}
-                          <Badge variant={getStatusBadgeVariant(dialog.status)} className="text-xs">
-                            {dialog.status}
-                          </Badge>
-                        </div>
-                        
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold truncate">{dialog.fileName}</h3>
-                          <div className="flex items-center space-x-4 text-sm text-muted-foreground mt-1">
-                            <div className="flex items-center space-x-1">
-                              <Calendar className="h-3 w-3 flex-shrink-0" />
-                              <span>{format(new Date(dialog.uploadDate), 'MMM dd, yyyy')}</span>
-                            </div>
-                            {dialog.tokenEstimation?.audioLengthMinutes && (
-                              <div className="flex items-center space-x-1">
-                                <Clock className="h-3 w-3 flex-shrink-0" />
-                                <span>{dialog.tokenEstimation.audioLengthMinutes.toFixed(1)} min</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Middle - Agent and Supervisor info */}
-                      <div className="hidden md:flex items-center space-x-6 px-4">
-                        <div className="text-center min-w-0">
-                          <div className="flex items-center justify-center space-x-1 text-xs text-muted-foreground mb-1">
-                            <User className="h-3 w-3 flex-shrink-0" />
-                            <span>Agent</span>
-                          </div>
-                          <div className="text-sm font-medium truncate">{dialog.assignedAgent}</div>
-                        </div>
-                        
-                        <div className="text-center min-w-0">
-                          <div className="flex items-center justify-center space-x-1 text-xs text-muted-foreground mb-1">
-                            <Users className="h-3 w-3 flex-shrink-0" />
-                            <span>Supervisor</span>
-                          </div>
-                          <div className="text-sm font-medium truncate">{dialog.assignedSupervisor}</div>
-                        </div>
-                      </div>
-
-                      {/* Right side - Actions */}
-                      <div className="flex items-center space-x-2 flex-shrink-0">
-                        <Button variant="outline" size="sm" asChild>
-                          <Link to={`/dialog/${dialog.id}`}>
-                            <Eye className="h-4 w-4 mr-1" />
-                            View
-                          </Link>
-                        </Button>
-                      </div>
+      ) : (
+        <div className="grid gap-4">
+          {filteredDialogs.map((dialog) => (
+            <Card key={dialog.id} className="hover:shadow-md transition-shadow">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between gap-4">
+                  {/* Left side - File info with better vertical centering */}
+                  <div className="flex items-center gap-4 min-w-0 flex-1">
+                    <div className="flex-shrink-0">
+                      <FileAudio className="h-8 w-8 text-primary" />
                     </div>
 
-                    {/* Mobile view for agent/supervisor info */}
-                    <div className="md:hidden mt-3 pt-3 border-t border-border">
-                      <div className="flex justify-between text-sm">
-                        <div className="flex-1 min-w-0 mr-2">
-                          <span className="text-muted-foreground">Agent: </span>
-                          <span className="font-medium truncate">{dialog.assignedAgent}</span>
+                    <div className="min-w-0 flex-1 flex flex-col justify-center">
+                      <div className="flex items-center gap-3 mb-1">
+                        <h3 className="font-semibold text-lg truncate">{dialog.filename}</h3>
+                        <Badge variant={getStatusBadgeVariant(dialog.status)}>
+                          {capitalizeStatus(dialog.status)}
+                        </Badge>
+                      </div>
+
+                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          <Calendar className="h-4 w-4" />
+                          <span>{formatDistanceToNow(new Date(dialog.created_at), { addSuffix: true })}</span>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <span className="text-muted-foreground">Supervisor: </span>
-                          <span className="font-medium truncate">{dialog.assignedSupervisor}</span>
-                        </div>
+
+                        {dialog.duration && (
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-4 w-4" />
+                            <span>{Math.round(dialog.duration)}s</span>
+                          </div>
+                        )}
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
-        </CardContent>
-      </Card>
+                  </div>
+
+                  {/* Right side - Actions */}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleView(dialog)}
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Button>
+
+                    {dialog.audio_url && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDownload(dialog)}
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    )}
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDelete(dialog.id)}
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
