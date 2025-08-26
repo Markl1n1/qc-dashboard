@@ -10,6 +10,8 @@ export interface Dialog extends BaseDialog {}
 
 interface DialogStore {
   dialogs: Dialog[];
+  isLoading: boolean;
+  error: string | null;
   addDialog: (dialog: Dialog) => void;
   updateDialog: (id: string, updates: Partial<Dialog>) => void;
   updateLeMUREvaluation: (id: string, evaluation: LeMUREvaluationResult) => void;
@@ -19,6 +21,7 @@ interface DialogStore {
   clearDialogs: () => void;
   stopProcessing: (id: string) => void;
   processDialog: (id: string) => void;
+  loadDialogs: () => Promise<void>;
 }
 
 const calculateQualityScore = (evaluation: LeMUREvaluationResult): number => {
@@ -44,6 +47,19 @@ export const useDialogStore = create<DialogStore>()(
   persist(
     (set, get) => ({
       dialogs: [],
+      isLoading: false,
+      error: null,
+      
+      loadDialogs: async () => {
+        set({ isLoading: true, error: null });
+        try {
+          // Mock implementation - in real app this would load from database
+          await new Promise(resolve => setTimeout(resolve, 100));
+          set({ isLoading: false });
+        } catch (error) {
+          set({ error: 'Failed to load dialogs', isLoading: false });
+        }
+      },
       
       addDialog: (dialog: Dialog) => {
         set((state) => ({

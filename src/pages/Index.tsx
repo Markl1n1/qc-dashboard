@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -183,13 +182,13 @@ const Index = () => {
                       </div>
                       <div className="min-w-0 flex-1 flex flex-col justify-center">
                         <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-medium truncate">{dialog.audioFileName}</h3>
+                          <h3 className="font-medium truncate">{dialog.fileName}</h3>
                           {getStatusBadge(dialog.status)}
                         </div>
                         <div className="flex items-center gap-4 text-sm text-muted-foreground">
                           <div className="flex items-center gap-1">
                             <Calendar className="h-3 w-3 flex-shrink-0" />
-                            <span className="truncate">{formatDate(dialog.createdAt)}</span>
+                            <span className="truncate">{formatDate(dialog.uploadDate)}</span>
                           </div>
                           <div className="flex items-center gap-1">
                             <Users className="h-3 w-3 flex-shrink-0" />
