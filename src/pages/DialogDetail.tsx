@@ -70,19 +70,19 @@ const DialogDetail = () => {
 
       console.log('OpenAI analysis completed:', result);
 
-      // Save analysis results to database
+      // Save analysis results to database - convert to proper JSON types
       const { error: analysisError } = await supabase
         .from('dialog_analysis')
         .insert({
           dialog_id: dialog.id,
           analysis_type: 'openai',
           overall_score: result.overallScore,
-          category_scores: result.categoryScores,
-          mistakes: result.mistakes,
+          category_scores: result.categoryScores as any,
+          mistakes: result.mistakes as any,
           recommendations: result.recommendations,
           summary: result.summary,
           confidence: result.confidence,
-          token_usage: result.tokenUsage,
+          token_usage: result.tokenUsage as any,
           processing_time: result.processingTime
         });
 
@@ -158,7 +158,7 @@ const DialogDetail = () => {
           </div>
         )}
         {analysisProgress.currentStep && (
-          <p className="text-sm text-muted-foreground mt-2">{analysisProgress.currentStep}</p>
+          <p className="text-sm text-muted-foreground mt-2">{String(analysisProgress.currentStep)}</p>
         )}
       </div>
     );
