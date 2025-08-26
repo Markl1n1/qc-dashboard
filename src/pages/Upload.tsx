@@ -14,6 +14,7 @@ import { DeepgramOptions } from '../types/deepgram';
 import { SpeakerUtterance } from '../types';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+import AgentSelector from '../components/AgentSelector';
 
 interface UploadProps {}
 
@@ -66,7 +67,7 @@ const Upload: React.FC<UploadProps> = () => {
     }
 
     if (!agentName.trim()) {
-      toast.error('Please enter the agent name.');
+      toast.error('Please select an agent.');
       return;
     }
 
@@ -127,6 +128,10 @@ const Upload: React.FC<UploadProps> = () => {
     }
   };
 
+  const handleCreateNewAgent = () => {
+    navigate('/agents');
+  };
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       {/* Agent Information */}
@@ -139,17 +144,11 @@ const Upload: React.FC<UploadProps> = () => {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <div>
-              <Label htmlFor="agent-name">Agent Name</Label>
-              <Input
-                id="agent-name"
-                type="text"
-                value={agentName}
-                onChange={(e) => setAgentName(e.target.value)}
-                placeholder="Enter the agent's name"
-                className="max-w-md"
-              />
-            </div>
+            <AgentSelector
+              value={agentName}
+              onChange={setAgentName}
+              onCreateNew={handleCreateNewAgent}
+            />
             <div>
               <Label>Supervisor</Label>
               <Input

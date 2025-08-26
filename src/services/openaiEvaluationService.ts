@@ -1,418 +1,186 @@
+import { supabase } from '../integrations/supabase/client';
 import { logger } from './loggingService';
-import { databaseService } from './databaseService';
 import { aiInstructionsService } from './aiInstructionsService';
 import { SpeakerUtterance } from '../types';
 import { OpenAIEvaluationResult, OpenAIEvaluationProgress } from '../types/openaiEvaluation';
 
 interface Settings {
   aiConfidenceThreshold: number;
-  aiTemperature: number;
-  aiReasoningEffort: string;
-  aiMaxTokensGpt5Mini: number;
-  aiMaxTokensGpt5: number;
+  aiEvaluationModel: string;
+  openaiApiKey: string;
 }
 
-const DEFAULT_CONFIDENCE_THRESHOLD = 0.8;
-const DEFAULT_TEMPERATURE = 0.7;
-const DEFAULT_REASONING_EFFORT = 'medium';
-const DEFAULT_MAX_TOKENS_GPT5_MINI = 1000;
-const DEFAULT_MAX_TOKENS_GPT5 = 2000;
+interface EvaluationParams {
+  dialogId: string;
+  text: string;
+  speakerUtterances: SpeakerUtterance[];
+  settings: Settings;
+  progressCallback: (progress: OpenAIEvaluationProgress) => void;
+}
 
 class OpenAIEvaluationService {
-  private progressCallback?: (progress: OpenAIEvaluationProgress) => void;
+  private apiKey: string | null = null;
+  private model: string | null = null;
+  private confidenceThreshold: number = 0.75;
 
-  setProgressCallback(callback: (progress: OpenAIEvaluationProgress) => void) {
-    this.progressCallback = callback;
-  }
-
-  private notifyProgress(stage: OpenAIEvaluationProgress['stage'], progress: number, message: string, currentStep?: string) {
-    if (this.progressCallback) {
-      this.progressCallback({
-        stage,
-        progress,
-        message,
-        currentStep
-      });
-    }
-  }
-
-  private async getSettings(): Promise<Settings> {
+  async initialize(): Promise<void> {
     try {
-      const config = await databaseService.getAllSystemConfig();
+      const config = await this.fetchSettings();
+      this.apiKey = config.openaiApiKey;
+      this.model = config.aiEvaluationModel;
+      this.confidenceThreshold = config.aiConfidenceThreshold;
 
-      return {
-        aiConfidenceThreshold: parseFloat(config.ai_confidence_threshold || DEFAULT_CONFIDENCE_THRESHOLD.toString()),
-        aiTemperature: parseFloat(config.ai_temperature || DEFAULT_TEMPERATURE.toString()),
-        aiReasoningEffort: config.ai_reasoning_effort || DEFAULT_REASONING_EFFORT,
-        aiMaxTokensGpt5Mini: parseInt(config.ai_max_tokens_gpt5_mini || DEFAULT_MAX_TOKENS_GPT5_MINI.toString()),
-        aiMaxTokensGpt5: parseInt(config.ai_max_tokens_gpt5 || DEFAULT_MAX_TOKENS_GPT5.toString()),
-      };
-    } catch (error) {
-      console.error('Error fetching settings, using defaults:', error);
-      return {
-        aiConfidenceThreshold: DEFAULT_CONFIDENCE_THRESHOLD,
-        aiTemperature: DEFAULT_TEMPERATURE,
-        aiReasoningEffort: DEFAULT_REASONING_EFFORT,
-        aiMaxTokensGpt5Mini: DEFAULT_MAX_TOKENS_GPT5_MINI,
-        aiMaxTokensGpt5: DEFAULT_MAX_TOKENS_GPT5
-      };
-    }
-  }
-
-  private async getSystemInstructions(): Promise<string> {
-    try {
-      const instructions = await aiInstructionsService.getLatestInstructions('system');
-      
-      // If no custom instructions found, use default fallback
-      if (!instructions || instructions.trim() === '') {
-        return this.getDefaultSystemInstructions();
+      if (!this.apiKey) {
+        logger.warn('OpenAI API key is not set. OpenAI evaluations will be disabled.');
       }
-      
-      return instructions.trim();
     } catch (error) {
-      console.warn('Failed to fetch system instructions from storage, using default:', error);
-      return this.getDefaultSystemInstructions();
+      logger.error('Failed to initialize OpenAI Evaluation Service', error);
+      throw new Error('Failed to initialize OpenAI Evaluation Service');
     }
   }
 
-  private getDefaultSystemInstructions(): string {
-    return `You are an AI assistant specialized in analyzing customer service conversations and evaluating agent performance.
+  private async fetchSettings(): Promise<Settings> {
+    const aiConfidenceThreshold = await supabase.from('system_config').select('value').eq('key', 'ai_confidence_threshold').single();
+    const aiEvaluationModel = await supabase.from('system_config').select('value').eq('key', 'ai_evaluation_model').single();
+    const openaiApiKey = await supabase.from('system_config').select('value').eq('key', 'openai_api_key').single();
 
-Your task is to:
-1. Analyze the conversation objectively
-2. Evaluate agent performance based on standard customer service metrics
-3. Provide constructive feedback and recommendations
-4. Score the interaction on relevant criteria
-
-Always be fair, constructive, and focus on actionable insights that can help improve customer service quality.`;
+    return {
+      aiConfidenceThreshold: aiConfidenceThreshold.data?.value ? parseFloat(aiConfidenceThreshold.data.value) : 0.75,
+      aiEvaluationModel: aiEvaluationModel.data?.value || 'gpt-3.5-turbo',
+      openaiApiKey: openaiApiKey.data?.value || '',
+    };
   }
 
-  private async getEvaluationInstructions(): Promise<string> {
-    try {
-      const instructions = await aiInstructionsService.getLatestInstructions('evaluation');
-      
-      if (!instructions || instructions.trim() === '') {
-        return this.getDefaultEvaluationInstructions();
-      }
-      
-      return instructions.trim();
-    } catch (error) {
-      console.warn('Failed to fetch evaluation instructions from storage, using default:', error);
-      return this.getDefaultEvaluationInstructions();
+  async evaluate(params: EvaluationParams): Promise<OpenAIEvaluationResult> {
+    if (!this.apiKey) {
+      throw new Error('OpenAI API key is not set. Cannot perform evaluation.');
     }
-  }
 
-  private getDefaultEvaluationInstructions(): string {
-    return `Evaluate the agent's performance on the following criteria:
-
-1. Professionalism and Communication
-2. Problem Resolution Effectiveness  
-3. Customer Empathy and Understanding
-4. Process Adherence
-5. Response Time and Efficiency
-
-Rate each criterion on a scale of 1-10 and provide specific examples from the conversation to support your ratings.`;
-  }
-
-  async evaluateConversation(
-    utterances: SpeakerUtterance[],
-    model: string = 'gpt-5-mini-2025-08-07'
-  ): Promise<OpenAIEvaluationResult> {
-    const startTime = Date.now();
-    
     try {
-      this.notifyProgress('initializing', 10, 'Preparing conversation data...');
+      const { dialogId, text, speakerUtterances, settings, progressCallback } = params;
 
-      // Convert utterances to transcript format
-      const transcript = utterances
-        .sort((a, b) => a.start - b.start)
-        .map(u => `${u.speaker}: ${u.text}`)
-        .join('\n');
+      progressCallback({ stage: 'preparing', message: 'Preparing evaluation', progress: 0 });
 
-      // Extract agent name (first speaker that's not Customer)
-      const agentName = utterances.find(u => u.speaker !== 'Customer')?.speaker || 'Agent';
+      const instructions = await aiInstructionsService.getInstructions('openai');
+      const prompt = this.constructPrompt(text, speakerUtterances, instructions);
 
-      this.notifyProgress('analyzing', 30, 'Starting AI analysis...');
+      progressCallback({ stage: 'prompt_ready', message: 'Prompt ready, sending to OpenAI', progress: 0.1 });
 
-      // Use the existing evaluateDialog method
-      const result = await this.evaluateDialog(transcript, agentName, undefined, model);
+      const evaluation = await this.getOpenAIResponse(prompt, settings.aiEvaluationModel);
 
-      this.notifyProgress('processing_response', 80, 'Processing results...');
+      progressCallback({ stage: 'response_received', message: 'Response received from OpenAI', progress: 0.6 });
 
-      // Convert to the expected format for the UI
-      const conversationResult: OpenAIEvaluationResult = {
-        overallScore: result.overallScore * 10, // Convert from 1-10 to 1-100
-        categoryScores: this.parseCategoryScores(result.rawOutput),
-        mistakes: this.parseMistakes(result.rawOutput, utterances),
-        recommendations: result.recommendations,
-        summary: this.generateSummary(result),
-        confidence: 85, // Default confidence
-        processingTime: Date.now() - startTime,
-        tokenUsage: {
-          input: result.tokenEstimation.actualInputTokens,
-          output: result.tokenEstimation.outputTokens,
-          cost: this.calculateCost(result.tokenEstimation.totalTokens, model)
-        },
-        modelUsed: model,
-        analysisId: `analysis_${Date.now()}`
-      };
+      const parsedResult = this.parseOpenAIResponse(evaluation);
 
-      this.notifyProgress('complete', 100, 'Analysis completed successfully!');
+      progressCallback({ stage: 'parsing_complete', message: 'Parsing complete', progress: 0.8 });
 
-      return conversationResult;
+      const validatedResult = this.validateResult(parsedResult, settings.aiConfidenceThreshold);
 
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      this.notifyProgress('error', 0, `Analysis failed: ${errorMessage}`);
+      progressCallback({ stage: 'validation_complete', message: 'Validation complete', progress: 0.9 });
+
+      logger.info(`OpenAI evaluation completed for dialog ${dialogId}`);
+      progressCallback({ stage: 'complete', message: 'Evaluation complete', progress: 1 });
+
+      return validatedResult;
+    } catch (error: any) {
+      await this.handleApiError(error, 'evaluate');
       throw error;
     }
   }
 
-  private parseCategoryScores(rawOutput: string): Record<string, number> {
-    const categories: Record<string, number> = {};
-    
-    // Try to extract category scores from the raw output
-    const lines = rawOutput.split('\n');
-    for (const line of lines) {
-      const match = line.match(/(\w+(?:\s+\w+)*?):\s*(\d+)(?:\/10|\/100)?/i);
-      if (match) {
-        const category = match[1].toLowerCase().replace(/\s+/g, '_');
-        let score = parseInt(match[2]);
-        // Normalize to 100-point scale
-        if (score <= 10) score *= 10;
-        categories[category] = Math.min(100, Math.max(0, score));
-      }
-    }
+  private constructPrompt(text: string, speakerUtterances: SpeakerUtterance[], instructions: string): string {
+    const speakerLines = speakerUtterances.map(u => `${u.speaker}: ${u.text}`).join('\n');
 
-    return categories;
+    return `${instructions}
+      
+      Transcription:
+      ${speakerLines}
+      
+      Summary:
+      ${text}
+      `;
   }
 
-  private parseMistakes(rawOutput: string, utterances: SpeakerUtterance[]): any[] {
-    const mistakes: any[] = [];
-    
-    // Simple parsing - look for common mistake indicators
-    const lines = rawOutput.split('\n');
-    let mistakeCounter = 0;
-    
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].toLowerCase();
-      if (line.includes('mistake') || line.includes('error') || line.includes('issue')) {
-        mistakes.push({
-          id: `mistake_${++mistakeCounter}`,
-          level: 'minor',
-          category: 'general',
-          mistakeName: `Issue ${mistakeCounter}`,
-          description: lines[i].trim(),
-          text: '',
-          position: 0,
-          speaker: 'Agent',
-          suggestion: 'Consider improving this aspect',
-          impact: 'medium',
-          confidence: 75
-        });
-      }
-    }
-
-    return mistakes;
-  }
-
-  private generateSummary(result: any): string {
-    const score = result.overallScore;
-    if (score >= 8) {
-      return 'Excellent performance with strong customer service skills demonstrated throughout the conversation.';
-    } else if (score >= 6) {
-      return 'Good performance with some areas for improvement identified.';
-    } else {
-      return 'Performance needs improvement with several areas requiring attention.';
-    }
-  }
-
-  private calculateCost(totalTokens: number, model: string): number {
-    const costPer1k = this.getModelCost(model);
-    return (totalTokens / 1000) * costPer1k;
-  }
-
-  private getModelCost(model: string): number {
-    const costs: Record<string, number> = {
-      'gpt-5-2025-08-07': 0.03,
-      'gpt-5-mini-2025-08-07': 0.015,
-      'gpt-5-nano-2025-08-07': 0.005,
-      'gpt-4.1-2025-04-14': 0.02,
-      'o3-2025-04-16': 0.04,
-      'o4-mini-2025-04-16': 0.01,
-      'gpt-4.1-mini-2025-04-14': 0.008,
-      'gpt-4o-mini': 0.006,
-      'gpt-4o': 0.025,
-      'gpt-3.5-turbo': 0.002
+  private async getOpenAIResponse(prompt: string, model: string): Promise<any> {
+    const url = 'https://api.openai.com/v1/chat/completions';
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${this.apiKey}`,
     };
-    return costs[model] || 0.02;
-  }
 
-  async evaluateDialog(
-    transcript: string,
-    agentName?: string,
-    customPrompt?: string,
-    model: string = 'gpt-5-mini-2025-08-07'
-  ): Promise<{
-    overallScore: number;
-    strengths: string[];
-    areasForImprovement: string[];
-    recommendations: string[];
-    conversationHighlights: string[];
-    rawOutput: string;
-    tokenEstimation: {
-      actualInputTokens: number;
-      outputTokens: number;
-      totalTokens: number;
-    };
-  }> {
+    const body = JSON.stringify({
+      model: model,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7,
+      max_tokens: 1000,
+      top_p: 1,
+      frequency_penalty: 0,
+      presence_penalty: 0,
+    });
+
     try {
-      logger.info('Starting OpenAI dialog evaluation', { 
-        model, 
-        transcriptLength: transcript.length,
-        agentName: agentName || 'Unknown'
-      });
-
-      // Get system and evaluation instructions from storage
-      const systemInstructions = await this.getSystemInstructions();
-      const evaluationInstructions = await this.getEvaluationInstructions();
-
-      // Build the prompt using instructions from storage
-      const evaluationPrompt = customPrompt || evaluationInstructions;
-      
-      const fullPrompt = `${evaluationPrompt}
-
-Agent Name: ${agentName || 'Unknown'}
-
-Conversation to evaluate:
-${transcript}
-
-Please provide a comprehensive evaluation including:
-1. Overall performance score (1-10)
-2. Specific strengths observed
-3. Areas for improvement
-4. Detailed recommendations
-5. Key conversation highlights
-
-Format your response as a structured analysis.`;
-
-      const settings = await this.getSettings();
-      
-      const messages = [
-        {
-          role: 'system' as const,
-          content: systemInstructions
-        },
-        {
-          role: 'user' as const,
-          content: fullPrompt
-        }
-      ];
-
-      const payload = {
-        model,
-        messages,
-        max_output_tokens: model.includes('gpt-5') ? settings.aiMaxTokensGpt5 : settings.aiMaxTokensGpt5Mini,
-        temperature: settings.aiTemperature,
-        reasoning_effort: settings.aiReasoningEffort
-      };
-
-      logger.debug('OpenAI evaluation payload:', payload);
-
-      const res = await fetch('/api/openai-evaluate', {
+      const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
+        headers: headers,
+        body: body,
       });
 
-      if (!res.ok) {
-        const error = await res.text();
-        logger.error('OpenAI evaluation failed', { status: res.status, error });
-        throw new Error(`OpenAI evaluation failed: ${error}`);
+      if (!response.ok) {
+        throw new Error(`OpenAI API responded with status: ${response.status} - ${response.statusText}`);
       }
 
-      const data = await res.json();
-
-      logger.debug('OpenAI evaluation raw response:', data);
-
-      if (!data.choices || data.choices.length === 0) {
-        logger.warn('No choices returned from OpenAI, retrying with GPT-5 flagship model');
-
-        if (model !== 'gpt-5-2025-08-07') {
-          return this.evaluateDialog(transcript, agentName, customPrompt, 'gpt-5-2025-08-07');
-        } else {
-          throw new Error('No evaluation results returned from OpenAI');
-        }
-      }
-
-      const evaluation = data.choices[0].message?.content;
-      const tokenEstimation = data.tokenEstimation || {
-        actualInputTokens: 0,
-        outputTokens: 0,
-        totalTokens: 0
-      };
-
-      if (!evaluation) {
-        logger.warn('No evaluation content returned from OpenAI, retrying with GPT-5 flagship model');
-
-        if (model !== 'gpt-5-2025-08-07') {
-          return this.evaluateDialog(transcript, agentName, customPrompt, 'gpt-5-2025-08-07');
-        } else {
-          throw new Error('No evaluation results returned from OpenAI');
-        }
-      }
-
-      // Basic parsing logic
-      const overallScoreMatch = evaluation.match(/Overall performance score: (\d+)/i);
-      const strengthsMatch = evaluation.match(/Specific strengths observed:\s*([\s\S]*?)(Areas for improvement:|$)/i);
-      const areasForImprovementMatch = evaluation.match(/Areas for improvement:\s*([\s\S]*?)(Detailed recommendations:|$)/i);
-      const recommendationsMatch = evaluation.match(/Detailed recommendations:\s*([\s\S]*?)(Key conversation highlights:|$)/i);
-      const conversationHighlightsMatch = evaluation.match(/Key conversation highlights:\s*([\s\S]*)/i);
-
-      const overallScore = overallScoreMatch ? parseInt(overallScoreMatch[1], 10) : 0;
-      const strengths = strengthsMatch ? strengthsMatch[1].trim().split('\n').filter(line => line.trim() !== '') : [];
-      const areasForImprovement = areasForImprovementMatch ? areasForImprovementMatch[1].trim().split('\n').filter(line => line.trim() !== '') : [];
-      const recommendations = recommendationsMatch ? recommendationsMatch[1].trim().split('\n').filter(line => line.trim() !== '') : [];
-      const conversationHighlights = conversationHighlightsMatch ? conversationHighlightsMatch[1].trim().split('\n').filter(line => line.trim() !== '') : [];
-
-      const result = {
-        overallScore,
-        strengths,
-        areasForImprovement,
-        recommendations,
-        conversationHighlights,
-        rawOutput: evaluation,
-        tokenEstimation
-      };
-
-      logger.info('OpenAI evaluation completed successfully', { overallScore, model, tokenEstimation });
-      logger.debug('Parsed evaluation result:', result);
-
-      // Retry with GPT-5 flagship if confidence is low
-      if (overallScore < settings.aiConfidenceThreshold * 10 && model !== 'gpt-5-2025-08-07') {
-        logger.warn(`Low confidence score (${overallScore}), retrying with GPT-5 flagship model`);
-        return this.evaluateDialog(transcript, agentName, customPrompt, 'gpt-5-2025-08-07');
-      }
-
-      return result;
-
-    } catch (error) {
-      logger.error('Error in OpenAI evaluation:', error);
-      
-      // Check if the error is a timeout
-      if (error instanceof Error && error.message.includes('timed out')) {
-        logger.warn('OpenAI evaluation timed out, retrying with GPT-5 flagship model');
-        if (model !== 'gpt-5-2025-08-07') {
-          return this.evaluateDialog(transcript, agentName, customPrompt, 'gpt-5-2025-08-07');
-        } else {
-          throw new Error('OpenAI evaluation timed out');
-        }
-      }
-
+      return await response.json();
+    } catch (error: any) {
+      logger.error('Error during OpenAI API request', error);
       throw error;
     }
+  }
+
+  private parseOpenAIResponse(response: any): OpenAIEvaluationResult {
+    try {
+      const content = response.choices[0].message.content;
+      const parsed = JSON.parse(content);
+
+      return {
+        overallScore: parsed.overallScore,
+        categoryScores: parsed.categoryScores,
+        mistakes: parsed.mistakes,
+        recommendations: parsed.recommendations,
+        summary: parsed.summary,
+        confidence: parsed.confidence,
+        tokenUsage: response.usage,
+      };
+    } catch (error: any) {
+      logger.error('Failed to parse OpenAI response', error, { response });
+      throw new Error('Failed to parse OpenAI response. Please ensure the response is a valid JSON.');
+    }
+  }
+
+  private validateResult(result: OpenAIEvaluationResult, confidenceThreshold: number): OpenAIEvaluationResult {
+    if (result.confidence < confidenceThreshold) {
+      logger.warn(`OpenAI evaluation confidence is low (${result.confidence}). Results may be inaccurate.`);
+    }
+
+    return result;
+  }
+
+  private async handleApiError(error: any, context: string): Promise<never> {
+    logger.error(`OpenAI API error in ${context}`, error);
+    
+    if (error.response?.status === 401) {
+      throw new Error('Invalid OpenAI API key. Please check your settings.');
+    }
+    
+    if (error.response?.status === 429) {
+      throw new Error('OpenAI API rate limit exceeded. Please try again later.');
+    }
+    
+    if (error.response?.status >= 500) {
+      throw new Error('OpenAI service is temporarily unavailable. Please try again later.');
+    }
+    
+    // Remove the invalid status property from Error object
+    throw new Error(error.message || `OpenAI evaluation failed: ${context}`);
   }
 }
 

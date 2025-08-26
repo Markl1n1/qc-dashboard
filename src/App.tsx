@@ -1,115 +1,82 @@
 
 import { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Toaster } from '@/components/ui/sonner';
-import Layout from './components/Layout';
+import { Toaster } from './components/ui/sonner';
 import ProtectedRoute from './components/ProtectedRoute';
-import LazyProtectedRoute from './components/LazyProtectedRoute';
-import './App.css';
+import Layout from './components/Layout';
+import ErrorBoundary from './components/ErrorBoundary';
 
-// Lazy load components
-const Login = lazy(() => import('./pages/Login'));
+// Lazy load pages for better performance
+const Index = lazy(() => import('./pages/Index'));
 const Auth = lazy(() => import('./pages/Auth'));
-const EmailConfirmed = lazy(() => import('./pages/EmailConfirmed'));
+const Login = lazy(() => import('./pages/Login'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
 const UnifiedDashboard = lazy(() => import('./pages/UnifiedDashboard'));
 const Upload = lazy(() => import('./pages/Upload'));
 const DialogDetail = lazy(() => import('./pages/DialogDetail'));
 const Settings = lazy(() => import('./pages/Settings'));
+const AgentManagement = lazy(() => import('./pages/AgentManagement'));
 const NotFound = lazy(() => import('./pages/NotFound'));
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 5 * 60 * 1000, // 5 minutes
-      retry: 1,
-    },
-  },
-});
+const EmailConfirmed = lazy(() => import('./pages/EmailConfirmed'));
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
+    <ErrorBoundary>
       <Router>
         <div className="min-h-screen bg-background">
-          <Routes>
-            <Route
-              path="/login"
-              element={
-                <Suspense fallback={<div>Loading...</div>}>
-                  <Login />
-                </Suspense>
-              }
-            />
-            <Route
-              path="/auth"
-              element={
-                <Suspense fallback={<div>Loading...</div>}>
-                  <Auth />
-                </Suspense>
-              }
-            />
-            <Route
-              path="/email-confirmed"
-              element={
-                <Suspense fallback={<div>Loading...</div>}>
-                  <EmailConfirmed />
-                </Suspense>
-              }
-            />
-            <Route
-              path="/"
-              element={
-                <LazyProtectedRoute>
-                  <Layout>
+          <Suspense fallback={<div className="flex items-center justify-center h-screen">Loading...</div>}>
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/auth" element={<Auth />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/email-confirmed" element={<EmailConfirmed />} />
+              
+              {/* Protected routes with layout */}
+              <Route element={<Layout />}>
+                <Route path="/dashboard" element={
+                  <ProtectedRoute>
+                    <Dashboard />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/unified-dashboard" element={
+                  <ProtectedRoute>
                     <UnifiedDashboard />
-                  </Layout>
-                </LazyProtectedRoute>
-              }
-            />
-            <Route
-              path="/upload"
-              element={
-                <LazyProtectedRoute>
-                  <Layout>
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/upload" element={
+                  <ProtectedRoute>
                     <Upload />
-                  </Layout>
-                </LazyProtectedRoute>
-              }
-            />
-            <Route
-              path="/dialog/:id"
-              element={
-                <LazyProtectedRoute>
-                  <Layout>
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/dialog/:id" element={
+                  <ProtectedRoute>
                     <DialogDetail />
-                  </Layout>
-                </LazyProtectedRoute>
-              }
-            />
-            <Route
-              path="/settings"
-              element={
-                <LazyProtectedRoute>
-                  <Layout>
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/agents" element={
+                  <ProtectedRoute>
+                    <AgentManagement />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/settings" element={
+                  <ProtectedRoute>
                     <Settings />
-                  </Layout>
-                </LazyProtectedRoute>
-              }
-            />
-            <Route
-              path="*"
-              element={
-                <Suspense fallback={<div>Loading...</div>}>
-                  <NotFound />
-                </Suspense>
-              }
-            />
-          </Routes>
+                  </ProtectedRoute>
+                } />
+              </Route>
+              
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
           <Toaster />
         </div>
       </Router>
-    </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 
