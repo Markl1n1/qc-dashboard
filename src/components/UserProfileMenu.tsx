@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Button } from './ui/button';
 import {
@@ -19,16 +18,18 @@ import {
 } from './ui/dialog';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { User, LogOut, Settings, Moon, Shield } from 'lucide-react';
+import { User, LogOut, Settings, Moon, Sun, Shield } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { toast } from 'sonner';
 import { supabase } from '../integrations/supabase/client';
 import { useUserRole } from '../hooks/useUserRole';
+import { useTheme } from '../hooks/useTheme';
 import PasscodeManager from './PasscodeManager';
 
 const UserProfileMenu = () => {
   const { user, logout } = useAuthStore();
   const { isAdmin } = useUserRole();
+  const { theme, setTheme } = useTheme();
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -98,6 +99,12 @@ const UserProfileMenu = () => {
     }
   };
 
+  const handleThemeToggle = () => {
+    const newTheme = theme === 'light' ? 'dark' : 'light';
+    setTheme(newTheme);
+    toast.success(`Switched to ${newTheme} theme`);
+  };
+
   return (
     <>
       <DropdownMenu>
@@ -117,9 +124,18 @@ const UserProfileMenu = () => {
               <DropdownMenuSeparator />
             </>
           )}
-          <DropdownMenuItem onClick={() => {}}>
-            <Moon className="mr-2 h-4 w-4" />
-            Theme
+          <DropdownMenuItem onClick={handleThemeToggle}>
+            {theme === 'light' ? (
+              <>
+                <Moon className="mr-2 h-4 w-4" />
+                Dark Theme
+              </>
+            ) : (
+              <>
+                <Sun className="mr-2 h-4 w-4" />
+                Light Theme
+              </>
+            )}
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setShowPasswordDialog(true)}>
             <Settings className="mr-2 h-4 w-4" />

@@ -15,11 +15,13 @@ import EmailConfirmed from './pages/EmailConfirmed';
 import NotFound from './pages/NotFound';
 import Dashboard from './pages/Dashboard';
 import { useAuthStore } from './store/authStore';
+import { useTheme } from './hooks/useTheme';
 import ProtectedRoute from './components/ProtectedRoute';
 import './App.css';
 
 function App() {
   const { initializeAuth } = useAuthStore();
+  const { theme } = useTheme();
 
   useEffect(() => {
     initializeAuth();
@@ -83,7 +85,7 @@ function App() {
           } />
           <Route path="*" element={<NotFound />} />
         </Routes>
-        <Toaster />
+        <Toaster theme={theme} />
       </div>
     </Router>
   );
