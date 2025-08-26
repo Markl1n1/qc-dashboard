@@ -1,5 +1,6 @@
+
 import { Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from './components/ui/sonner';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
@@ -9,7 +10,6 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 const Index = lazy(() => import('./pages/Index'));
 const Auth = lazy(() => import('./pages/Auth'));
 const Login = lazy(() => import('./pages/Login'));
-const Dashboard = lazy(() => import('./pages/Dashboard'));
 const UnifiedDashboard = lazy(() => import('./pages/UnifiedDashboard'));
 const Upload = lazy(() => import('./pages/Upload'));
 const DialogDetail = lazy(() => import('./pages/DialogDetail'));
@@ -32,11 +32,8 @@ function App() {
               
               {/* Protected routes with layout */}
               <Route element={<Layout />}>
-                <Route path="/dashboard" element={
-                  <ProtectedRoute>
-                    <Dashboard />
-                  </ProtectedRoute>
-                } />
+                {/* Redirect legacy dashboard route to unified dashboard */}
+                <Route path="/dashboard" element={<Navigate to="/unified-dashboard" replace />} />
                 
                 <Route path="/unified-dashboard" element={
                   <ProtectedRoute>

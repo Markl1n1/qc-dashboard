@@ -72,9 +72,9 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({ value, onChange, onCreate
                 </div>
               </div>
               {isLoading ? (
-                <SelectItem value="" disabled>Loading agents...</SelectItem>
+                <SelectItem value="loading-placeholder" disabled>Loading agents...</SelectItem>
               ) : filteredAgents.length === 0 ? (
-                <SelectItem value="" disabled>
+                <SelectItem value="no-agents-placeholder" disabled>
                   {searchQuery ? 'No agents found' : 'No agents available'}
                 </SelectItem>
               ) : (
