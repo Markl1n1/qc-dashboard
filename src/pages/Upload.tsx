@@ -69,11 +69,13 @@ const Upload: React.FC<UploadProps> = () => {
 
     console.log('Starting transcription for file:', audioFile.name);
     
+    let dialogId: string | null = null;
+    
     try {
-      // Create dialog record first with "Processing" status
-      const dialogId = await addDialog({
+      // Create dialog record first with "processing" status
+      dialogId = await addDialog({
         fileName: audioFile.name,
-        status: 'Processing',
+        status: 'processing',
         assignedAgent: user.email || 'Unknown',
         assignedSupervisor: user.email || 'Unknown',
         uploadDate: new Date().toISOString(),
@@ -93,9 +95,9 @@ const Upload: React.FC<UploadProps> = () => {
         await saveSpeakerTranscription(dialogId, result.speakerUtterances, 'speaker');
       }
 
-      // Update dialog status to "Completed" instead of creating a new dialog
+      // Update dialog status to "completed"
       await updateDialog(dialogId, {
-        status: 'Completed'
+        status: 'completed'
       });
 
       toast.success('Transcription completed successfully!');
@@ -107,10 +109,10 @@ const Upload: React.FC<UploadProps> = () => {
       console.error('Transcription failed', err);
       toast.error(`Transcription failed: ${err.message}`);
       
-      // Update dialog status to "Failed" on error
+      // Update dialog status to "failed" on error
       if (dialogId) {
         await updateDialog(dialogId, {
-          status: 'Failed',
+          status: 'failed',
           error: err.message
         });
       }
