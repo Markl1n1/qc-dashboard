@@ -1,6 +1,8 @@
 import { logger } from './loggingService';
 import { databaseService } from './databaseService';
 import { aiInstructionsService } from './aiInstructionsService';
+import { SpeakerUtterance } from '../types';
+import { OpenAIEvaluationResult, OpenAIEvaluationProgress } from '../types/openaiEvaluation';
 
 export interface OpenAIEvaluationResult {
   overallScore: number;
@@ -31,6 +33,22 @@ const DEFAULT_MAX_TOKENS_GPT5_MINI = 1000;
 const DEFAULT_MAX_TOKENS_GPT5 = 2000;
 
 class OpenAIEvaluationService {
+  private progressCallback?: (progress: OpenAIEvaluationProgress) => void;
+
+  setProgressCallback(callback: (progress: OpenAIEvaluationProgress) => void) {
+    this.progressCallback = callback;
+  }
+
+  private notifyProgress(stage: OpenAIEvaluationProgress['stage'], progress: number, message: string, currentStep?: string) {
+    if (this.progressCallback) {
+      this.progressCallback({
+        stage,
+        progress,
+        message,
+        currentStep
+      });
+    }
+  }
 
   private async getSettings(): Promise<Settings> {
     try {
@@ -110,12 +128,158 @@ Always be fair, constructive, and focus on actionable insights that can help imp
 Rate each criterion on a scale of 1-10 and provide specific examples from the conversation to support your ratings.`;
   }
 
+  async evaluateConversation(
+    utterances: SpeakerUtterance[],
+    model: string = 'gpt-5-mini-2025-08-07'
+  ): Promise<OpenAIEvaluationResult> {
+    const startTime = Date.now();
+    
+    try {
+      this.notifyProgress('initializing', 10, 'Preparing conversation data...');
+
+      // Convert utterances to transcript format
+      const transcript = utterances
+        .sort((a, b) => a.start - b.start)
+        .map(u => `${u.speaker}: ${u.text}`)
+        .join('\n');
+
+      // Extract agent name (first speaker that's not Customer)
+      const agentName = utterances.find(u => u.speaker !== 'Customer')?.speaker || 'Agent';
+
+      this.notifyProgress('analyzing', 30, 'Starting AI analysis...');
+
+      // Use the existing evaluateDialog method
+      const result = await this.evaluateDialog(transcript, agentName, undefined, model);
+
+      this.notifyProgress('processing_response', 80, 'Processing results...');
+
+      // Convert to the expected format for the UI
+      const conversationResult: OpenAIEvaluationResult = {
+        overallScore: result.overallScore * 10, // Convert from 1-10 to 1-100
+        categoryScores: this.parseCategoryScores(result.rawOutput),
+        mistakes: this.parseMistakes(result.rawOutput, utterances),
+        recommendations: result.recommendations,
+        summary: this.generateSummary(result),
+        confidence: 85, // Default confidence
+        processingTime: Date.now() - startTime,
+        tokenUsage: {
+          input: result.tokenEstimation.actualInputTokens,
+          output: result.tokenEstimation.outputTokens,
+          cost: this.calculateCost(result.tokenEstimation.totalTokens, model)
+        },
+        modelUsed: model,
+        analysisId: `analysis_${Date.now()}`
+      };
+
+      this.notifyProgress('complete', 100, 'Analysis completed successfully!');
+
+      return conversationResult;
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      this.notifyProgress('error', 0, `Analysis failed: ${errorMessage}`);
+      throw error;
+    }
+  }
+
+  private parseCategoryScores(rawOutput: string): Record<string, number> {
+    const categories: Record<string, number> = {};
+    
+    // Try to extract category scores from the raw output
+    const lines = rawOutput.split('\n');
+    for (const line of lines) {
+      const match = line.match(/(\w+(?:\s+\w+)*?):\s*(\d+)(?:\/10|\/100)?/i);
+      if (match) {
+        const category = match[1].toLowerCase().replace(/\s+/g, '_');
+        let score = parseInt(match[2]);
+        // Normalize to 100-point scale
+        if (score <= 10) score *= 10;
+        categories[category] = Math.min(100, Math.max(0, score));
+      }
+    }
+
+    return categories;
+  }
+
+  private parseMistakes(rawOutput: string, utterances: SpeakerUtterance[]): any[] {
+    const mistakes: any[] = [];
+    
+    // Simple parsing - look for common mistake indicators
+    const lines = rawOutput.split('\n');
+    let mistakeCounter = 0;
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].toLowerCase();
+      if (line.includes('mistake') || line.includes('error') || line.includes('issue')) {
+        mistakes.push({
+          id: `mistake_${++mistakeCounter}`,
+          level: 'minor',
+          category: 'general',
+          mistakeName: `Issue ${mistakeCounter}`,
+          description: lines[i].trim(),
+          text: '',
+          position: 0,
+          speaker: 'Agent',
+          suggestion: 'Consider improving this aspect',
+          impact: 'medium',
+          confidence: 75
+        });
+      }
+    }
+
+    return mistakes;
+  }
+
+  private generateSummary(result: any): string {
+    const score = result.overallScore;
+    if (score >= 8) {
+      return 'Excellent performance with strong customer service skills demonstrated throughout the conversation.';
+    } else if (score >= 6) {
+      return 'Good performance with some areas for improvement identified.';
+    } else {
+      return 'Performance needs improvement with several areas requiring attention.';
+    }
+  }
+
+  private calculateCost(totalTokens: number, model: string): number {
+    const costPer1k = this.getModelCost(model);
+    return (totalTokens / 1000) * costPer1k;
+  }
+
+  private getModelCost(model: string): number {
+    const costs: Record<string, number> = {
+      'gpt-5-2025-08-07': 0.03,
+      'gpt-5-mini-2025-08-07': 0.015,
+      'gpt-5-nano-2025-08-07': 0.005,
+      'gpt-4.1-2025-04-14': 0.02,
+      'o3-2025-04-16': 0.04,
+      'o4-mini-2025-04-16': 0.01,
+      'gpt-4.1-mini-2025-04-14': 0.008,
+      'gpt-4o-mini': 0.006,
+      'gpt-4o': 0.025,
+      'gpt-3.5-turbo': 0.002
+    };
+    return costs[model] || 0.02;
+  }
+
   async evaluateDialog(
     transcript: string,
     agentName?: string,
     customPrompt?: string,
     model: string = 'gpt-5-mini-2025-08-07'
-  ): Promise<OpenAIEvaluationResult> {
+  ): Promise<{
+    overallScore: number;
+    strengths: string[];
+    areasForImprovement: string[];
+    recommendations: string[];
+    conversationHighlights: string[];
+    rawOutput: string;
+    tokenEstimation: {
+      actualInputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+    };
+  }> {
     try {
       logger.info('Starting OpenAI dialog evaluation', { 
         model, 
@@ -151,7 +315,7 @@ Format your response as a structured analysis.`;
       const messages = [
         {
           role: 'system' as const,
-          content: systemInstructions // Use instructions from storage
+          content: systemInstructions
         },
         {
           role: 'user' as const,
@@ -191,7 +355,6 @@ Format your response as a structured analysis.`;
         logger.warn('No choices returned from OpenAI, retrying with GPT-5 flagship model');
 
         if (model !== 'gpt-5-2025-08-07') {
-          // Retry with GPT-5 flagship model if initial model fails
           return this.evaluateDialog(transcript, agentName, customPrompt, 'gpt-5-2025-08-07');
         } else {
           throw new Error('No evaluation results returned from OpenAI');
@@ -209,14 +372,13 @@ Format your response as a structured analysis.`;
         logger.warn('No evaluation content returned from OpenAI, retrying with GPT-5 flagship model');
 
         if (model !== 'gpt-5-2025-08-07') {
-          // Retry with GPT-5 flagship model if initial model fails
           return this.evaluateDialog(transcript, agentName, customPrompt, 'gpt-5-2025-08-07');
         } else {
           throw new Error('No evaluation results returned from OpenAI');
         }
       }
 
-      // Basic parsing logic (improve with more robust parsing if needed)
+      // Basic parsing logic
       const overallScoreMatch = evaluation.match(/Overall performance score: (\d+)/i);
       const strengthsMatch = evaluation.match(/Specific strengths observed:\s*([\s\S]*?)(Areas for improvement:|$)/i);
       const areasForImprovementMatch = evaluation.match(/Areas for improvement:\s*([\s\S]*?)(Detailed recommendations:|$)/i);
@@ -229,7 +391,7 @@ Format your response as a structured analysis.`;
       const recommendations = recommendationsMatch ? recommendationsMatch[1].trim().split('\n').filter(line => line.trim() !== '') : [];
       const conversationHighlights = conversationHighlightsMatch ? conversationHighlightsMatch[1].trim().split('\n').filter(line => line.trim() !== '') : [];
 
-      const result: OpenAIEvaluationResult = {
+      const result = {
         overallScore,
         strengths,
         areasForImprovement,
@@ -254,7 +416,7 @@ Format your response as a structured analysis.`;
       logger.error('Error in OpenAI evaluation:', error);
       
       // Check if the error is a timeout
-      if (error.message.includes('timed out')) {
+      if (error instanceof Error && error.message.includes('timed out')) {
         logger.warn('OpenAI evaluation timed out, retrying with GPT-5 flagship model');
         if (model !== 'gpt-5-2025-08-07') {
           return this.evaluateDialog(transcript, agentName, customPrompt, 'gpt-5-2025-08-07');
