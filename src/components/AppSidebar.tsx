@@ -76,23 +76,27 @@ export function AppSidebar() {
                 </SidebarMenuItem>
               ))}
               
-              {/* Theme toggle button */}
+              {/* Theme toggle button with consistent styling */}
               <SidebarMenuItem>
-                <SidebarMenuButton onClick={toggleTheme}>
-                  {theme === 'light' ? (
-                    <Moon className="mr-2 h-4 w-4" />
-                  ) : (
-                    <Sun className="mr-2 h-4 w-4" />
-                  )}
-                  {!collapsed && <span>Theme</span>}
+                <SidebarMenuButton className="hover:bg-muted/50">
+                  <button onClick={toggleTheme} className="flex items-center w-full">
+                    {theme === 'light' ? (
+                      <Moon className="mr-2 h-4 w-4" />
+                    ) : (
+                      <Sun className="mr-2 h-4 w-4" />
+                    )}
+                    {!collapsed && <span>Theme</span>}
+                  </button>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               
-              {/* Sign out button */}
+              {/* Sign out button with consistent styling */}
               <SidebarMenuItem>
-                <SidebarMenuButton onClick={handleSignOut}>
-                  <LogOut className="mr-2 h-4 w-4" />
-                  {!collapsed && <span>Sign Out</span>}
+                <SidebarMenuButton className="hover:bg-muted/50">
+                  <button onClick={handleSignOut} className="flex items-center w-full">
+                    <LogOut className="mr-2 h-4 w-4" />
+                    {!collapsed && <span>Sign Out</span>}
+                  </button>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
