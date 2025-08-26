@@ -9,18 +9,23 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { useDeepgramTranscription } from '../hooks/useDeepgramTranscription';
 import { useDatabaseDialogs } from '../hooks/useDatabaseDialogs';
 import { useAuthStore } from '../store/authStore';
-import { Mic, User } from 'lucide-react';
+import { Mic, User, FileAudio, AlertCircle } from 'lucide-react';
 import { DeepgramOptions } from '../types/deepgram';
 import { SpeakerUtterance } from '../types';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import AgentSelector from '../components/AgentSelector';
+import DraggableFileList from '../components/DraggableFileList';
+import MultiFileTranscriptionProgress from '../components/MultiFileTranscriptionProgress';
+import { audioMergingService, MergingProgress } from '../services/audioMergingService';
 
 interface UploadProps {}
 
 const Upload: React.FC<UploadProps> = () => {
-  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [audioFiles, setAudioFiles] = useState<File[]>([]);
   const [agentName, setAgentName] = useState<string>('');
+  const [isMerging, setIsMerging] = useState(false);
+  const [mergingProgress, setMergingProgress] = useState<MergingProgress | null>(null);
   const navigate = useNavigate();
 
   // Deepgram options - always enabled speaker diarization and language detection
@@ -49,20 +54,27 @@ const Upload: React.FC<UploadProps> = () => {
   };
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    const file = acceptedFiles[0];
-    setAudioFile(file);
-    console.log('File dropped:', file.name);
+    setAudioFiles(prev => [...prev, ...acceptedFiles]);
+    console.log('Files dropped:', acceptedFiles.map(f => f.name));
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: acceptedFileTypes,
-    multiple: false,
+    multiple: true,
   });
 
+  const handleFileReorder = useCallback((reorderedFiles: File[]) => {
+    setAudioFiles(reorderedFiles);
+  }, []);
+
+  const handleFileRemove = useCallback((index: number) => {
+    setAudioFiles(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
   const handleTranscribe = async () => {
-    if (!audioFile) {
-      toast.error('Please upload an audio file first.');
+    if (audioFiles.length === 0) {
+      toast.error('Please upload at least one audio file.');
       return;
     }
 
@@ -76,14 +88,18 @@ const Upload: React.FC<UploadProps> = () => {
       return;
     }
 
-    console.log('Starting transcription for file:', audioFile.name);
+    console.log('Starting transcription for files:', audioFiles.map(f => f.name));
     
     let dialogId: string | null = null;
     
     try {
       // Create dialog record first with "processing" status
+      const fileName = audioFiles.length === 1 
+        ? audioFiles[0].name 
+        : `merged_${audioFiles.length}_files.mp3`;
+
       dialogId = await addDialog({
-        fileName: audioFile.name,
+        fileName,
         status: 'processing',
         assignedAgent: agentName.trim(),
         assignedSupervisor: user.email || 'Unknown',
@@ -96,7 +112,34 @@ const Upload: React.FC<UploadProps> = () => {
         currentLanguage: 'original'
       });
 
-      const result = await transcribeDeepgram(audioFile, deepgramOptions);
+      let fileToTranscribe: File;
+
+      // If multiple files, merge them first
+      if (audioFiles.length > 1) {
+        console.log('Multiple files detected, merging...');
+        
+        // Check if merging is supported
+        const mergingInfo = audioMergingService.getMergingInfo();
+        if (!mergingInfo.supported) {
+          throw new Error(mergingInfo.reason || 'Audio merging not supported');
+        }
+
+        setIsMerging(true);
+        setMergingProgress(null);
+
+        // Set up merging progress callback
+        audioMergingService.setProgressCallback((progress) => {
+          setMergingProgress(progress);
+        });
+
+        fileToTranscribe = await audioMergingService.mergeAudioFiles(audioFiles);
+        setIsMerging(false);
+        console.log('Files merged successfully:', fileToTranscribe.name);
+      } else {
+        fileToTranscribe = audioFiles[0];
+      }
+
+      const result = await transcribeDeepgram(fileToTranscribe, deepgramOptions);
       
       // Save transcription to database
       await saveTranscription(dialogId, result.text, 'plain');
@@ -125,12 +168,17 @@ const Upload: React.FC<UploadProps> = () => {
           error: err.message
         });
       }
+    } finally {
+      setIsMerging(false);
     }
   };
 
   const handleCreateNewAgent = () => {
     navigate('/agents');
   };
+
+  const isProcessing = isMerging || isDeepgramLoading;
+  const canTranscribe = audioFiles.length > 0 && agentName.trim() && !isProcessing;
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -166,31 +214,49 @@ const Upload: React.FC<UploadProps> = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Mic className="h-5 w-5" />
-            Upload Audio File
+            Upload Audio Files
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div {...getRootProps()} className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed rounded-md cursor-pointer bg-muted hover:bg-accent">
             <input {...getInputProps()} />
             {isDragActive ? (
-              <p>Drop the audio here ...</p>
+              <p>Drop the audio files here ...</p>
             ) : (
               <div className="text-center">
-                <p className="mb-2">Drag 'n' drop an audio file here, or click to select files</p>
+                <FileAudio className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                <p className="mb-2">Drag 'n' drop audio files here, or click to select files</p>
                 <p className="text-sm text-muted-foreground">
                   Supports: MP3, WAV, M4A, AAC, OGG, FLAC, MP4, WebM, MP2, Opus
                 </p>
-              </div>
-            )}
-            {audioFile && (
-              <div className="mt-2 text-center">
-                <div className="font-medium">Selected file: {audioFile.name}</div>
-                <div className="text-sm text-muted-foreground">
-                  ({Math.round(audioFile.size / 1024)} KB)
-                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Multiple files will be merged before transcription
+                </p>
               </div>
             )}
           </div>
+
+          {/* File List with Drag and Drop */}
+          <DraggableFileList
+            files={audioFiles}
+            onReorder={handleFileReorder}
+            onRemove={handleFileRemove}
+          />
+
+          {/* Merging Capability Warning */}
+          {audioFiles.length > 1 && !audioMergingService.isMergingSupported() && (
+            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-medium text-yellow-800">Audio merging not available</p>
+                  <p className="text-yellow-700">
+                    {audioMergingService.getMergingInfo().reason}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -198,15 +264,43 @@ const Upload: React.FC<UploadProps> = () => {
       <div className="flex justify-center">
         <Button 
           onClick={handleTranscribe} 
-          disabled={!audioFile || !agentName.trim() || isDeepgramLoading} 
+          disabled={!canTranscribe} 
           size="lg"
         >
-          {isDeepgramLoading ? 'Transcribing...' : 'Start Transcription'}
+          {isMerging ? 'Merging Files...' : isDeepgramLoading ? 'Transcribing...' : 'Start Transcription'}
         </Button>
       </div>
 
-      {/* Progress */}
-      {deepgramProgress && (
+      {/* Merging Progress */}
+      {isMerging && mergingProgress && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Merging Audio Files</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p>{mergingProgress.message}</p>
+            {mergingProgress.currentFile && (
+              <p className="text-sm text-muted-foreground">Processing: {mergingProgress.currentFile}</p>
+            )}
+            <Progress value={mergingProgress.progress} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Multi-file Transcription Progress */}
+      {isDeepgramLoading && audioFiles.length > 1 && (
+        <MultiFileTranscriptionProgress
+          files={audioFiles}
+          currentFileIndex={0}
+          currentFileProgress={deepgramProgress?.progress || 0}
+          overallProgress={deepgramProgress?.progress || 0}
+          stage={deepgramProgress?.stage || 'processing'}
+          message={deepgramProgress?.message || 'Processing...'}
+        />
+      )}
+
+      {/* Single file Progress */}
+      {isDeepgramLoading && audioFiles.length === 1 && deepgramProgress && (
         <Card>
           <CardHeader>
             <CardTitle>Transcription Progress</CardTitle>
