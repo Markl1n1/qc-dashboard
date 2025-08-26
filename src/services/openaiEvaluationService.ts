@@ -4,20 +4,6 @@ import { aiInstructionsService } from './aiInstructionsService';
 import { SpeakerUtterance } from '../types';
 import { OpenAIEvaluationResult, OpenAIEvaluationProgress } from '../types/openaiEvaluation';
 
-export interface OpenAIEvaluationResult {
-  overallScore: number;
-  strengths: string[];
-  areasForImprovement: string[];
-  recommendations: string[];
-  conversationHighlights: string[];
-  rawOutput: string;
-  tokenEstimation: {
-    actualInputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-  };
-}
-
 interface Settings {
   aiConfidenceThreshold: number;
   aiTemperature: number;
