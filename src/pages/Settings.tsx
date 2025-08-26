@@ -2,12 +2,15 @@
 import React, { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import ApiKeyInput from '../components/ApiKeyInput';
-import { DeepgramKeyManager } from '../components/DeepgramKeyManager';
+import { ApiKeyInput } from '../components/ApiKeyInput';
+import { CategoryManager } from '../components/CategoryManager';
+import { EvaluationConfigurationManager } from '../components/EvaluationConfigurationManager';
+import { LeMURConfigurationManager } from '../components/LeMURConfigurationManager';
 import { PromptContextManager } from '../components/PromptContextManager';
 import { LanguageAwareRuleManager } from '../components/LanguageAwareRuleManager';
-import AIInstructionsManager from '../components/AIInstructionsManager';
-import PasscodeManager from '../components/PasscodeManager';
+import { AIInstructionsManager } from '../components/AIInstructionsManager';
+import { PasscodeManager } from '../components/PasscodeManager';
+import { DeepgramKeyManager } from '../components/DeepgramKeyManager';
 import { useUserRole } from '../hooks/useUserRole';
 
 const Settings = () => {
@@ -26,7 +29,7 @@ const Settings = () => {
         <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
           <TabsTrigger value="api-keys">API Keys</TabsTrigger>
           <TabsTrigger value="deepgram-keys">Deepgram Keys</TabsTrigger>
-          <TabsTrigger value="ai-settings">AI Settings</TabsTrigger>
+          <TabsTrigger value="evaluation">Evaluation</TabsTrigger>
           <TabsTrigger value="system">System</TabsTrigger>
         </TabsList>
 
@@ -37,11 +40,16 @@ const Settings = () => {
             </CardHeader>
             <CardContent className="space-y-6">
               <ApiKeyInput 
-                value=""
-                onChange={() => {}}
-                label="OpenAI API Key"
+                serviceName="OpenAI" 
+                keyName="openai_api_key"
                 description="Required for AI-powered evaluations and analysis"
                 placeholder="sk-..."
+              />
+              <ApiKeyInput 
+                serviceName="AssemblyAI" 
+                keyName="assemblyai_api_key"
+                description="Required for speech transcription services"
+                placeholder="Your AssemblyAI API key"
               />
             </CardContent>
           </Card>
@@ -61,7 +69,10 @@ const Settings = () => {
           )}
         </TabsContent>
 
-        <TabsContent value="ai-settings" className="space-y-6">
+        <TabsContent value="evaluation" className="space-y-6">
+          <CategoryManager />
+          <EvaluationConfigurationManager />
+          <LeMURConfigurationManager />
           <PromptContextManager />
           <LanguageAwareRuleManager />
           <AIInstructionsManager />
