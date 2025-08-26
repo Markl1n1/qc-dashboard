@@ -28,6 +28,8 @@ import { CategoryManager } from '../components/CategoryManager';
 import { EvaluationConfigurationManager } from '../components/EvaluationConfigurationManager';
 import { LanguageAwareRuleManager } from '../components/LanguageAwareRuleManager';
 import AIInstructionsManager from '../components/AIInstructionsManager';
+import { EvaluationCategory, EvaluationConfiguration } from '../types/lemurEvaluation';
+import { evaluationCategoriesService } from '../services/evaluationCategoriesService';
 
 const Settings = () => {
   const { user } = useAuthStore();
@@ -40,9 +42,13 @@ const Settings = () => {
   const [isUpdatingRetention, setIsUpdatingRetention] = useState(false);
   const [isCleaningUp, setIsCleaningUp] = useState(false);
 
+  // Categories state
+  const [categories, setCategories] = useState<EvaluationCategory[]>([]);
+
   useEffect(() => {
     if (isAdmin) {
       loadSystemConfig();
+      loadCategories();
     }
   }, [isAdmin]);
 
@@ -59,6 +65,11 @@ const Settings = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const loadCategories = () => {
+    const loadedCategories = evaluationCategoriesService.getCategories();
+    setCategories(loadedCategories);
   };
 
   const saveDataRetentionSettings = async () => {
@@ -101,6 +112,14 @@ const Settings = () => {
     } finally {
       setIsCleaningUp(false);
     }
+  };
+
+  const handleConfigurationSave = (config: EvaluationConfiguration) => {
+    toast.success(`Configuration "${config.name}" saved successfully`);
+  };
+
+  const handleCategoriesChange = (updatedCategories: EvaluationCategory[]) => {
+    setCategories(updatedCategories);
   };
 
   if (!isAdmin) {
@@ -157,7 +176,7 @@ const Settings = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <EvaluationConfigurationManager />
+            <EvaluationConfigurationManager onConfigurationSave={handleConfigurationSave} />
           </CardContent>
         </Card>
 
@@ -183,7 +202,7 @@ const Settings = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <CategoryManager />
+            <CategoryManager categories={categories} onCategoriesChange={handleCategoriesChange} />
           </CardContent>
         </Card>
 
