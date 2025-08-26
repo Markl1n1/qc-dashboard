@@ -80,9 +80,9 @@ export const OpenAIEvaluationView: React.FC<OpenAIEvaluationViewProps> = ({
 
     try {
       // Set up progress tracking
-      openaiEvaluationService.setProgressCallback((progressData) => {
-        setProgress(progressData.progress);
-        setProgressMessage(progressData.message);
+      openaiEvaluationService.setProgressCallback((status, progressValue) => {
+        setProgress(progressValue);
+        setProgressMessage(`Status: ${status}`);
       });
 
       const evaluationResult = await openaiEvaluationService.evaluateConversation(utterances, selectedModel);
@@ -261,8 +261,8 @@ export const OpenAIEvaluationView: React.FC<OpenAIEvaluationViewProps> = ({
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {result.mistakes.map((mistake) => (
-                    <div key={mistake.id} className="border-l-4 border-orange-500 pl-4">
+                  {result.mistakes.map((mistake, index) => (
+                    <div key={mistake.id || index} className="border-l-4 border-orange-500 pl-4">
                       <div className="flex items-center justify-between mb-2">
                         <h4 className="font-medium">{mistake.mistakeName || mistake.description}</h4>
                         <Badge variant={
@@ -270,21 +270,23 @@ export const OpenAIEvaluationView: React.FC<OpenAIEvaluationViewProps> = ({
                           mistake.level === 'major' ? 'default' : 
                           'secondary'
                         }>
-                          {mistake.level.toUpperCase()}
+                          {mistake.level?.toUpperCase() || mistake.severity?.toUpperCase()}
                         </Badge>
                       </div>
                       <p className="text-sm text-muted-foreground mb-2">{mistake.description}</p>
                       {mistake.text && onMistakeClick && (
                         <button
-                          onClick={() => onMistakeClick(mistake.text, mistake.position)}
+                          onClick={() => onMistakeClick(mistake.text!, mistake.position || 0)}
                           className="text-sm italic border-l-2 border-muted pl-2 mb-2 block hover:bg-muted rounded p-1 cursor-pointer transition-colors"
                         >
                           "{mistake.text}" <span className="text-xs text-blue-600 ml-1">→ View in transcript</span>
                         </button>
                       )}
-                      <p className="text-sm font-medium text-green-700">
-                        💡 {mistake.suggestion}
-                      </p>
+                      {mistake.suggestion && (
+                        <p className="text-sm font-medium text-green-700">
+                          💡 {mistake.suggestion}
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>

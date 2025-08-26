@@ -1,15 +1,14 @@
-import { AIInstructionsService } from './aiInstructionsService';
+
+import { aiInstructionsService } from './aiInstructionsService';
 import { EvaluationCategory } from '../types/lemurEvaluation';
 import { OpenAIEvaluationResult, EvaluationMistake, EvaluationStatus } from '../types/openaiEvaluation';
 
 export class OpenAIEvaluationService {
   private apiKey: string;
-  private aiInstructionsService: AIInstructionsService;
   private progressCallback: ((status: EvaluationStatus, progress: number) => void) | null = null;
 
-  constructor(apiKey: string, aiInstructionsService: AIInstructionsService) {
+  constructor(apiKey: string = '') {
     this.apiKey = apiKey;
-    this.aiInstructionsService = aiInstructionsService;
   }
 
   private updateProgress(status: EvaluationStatus, progress: number) {
@@ -63,6 +62,7 @@ export class OpenAIEvaluationService {
       promptTokens: number;
       completionTokens: number;
       totalTokens: number;
+      cost?: number;
     };
   } {
     try {
@@ -99,19 +99,25 @@ export class OpenAIEvaluationService {
   }
 
   async evaluateConversation(
-    transcript: string, 
-    speakerTranscript: string, 
-    categories: EvaluationCategory[] = []
+    utterances: any[], 
+    model: string = 'gpt-5-mini-2025-08-07'
   ): Promise<OpenAIEvaluationResult> {
     const startTime = Date.now();
     this.updateProgress("initializing", 0);
 
     try {
       this.updateProgress("preparing", 10);
-      const aiInstructions = await this.aiInstructionsService.getDefaultInstructions();
+      const aiInstructions = await aiInstructionsService.getLatestInstructions('evaluation') || 
+        'Evaluate this conversation for quality and provide detailed feedback.';
       this.updateProgress("prompt_ready", 25);
       
-      const prompt = this.buildEvaluationPrompt(transcript, speakerTranscript, categories, aiInstructions);
+      // Convert utterances to transcript format
+      const transcript = Array.isArray(utterances) ? 
+        utterances.map(u => `${u.speaker}: ${u.text}`).join('\n') : 
+        String(utterances);
+      const speakerTranscript = transcript;
+      
+      const prompt = this.buildEvaluationPrompt(transcript, speakerTranscript, [], aiInstructions);
 
       this.updateProgress("analyzing", 50);
       
@@ -122,10 +128,9 @@ export class OpenAIEvaluationService {
           'Authorization': `Bearer ${this.apiKey}`
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: model,
           messages: [{ role: 'user', content: prompt }],
-          temperature: 0.3,
-          max_tokens: 2000
+          max_completion_tokens: 2000
         })
       });
 
@@ -150,7 +155,7 @@ export class OpenAIEvaluationService {
         confidence: result.confidence,
         tokenUsage: result.tokenUsage,
         processingTime: Date.now() - startTime,
-        modelUsed: 'gpt-4',
+        modelUsed: model,
         analysisId: `analysis_${Date.now()}`
       };
 
@@ -173,3 +178,6 @@ export class OpenAIEvaluationService {
     this.apiKey = apiKey;
   }
 }
+
+// Export a singleton instance
+export const openaiEvaluationService = new OpenAIEvaluationService();
