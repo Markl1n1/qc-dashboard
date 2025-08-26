@@ -14,8 +14,8 @@ import { format } from 'date-fns';
 const Index = () => {
   const [filters, setFilters] = useState({
     search: '',
-    sortBy: 'newest' as const,
-    status: 'all' as const
+    sortBy: 'newest' as 'newest' | 'oldest' | 'filename',
+    status: 'all' as 'all' | 'processed' | 'pending'
   });
   const [filteredDialogs, setFilteredDialogs] = useState<Dialog[]>([]);
 
@@ -114,9 +114,9 @@ const Index = () => {
         searchTerm={filters.search}
         onSearchChange={(search) => setFilters(prev => ({ ...prev, search }))}
         sortBy={filters.sortBy}
-        onSortChange={(sortBy) => setFilters(prev => ({ ...prev, sortBy }))}
+        onSortChange={(sortBy) => setFilters(prev => ({ ...prev, sortBy: sortBy as 'newest' | 'oldest' | 'filename' }))}
         statusFilter={filters.status}
-        onStatusChange={(status) => setFilters(prev => ({ ...prev, status }))}
+        onStatusChange={(status) => setFilters(prev => ({ ...prev, status: status as 'all' | 'processed' | 'pending' }))}
       />
 
       {/* Stats */}
