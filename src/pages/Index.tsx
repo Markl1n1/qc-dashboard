@@ -31,8 +31,8 @@ const Index = () => {
     // Apply search filter
     if (filters.search) {
       filtered = filtered.filter(dialog =>
-        dialog.filename.toLowerCase().includes(filters.search.toLowerCase()) ||
-        dialog.transcript?.toLowerCase().includes(filters.search.toLowerCase())
+        dialog.fileName.toLowerCase().includes(filters.search.toLowerCase()) ||
+        dialog.transcription?.toLowerCase().includes(filters.search.toLowerCase())
       );
     }
 
@@ -40,9 +40,9 @@ const Index = () => {
     if (filters.status !== 'all') {
       filtered = filtered.filter(dialog => {
         if (filters.status === 'processed') {
-          return dialog.transcript && dialog.transcript.length > 0;
+          return dialog.transcription && dialog.transcription.length > 0;
         } else if (filters.status === 'pending') {
-          return !dialog.transcript || dialog.transcript.length === 0;
+          return !dialog.transcription || dialog.transcription.length === 0;
         }
         return true;
       });
@@ -51,11 +51,11 @@ const Index = () => {
     // Apply sorting
     filtered.sort((a, b) => {
       if (filters.sortBy === 'newest') {
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        return new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime();
       } else if (filters.sortBy === 'oldest') {
-        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        return new Date(a.uploadDate).getTime() - new Date(b.uploadDate).getTime();
       } else if (filters.sortBy === 'filename') {
-        return a.filename.localeCompare(b.filename);
+        return a.fileName.localeCompare(b.fileName);
       }
       return 0;
     });
@@ -110,7 +110,14 @@ const Index = () => {
       </div>
 
       {/* Filters */}
-      <DialogFilters filters={filters} onFiltersChange={setFilters} />
+      <DialogFilters 
+        searchTerm={filters.search}
+        onSearchTermChange={(search) => setFilters(prev => ({ ...prev, search }))}
+        sortBy={filters.sortBy}
+        onSortByChange={(sortBy) => setFilters(prev => ({ ...prev, sortBy }))}
+        statusFilter={filters.status}
+        onStatusFilterChange={(status) => setFilters(prev => ({ ...prev, status }))}
+      />
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -131,7 +138,7 @@ const Index = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {dialogs.filter(d => d.transcript && d.transcript.length > 0).length}
+              {dialogs.filter(d => d.transcription && d.transcription.length > 0).length}
             </div>
           </CardContent>
         </Card>
@@ -143,7 +150,7 @@ const Index = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {dialogs.filter(d => !d.transcript || d.transcript.length === 0).length}
+              {dialogs.filter(d => !d.transcription || d.transcription.length === 0).length}
             </div>
           </CardContent>
         </Card>
@@ -188,22 +195,20 @@ const Index = () => {
                   <div className="flex items-center justify-between">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-3 mb-2">
-                        <h3 className="font-semibold truncate">{dialog.filename}</h3>
-                        <Badge variant={dialog.transcript && dialog.transcript.length > 0 ? "default" : "secondary"}>
-                          {dialog.transcript && dialog.transcript.length > 0 ? "Processed" : "Pending"}
+                        <h3 className="font-semibold truncate">{dialog.fileName}</h3>
+                        <Badge variant={dialog.transcription && dialog.transcription.length > 0 ? "default" : "secondary"}>
+                          {dialog.transcription && dialog.transcription.length > 0 ? "Processed" : "Pending"}
                         </Badge>
                       </div>
                       <div className="flex items-center gap-4 text-sm text-muted-foreground">
                         <div className="flex items-center gap-1">
                           <Clock className="h-4 w-4" />
-                          {format(new Date(dialog.created_at), 'MMM d, yyyy HH:mm')}
+                          {format(new Date(dialog.uploadDate), 'MMM d, yyyy HH:mm')}
                         </div>
-                        {dialog.user_id && (
-                          <div className="flex items-center gap-1">
-                            <User className="h-4 w-4" />
-                            <span>User {dialog.user_id.slice(0, 8)}</span>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-1">
+                          <User className="h-4 w-4" />
+                          <span>{dialog.assignedAgent}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
