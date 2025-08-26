@@ -1,4 +1,3 @@
-
 import { supabase } from '../integrations/supabase/client';
 import { logger } from './loggingService';
 import { aiInstructionsService } from './aiInstructionsService';
@@ -56,7 +55,7 @@ class OpenAIEvaluationService {
     try {
       this.progressCallback?.({ stage: 'initializing', message: 'Preparing evaluation', progress: 0 });
 
-      const instructions = await aiInstructionsService.getInstructions('openai');
+      const instructions = await aiInstructionsService.getLatestInstructions('evaluation') || 'Please evaluate this conversation.';
       const prompt = this.constructPrompt(text, utterances, instructions);
 
       this.progressCallback?.({ stage: 'analyzing', message: 'Prompt ready, sending to OpenAI', progress: 0.1 });
@@ -109,24 +108,24 @@ class OpenAIEvaluationService {
     try {
       const { dialogId, text, speakerUtterances, settings, progressCallback } = params;
 
-      progressCallback({ stage: 'preparing', message: 'Preparing evaluation', progress: 0 });
+      progressCallback({ stage: 'initializing', message: 'Preparing evaluation', progress: 0 });
 
-      const instructions = await aiInstructionsService.getInstructions('openai');
+      const instructions = await aiInstructionsService.getLatestInstructions('evaluation') || 'Please evaluate this conversation.';
       const prompt = this.constructPrompt(text, speakerUtterances, instructions);
 
-      progressCallback({ stage: 'prompt_ready', message: 'Prompt ready, sending to OpenAI', progress: 0.1 });
+      progressCallback({ stage: 'analyzing', message: 'Prompt ready, sending to OpenAI', progress: 0.1 });
 
       const evaluation = await this.getOpenAIResponse(prompt, settings.aiEvaluationModel);
 
-      progressCallback({ stage: 'response_received', message: 'Response received from OpenAI', progress: 0.6 });
+      progressCallback({ stage: 'processing_response', message: 'Response received from OpenAI', progress: 0.6 });
 
       const parsedResult = this.parseOpenAIResponse(evaluation);
 
-      progressCallback({ stage: 'parsing_complete', message: 'Parsing complete', progress: 0.8 });
+      progressCallback({ stage: 'processing_response', message: 'Parsing complete', progress: 0.8 });
 
       const validatedResult = this.validateResult(parsedResult, settings.aiConfidenceThreshold);
 
-      progressCallback({ stage: 'validation_complete', message: 'Validation complete', progress: 0.9 });
+      progressCallback({ stage: 'complete', message: 'Validation complete', progress: 0.9 });
 
       logger.info(`OpenAI evaluation completed for dialog ${dialogId}`);
       progressCallback({ stage: 'complete', message: 'Evaluation complete', progress: 1 });
