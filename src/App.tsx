@@ -1,77 +1,115 @@
 
-import React, { useEffect } from 'react';
+import { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { Toaster } from 'sonner';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Toaster } from '@/components/ui/sonner';
 import Layout from './components/Layout';
-import Index from './pages/Index';
-import Upload from './pages/Upload';
-import DialogDetail from './pages/DialogDetail';
-import Settings from './pages/Settings';
-import Auth from './pages/Auth';
-import Login from './pages/Login';
-import EmailConfirmed from './pages/EmailConfirmed';
-import NotFound from './pages/NotFound';
-import Dashboard from './pages/Dashboard';
-import { useAuthStore } from './store/authStore';
-import { useTheme } from './hooks/useTheme';
 import ProtectedRoute from './components/ProtectedRoute';
+import LazyProtectedRoute from './components/LazyProtectedRoute';
 import './App.css';
 
+// Lazy load components
+const Login = lazy(() => import('./pages/Login'));
+const Auth = lazy(() => import('./pages/Auth'));
+const EmailConfirmed = lazy(() => import('./pages/EmailConfirmed'));
+const UnifiedDashboard = lazy(() => import('./pages/UnifiedDashboard'));
+const Upload = lazy(() => import('./pages/Upload'));
+const DialogDetail = lazy(() => import('./pages/DialogDetail'));
+const Settings = lazy(() => import('./pages/Settings'));
+const NotFound = lazy(() => import('./pages/NotFound'));
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000, // 5 minutes
+      retry: 1,
+    },
+  },
+});
+
 function App() {
-  const { initializeAuth } = useAuthStore();
-  const { theme } = useTheme();
-
-  useEffect(() => {
-    initializeAuth();
-  }, [initializeAuth]);
-
   return (
-    <Router>
-      <div className="min-h-screen bg-background">
-        <Routes>
-          <Route path="/auth" element={<Auth />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/email-confirmed" element={<EmailConfirmed />} />
-          <Route path="/" element={
-            <ProtectedRoute>
-              <Layout>
-                <Index />
-              </Layout>
-            </ProtectedRoute>
-          } />
-          <Route path="/upload" element={
-            <ProtectedRoute>
-              <Layout>
-                <Upload />
-              </Layout>
-            </ProtectedRoute>
-          } />
-          <Route path="/dialog/:id" element={
-            <ProtectedRoute>
-              <Layout>
-                <DialogDetail />
-              </Layout>
-            </ProtectedRoute>
-          } />
-          <Route path="/settings" element={
-            <ProtectedRoute>
-              <Layout>
-                <Settings />
-              </Layout>
-            </ProtectedRoute>
-          } />
-          <Route path="/dashboard" element={
-            <ProtectedRoute>
-              <Layout>
-                <Dashboard />
-              </Layout>
-            </ProtectedRoute>
-          } />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-        <Toaster theme={theme} />
-      </div>
-    </Router>
+    <QueryClientProvider client={queryClient}>
+      <Router>
+        <div className="min-h-screen bg-background">
+          <Routes>
+            <Route
+              path="/login"
+              element={
+                <Suspense fallback={<div>Loading...</div>}>
+                  <Login />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/auth"
+              element={
+                <Suspense fallback={<div>Loading...</div>}>
+                  <Auth />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/email-confirmed"
+              element={
+                <Suspense fallback={<div>Loading...</div>}>
+                  <EmailConfirmed />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/"
+              element={
+                <LazyProtectedRoute>
+                  <Layout>
+                    <UnifiedDashboard />
+                  </Layout>
+                </LazyProtectedRoute>
+              }
+            />
+            <Route
+              path="/upload"
+              element={
+                <LazyProtectedRoute>
+                  <Layout>
+                    <Upload />
+                  </Layout>
+                </LazyProtectedRoute>
+              }
+            />
+            <Route
+              path="/dialog/:id"
+              element={
+                <LazyProtectedRoute>
+                  <Layout>
+                    <DialogDetail />
+                  </Layout>
+                </LazyProtectedRoute>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <LazyProtectedRoute>
+                  <Layout>
+                    <Settings />
+                  </Layout>
+                </LazyProtectedRoute>
+              }
+            />
+            <Route
+              path="*"
+              element={
+                <Suspense fallback={<div>Loading...</div>}>
+                  <NotFound />
+                </Suspense>
+              }
+            />
+          </Routes>
+          <Toaster />
+        </div>
+      </Router>
+    </QueryClientProvider>
   );
 }
 

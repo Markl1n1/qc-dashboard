@@ -1,112 +1,109 @@
 
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from './ui/button';
-import { Upload, Home, Settings, Menu } from 'lucide-react';
+import { 
+  Home, 
+  Upload, 
+  Settings,
+  LogOut,
+  User
+} from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useUserRole } from '../hooks/useUserRole';
-import UserProfileMenu from './UserProfileMenu';
 import VoiceQCLogo from './VoiceQCLogo';
-import {
-  Sheet,
-  SheetContent,
-  SheetTrigger,
-} from './ui/sheet';
+import UserProfileMenu from './UserProfileMenu';
 
-const Layout = ({ children }: { children: React.ReactNode }) => {
+interface LayoutProps {
+  children: React.ReactNode;
+}
+
+const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
-  const { isAuthenticated } = useAuthStore();
-  const { isAdmin } = useUserRole();
+  const navigate = useNavigate();
+  const { signOut } = useAuthStore();
+  const { isAdmin, isSupervisor } = useUserRole();
 
-  const isActive = (path: string) => location.pathname === path;
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/login');
+  };
 
-  const NavigationItems = () => (
-    <>
-      <Button
-        variant={isActive('/') ? 'default' : 'ghost'}
-        size="sm"
-        asChild
-      >
-        <Link to="/">
-          <Home className="mr-2 h-4 w-4" />
-          Dashboard
-        </Link>
-      </Button>
-      <Button
-        variant={isActive('/upload') ? 'default' : 'ghost'}
-        size="sm"
-        asChild
-      >
-        <Link to="/upload">
-          <Upload className="mr-2 h-4 w-4" />
-          Upload
-        </Link>
-      </Button>
-      {isAdmin && (
-        <Button
-          variant={isActive('/settings') ? 'default' : 'ghost'}
-          size="sm"
-          asChild
-        >
-          <Link to="/settings">
-            <Settings className="mr-2 h-4 w-4" />
-            Settings
-          </Link>
-        </Button>
-      )}
-    </>
-  );
+  const navItems = [
+    {
+      path: '/',
+      label: 'Dashboard',
+      icon: Home,
+    },
+    {
+      path: '/upload',
+      label: 'Upload',
+      icon: Upload,
+    },
+    ...(isAdmin || isSupervisor ? [{
+      path: '/settings',
+      label: 'Settings',
+      icon: Settings,
+    }] : []),
+  ];
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-6">
-              <Link to="/" className="flex items-center">
-                <VoiceQCLogo />
-              </Link>
-              
-              {isAuthenticated && (
-                <>
-                  {/* Desktop Navigation */}
-                  <nav className="hidden md:flex items-center space-x-4">
-                    <NavigationItems />
-                  </nav>
-                  
-                  {/* Mobile Navigation */}
-                  <div className="md:hidden">
-                    <Sheet>
-                      <SheetTrigger asChild>
-                        <Button variant="ghost" size="icon">
-                          <Menu className="h-5 w-5" />
-                        </Button>
-                      </SheetTrigger>
-                      <SheetContent side="left" className="w-64">
-                        <div className="flex flex-col space-y-4 mt-8">
-                          <NavigationItems />
-                        </div>
-                      </SheetContent>
-                    </Sheet>
-                  </div>
-                </>
-              )}
-            </div>
+    <div className="min-h-screen bg-background flex">
+      {/* Sidebar */}
+      <div className="w-64 bg-card border-r flex flex-col">
+        {/* Logo */}
+        <div className="p-6 border-b">
+          <Link to="/" className="flex items-center gap-2">
+            <VoiceQCLogo className="h-8 w-8" />
+            <span className="text-xl font-bold">VoiceQC</span>
+          </Link>
+        </div>
 
-            <div className="flex items-center space-x-4">
-              {isAuthenticated ? (
-                <UserProfileMenu />
-              ) : (
-                <Button asChild size="sm">
-                  <Link to="/auth">Login</Link>
-                </Button>
-              )}
-            </div>
+        {/* Navigation */}
+        <nav className="flex-1 p-4 space-y-2">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = location.pathname === item.path;
+            
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                  isActive 
+                    ? 'bg-primary text-primary-foreground' 
+                    : 'hover:bg-muted text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Icon className="h-5 w-5" />
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* User Profile */}
+        <div className="p-4 border-t">
+          <div className="flex items-center justify-between">
+            <UserProfileMenu />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleSignOut}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
           </div>
         </div>
-      </header>
+      </div>
 
-      <main className="min-h-[calc(100vh-4rem)]">{children}</main>
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col">
+        <main className="flex-1 overflow-auto">
+          {children}
+        </main>
+      </div>
     </div>
   );
 };
