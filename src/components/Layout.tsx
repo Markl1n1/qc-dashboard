@@ -21,11 +21,11 @@ interface LayoutProps {
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { signOut } = useAuthStore();
+  const { logout } = useAuthStore();
   const { isAdmin, isSupervisor } = useUserRole();
 
   const handleSignOut = async () => {
-    await signOut();
+    await logout();
     navigate('/login');
   };
 
@@ -54,7 +54,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         {/* Logo */}
         <div className="p-6 border-b">
           <Link to="/" className="flex items-center gap-2">
-            <VoiceQCLogo className="h-8 w-8" />
+            <VoiceQCLogo size="md" showText={false} />
             <span className="text-xl font-bold">VoiceQC</span>
           </Link>
         </div>
