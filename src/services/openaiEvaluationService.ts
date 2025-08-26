@@ -1,3 +1,4 @@
+
 import { supabase } from '../integrations/supabase/client';
 import { logger } from './loggingService';
 import { aiInstructionsService } from './aiInstructionsService';
@@ -22,6 +23,7 @@ class OpenAIEvaluationService {
   private apiKey: string | null = null;
   private model: string | null = null;
   private confidenceThreshold: number = 0.75;
+  private progressCallback: ((progress: OpenAIEvaluationProgress) => void) | null = null;
 
   async initialize(): Promise<void> {
     try {
@@ -36,6 +38,54 @@ class OpenAIEvaluationService {
     } catch (error) {
       logger.error('Failed to initialize OpenAI Evaluation Service', error);
       throw new Error('Failed to initialize OpenAI Evaluation Service');
+    }
+  }
+
+  setProgressCallback(callback: (progress: OpenAIEvaluationProgress) => void): void {
+    this.progressCallback = callback;
+  }
+
+  async evaluateConversation(utterances: SpeakerUtterance[], model: string): Promise<OpenAIEvaluationResult> {
+    if (!this.apiKey) {
+      await this.initialize();
+    }
+
+    const startTime = Date.now();
+    const text = utterances.map(u => `${u.speaker}: ${u.text}`).join('\n');
+    
+    try {
+      this.progressCallback?.({ stage: 'initializing', message: 'Preparing evaluation', progress: 0 });
+
+      const instructions = await aiInstructionsService.getInstructions('openai');
+      const prompt = this.constructPrompt(text, utterances, instructions);
+
+      this.progressCallback?.({ stage: 'analyzing', message: 'Prompt ready, sending to OpenAI', progress: 0.1 });
+
+      const evaluation = await this.getOpenAIResponse(prompt, model);
+
+      this.progressCallback?.({ stage: 'processing_response', message: 'Response received from OpenAI', progress: 0.6 });
+
+      const parsedResult = this.parseOpenAIResponse(evaluation);
+
+      this.progressCallback?.({ stage: 'processing_response', message: 'Parsing complete', progress: 0.8 });
+
+      const validatedResult = this.validateResult(parsedResult, this.confidenceThreshold);
+      
+      // Add missing fields
+      const finalResult: OpenAIEvaluationResult = {
+        ...validatedResult,
+        processingTime: Date.now() - startTime,
+        modelUsed: model,
+        analysisId: `analysis_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      };
+
+      logger.info(`OpenAI evaluation completed`);
+      this.progressCallback?.({ stage: 'complete', message: 'Evaluation complete', progress: 1 });
+
+      return finalResult;
+    } catch (error: any) {
+      await this.handleApiError(error, 'evaluate');
+      throw error;
     }
   }
 
@@ -148,7 +198,14 @@ class OpenAIEvaluationService {
         recommendations: parsed.recommendations,
         summary: parsed.summary,
         confidence: parsed.confidence,
-        tokenUsage: response.usage,
+        tokenUsage: {
+          input: response.usage.prompt_tokens,
+          output: response.usage.completion_tokens,
+          cost: 0
+        },
+        processingTime: 0,
+        modelUsed: '',
+        analysisId: ''
       };
     } catch (error: any) {
       logger.error('Failed to parse OpenAI response', error, { response });
@@ -179,7 +236,6 @@ class OpenAIEvaluationService {
       throw new Error('OpenAI service is temporarily unavailable. Please try again later.');
     }
     
-    // Remove the invalid status property from Error object
     throw new Error(error.message || `OpenAI evaluation failed: ${context}`);
   }
 }

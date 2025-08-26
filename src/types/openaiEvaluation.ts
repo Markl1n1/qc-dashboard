@@ -16,7 +16,7 @@ export interface OpenAIEvaluationMistake {
 }
 
 export interface OpenAIEvaluationResult {
-  overallScore: number; // 0-100
+  overallScore: number;
   categoryScores: Record<string, number>;
   mistakes: OpenAIEvaluationMistake[];
   recommendations: string[];

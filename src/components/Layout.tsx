@@ -6,7 +6,7 @@ import { AppSidebar } from './AppSidebar';
 
 const Layout: React.FC = () => {
   return (
-    <SidebarProvider collapsedWidth={56}>
+    <SidebarProvider>
       <div className="flex min-h-screen w-full">
         <AppSidebar />
         <main className="flex-1">

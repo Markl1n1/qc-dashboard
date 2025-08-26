@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { SpeakerUtterance } from '../types';
 import { OpenAIEvaluationResult, OpenAIModel, OPENAI_MODELS } from '../types/openaiEvaluation';
@@ -79,9 +78,8 @@ export const OpenAIEvaluationView: React.FC<OpenAIEvaluationViewProps> = ({
     setProgressMessage('Initializing evaluation...');
 
     try {
-      // Set up progress tracking
       openaiEvaluationService.setProgressCallback((progressData) => {
-        setProgress(progressData.progress);
+        setProgress(progressData.progress * 100);
         setProgressMessage(progressData.message);
       });
 
@@ -89,7 +87,6 @@ export const OpenAIEvaluationView: React.FC<OpenAIEvaluationViewProps> = ({
       
       setResult(evaluationResult);
       
-      // Update the dialog store with OpenAI evaluation results
       updateDialog(transcriptId, { 
         openaiEvaluation: evaluationResult
       });

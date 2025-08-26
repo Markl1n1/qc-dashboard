@@ -36,7 +36,7 @@ const navigationItems = [
 export function AppSidebar() {
   const { state } = useSidebar();
   const location = useLocation();
-  const { signOut } = useAuthStore();
+  const { logout } = useAuthStore();
   
   const currentPath = location.pathname;
   const collapsed = state === 'collapsed';
@@ -49,7 +49,7 @@ export function AppSidebar() {
 
   const handleSignOut = async () => {
     try {
-      await signOut();
+      await logout();
     } catch (error) {
       console.error('Sign out error:', error);
     }
@@ -66,7 +66,7 @@ export function AppSidebar() {
           <VoiceQCLogo size={collapsed ? 24 : 32} />
           {!collapsed && <span className="font-bold text-lg">VoiceQC</span>}
         </div>
-        <SidebarTrigger className="mt-2" />
+        <SidebarTrigger />
       </div>
 
       <SidebarContent>
