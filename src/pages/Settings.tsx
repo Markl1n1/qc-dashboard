@@ -23,10 +23,12 @@ import { useAuthStore } from '../store/authStore';
 import { useUserRole } from '../hooks/useUserRole';
 import { supabase } from '../integrations/supabase/client';
 import { databaseService } from '../services/databaseService';
+import ApiKeyManager from '../components/ApiKeyManager';
 import { CategoryManager } from '../components/CategoryManager';
+import { EvaluationConfigurationManager } from '../components/EvaluationConfigurationManager';
 import { LanguageAwareRuleManager } from '../components/LanguageAwareRuleManager';
 import AIInstructionsManager from '../components/AIInstructionsManager';
-import { EvaluationCategory } from '../types/lemurEvaluation';
+import { EvaluationCategory, EvaluationConfiguration } from '../types/lemurEvaluation';
 import { evaluationCategoriesService } from '../services/evaluationCategoriesService';
 
 const Settings = () => {
@@ -112,6 +114,10 @@ const Settings = () => {
     }
   };
 
+  const handleConfigurationSave = (config: EvaluationConfiguration) => {
+    toast.success(`Configuration "${config.name}" saved successfully`);
+  };
+
   const handleCategoriesChange = (updatedCategories: EvaluationCategory[]) => {
     setCategories(updatedCategories);
   };
@@ -147,6 +153,32 @@ const Settings = () => {
             </p>
           </div>
         </div>
+
+        {/* API Configuration */}
+        <Card>
+          <CardHeader>
+            <CardTitle>API Configuration</CardTitle>
+            <CardDescription>
+              Manage API keys for external services
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ApiKeyManager />
+          </CardContent>
+        </Card>
+
+        {/* AI Analysis Configuration */}
+        <Card>
+          <CardHeader>
+            <CardTitle>AI Analysis Configuration</CardTitle>
+            <CardDescription>
+              Configure AI evaluation parameters and thresholds
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <EvaluationConfigurationManager onConfigurationSave={handleConfigurationSave} />
+          </CardContent>
+        </Card>
 
         {/* AI Instructions Management */}
         <Card>

@@ -63,11 +63,6 @@ const Index = () => {
     }
   };
 
-  // Capitalize status text
-  const capitalizeStatus = (status: string) => {
-    return status.charAt(0).toUpperCase() + status.slice(1);
-  };
-
   // Filter dialogs based on search and filters
   const filteredDialogs = dialogs.filter(dialog => {
     const matchesSearch = dialog.fileName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -242,13 +237,13 @@ const Index = () => {
                         <div className="flex items-center space-x-2 flex-shrink-0">
                           {getStatusIcon(dialog.status)}
                           <Badge variant={getStatusBadgeVariant(dialog.status)} className="text-xs">
-                            {capitalizeStatus(dialog.status)}
+                            {dialog.status}
                           </Badge>
                         </div>
                         
-                        <div className="flex flex-col justify-center flex-1 min-w-0">
+                        <div className="flex-1 min-w-0">
                           <h3 className="font-semibold truncate">{dialog.fileName}</h3>
-                          <div className="flex items-center space-x-4 text-sm text-muted-foreground">
+                          <div className="flex items-center space-x-4 text-sm text-muted-foreground mt-1">
                             <div className="flex items-center space-x-1">
                               <Calendar className="h-3 w-3 flex-shrink-0" />
                               <span>{format(new Date(dialog.uploadDate), 'MMM dd, yyyy')}</span>
@@ -265,7 +260,7 @@ const Index = () => {
 
                       {/* Middle - Agent and Supervisor info */}
                       <div className="hidden md:flex items-center space-x-6 px-4">
-                        <div className="text-center min-w-0 flex flex-col justify-center">
+                        <div className="text-center min-w-0">
                           <div className="flex items-center justify-center space-x-1 text-xs text-muted-foreground mb-1">
                             <User className="h-3 w-3 flex-shrink-0" />
                             <span>Agent</span>
@@ -273,7 +268,7 @@ const Index = () => {
                           <div className="text-sm font-medium truncate">{dialog.assignedAgent}</div>
                         </div>
                         
-                        <div className="text-center min-w-0 flex flex-col justify-center">
+                        <div className="text-center min-w-0">
                           <div className="flex items-center justify-center space-x-1 text-xs text-muted-foreground mb-1">
                             <Users className="h-3 w-3 flex-shrink-0" />
                             <span>Supervisor</span>
