@@ -1,337 +1,138 @@
-import { SpeakerUtterance } from '../types';
-import { OpenAIEvaluationResult, OpenAIEvaluationProgress, OpenAIModel, OPENAI_MODELS, OpenAIEvaluationMistake } from '../types/openaiEvaluation';
+
 import { supabase } from '../integrations/supabase/client';
-import { formatDialogForAIAnalysis } from '../utils/dialogFormatting';
+import { logger } from './loggingService';
 
-interface AISettings {
-  confidenceThreshold: number;
-  maxTokensGpt5Mini: number;
-  maxTokensGpt5: number;
-  temperature: number;
-  reasoningEffort: string;
+interface EvaluationRequest {
+  transcript: string;
+  criteria: string[];
+  context?: string;
+  language?: string;
 }
 
-class OpenAIEvaluationService {
-  private progressCallback: ((progress: OpenAIEvaluationProgress) => void) | null = null;
-  private lastAttemptedModel: string = '';
-
-  setProgressCallback(callback: (progress: OpenAIEvaluationProgress) => void) {
-    this.progressCallback = callback;
-  }
-
-  private updateProgress(stage: OpenAIEvaluationProgress['stage'], progress: number, message: string, currentStep?: string) {
-    if (this.progressCallback) {
-      this.progressCallback({ stage, progress, message, currentStep });
-    }
-  }
-
-  getAvailableModels(): OpenAIModel[] {
-    return OPENAI_MODELS;
-  }
-
-  private async getAISettings(): Promise<AISettings> {
-    try {
-      const { data, error } = await supabase
-        .from('system_config')
-        .select('key, value')
-        .in('key', [
-          'ai_confidence_threshold',
-          'ai_max_tokens_gpt5_mini',
-          'ai_max_tokens_gpt5',
-          'ai_temperature',
-          'ai_reasoning_effort'
-        ]);
-
-      if (error) throw error;
-
-      const settings: AISettings = {
-        confidenceThreshold: 0.8,
-        maxTokensGpt5Mini: 1000,
-        maxTokensGpt5: 2000,
-        temperature: 0.7,
-        reasoningEffort: 'medium'
-      };
-
-      data?.forEach(({ key, value }) => {
-        switch (key) {
-          case 'ai_confidence_threshold':
-            settings.confidenceThreshold = parseFloat(value) || 0.8;
-            break;
-          case 'ai_max_tokens_gpt5_mini':
-            settings.maxTokensGpt5Mini = parseInt(value) || 1000;
-            break;
-          case 'ai_max_tokens_gpt5':
-            settings.maxTokensGpt5 = parseInt(value) || 2000;
-            break;
-          case 'ai_temperature':
-            settings.temperature = parseFloat(value) || 0.7;
-            break;
-          case 'ai_reasoning_effort':
-            settings.reasoningEffort = value || 'medium';
-            break;
-        }
-      });
-
-      return settings;
-    } catch (error) {
-      console.error('Error fetching AI settings:', error);
-      // Return defaults
-      return {
-        confidenceThreshold: 0.8,
-        maxTokensGpt5Mini: 1000,
-        maxTokensGpt5: 2000,
-        temperature: 0.7,
-        reasoningEffort: 'medium'
-      };
-    }
-  }
-
-  private async getSystemInstructions(): Promise<string> {
-    try {
-      // Get the latest instruction file
-      const { data: files, error: listError } = await supabase.storage
-        .from('ai-instructions')
-        .list('', {
-          limit: 1,
-          sortBy: { column: 'created_at', order: 'desc' }
-        });
-
-      if (listError || !files || files.length === 0) {
-        console.log('No custom instructions found, using default');
-        return this.getDefaultSystemPrompt();
-      }
-
-      const latestFile = files[0];
-      const { data: fileData, error: downloadError } = await supabase.storage
-        .from('ai-instructions')
-        .download(latestFile.name);
-
-      if (downloadError || !fileData) {
-        console.log('Failed to download instructions, using default');
-        return this.getDefaultSystemPrompt();
-      }
-
-      const instructions = await fileData.text();
-      console.log('Using custom system instructions from:', latestFile.name);
-      return instructions;
-
-    } catch (error) {
-      console.error('Error loading system instructions:', error);
-      return this.getDefaultSystemPrompt();
-    }
-  }
-
-  private getDefaultSystemPrompt(): string {
-    return `You are an expert call center quality analyst. Analyze customer service conversations and provide detailed evaluation.
-
-EVALUATION CRITERIA:
-- Communication: Clarity, tone, active listening, empathy
-- Professionalism: Courtesy, appropriate language, patience
-- Problem Solving: Understanding issues, providing solutions, follow-up
-- Compliance: Following procedures, data protection, policies
-- Customer Satisfaction: Meeting needs, resolving concerns
-
-RESPONSE FORMAT:
-Respond with valid JSON only in this exact structure:
-{
-  "overallScore": number (0-100),
-  "categoryScores": {
-    "communication": number (0-100),
-    "professionalism": number (0-100),
-    "problem_solving": number (0-100),
-    "compliance": number (0-100),
-    "customer_satisfaction": number (0-100)
-  },
-  "mistakes": [
-    {
-      "id": "unique_id",
-      "level": "minor|major|critical",
-      "category": "communication|professionalism|problem_solving|compliance|other",
-      "mistakeName": "Brief mistake name",
-      "description": "Detailed description of the mistake",
-      "text": "Exact text from conversation",
-      "position": utterance_index,
-      "speaker": "Agent|Customer", 
-      "suggestion": "How to improve",
-      "impact": "low|medium|high",
-      "confidence": number (0-100)
-    }
-  ],
-  "recommendations": ["list", "of", "improvement", "suggestions"],
-  "summary": "Overall summary of the conversation quality",
-  "confidence": number (0-100)
+interface EvaluationResult {
+  id: string;
+  scores: Record<string, number>;
+  feedback: string;
+  suggestions: string[];
+  overall_score: number;
+  metadata?: any;
 }
 
-Focus on actionable feedback and specific examples from the conversation. Pay attention to the timestamps [MM:SS] provided with each utterance.`;
-  }
+export class OpenAIEvaluationService {
+  /**
+   * Evaluate a transcript using OpenAI
+   */
+  async evaluateTranscript(request: EvaluationRequest): Promise<EvaluationResult> {
+    this.validateRequest(request);
 
-  async evaluateConversation(
-    utterances: SpeakerUtterance[],
-    modelId: string = 'gpt-5-mini-2025-08-07'
-  ): Promise<OpenAIEvaluationResult> {
-    const startTime = Date.now();
-    
-    try {
-      this.updateProgress('initializing', 0, 'Preparing evaluation request...');
-
-      const model = OPENAI_MODELS.find(m => m.id === modelId);
-      if (!model) {
-        throw new Error(`Model ${modelId} not found`);
-      }
-
-      this.lastAttemptedModel = model.name;
-
-      // Get AI settings and system instructions
-      const [aiSettings, systemInstructions] = await Promise.all([
-        this.getAISettings(),
-        this.getSystemInstructions()
-      ]);
-
-      this.updateProgress('analyzing', 20, 'Sending request to OpenAI...');
-
-      // First attempt with default model (gpt-5-mini)
-      let result = await this.performEvaluation(utterances, modelId, aiSettings, systemInstructions);
-
-      // Check confidence for hybrid evaluation
-      if (result.confidence < (aiSettings.confidenceThreshold * 100) && modelId === 'gpt-5-mini-2025-08-07') {
-        this.updateProgress('analyzing', 50, 'Low confidence detected, retrying with GPT-5...');
-        console.log(`Low confidence detected (${result.confidence}% < ${aiSettings.confidenceThreshold * 100}%), retrying with GPT-5 model`);
-        
-        // Retry with GPT-5 flagship model
-        const flagshipResult = await this.performEvaluation(utterances, 'gpt-5-2025-08-07', aiSettings, systemInstructions);
-        
-        // Use the flagship result if it has better confidence
-        if (flagshipResult.confidence >= result.confidence) {
-          result = flagshipResult;
-          result.modelUsed += ' (Hybrid: upgraded from GPT-5 Mini due to low confidence)';
-        }
-      }
-
-      this.updateProgress('complete', 100, 'Evaluation completed successfully');
-      
-      return result;
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : `Unknown error occurred. Model attempted: ${this.lastAttemptedModel}`;
-      console.error('OpenAI evaluation failed:', errorMessage);
-      this.updateProgress('error', 0, `Evaluation failed: ${errorMessage}`);
-      
-      throw new Error(errorMessage);
-    }
-  }
-
-  private async performEvaluation(
-    utterances: SpeakerUtterance[], 
-    modelId: string, 
-    aiSettings: AISettings,
-    systemInstructions: string
-  ): Promise<OpenAIEvaluationResult> {
-    const startTime = Date.now();
-    const model = OPENAI_MODELS.find(m => m.id === modelId);
-    if (!model) {
-      throw new Error(`Model ${modelId} not found`);
-    }
-
-    // Create conversation text with timecodes using the new format
-    const conversationText = formatDialogForAIAnalysis(utterances);
-
-    // Get appropriate max tokens for the model
-    const maxTokens = modelId.includes('gpt-5-mini') 
-      ? aiSettings.maxTokensGpt5Mini 
-      : aiSettings.maxTokensGpt5;
-
-    const { data, error } = await supabase.functions.invoke('openai-evaluate', {
-      body: {
-        model: modelId,
-        messages: [
-          {
-            role: 'system',
-            content: systemInstructions
-          },
-          {
-            role: 'user',
-            content: `Please evaluate this customer service conversation (timestamps in [MM:SS] format):\n\n${conversationText}`
-          }
-        ],
-        max_output_tokens: maxTokens,
-        temperature: aiSettings.temperature,
-        reasoning_effort: aiSettings.reasoningEffort
-      }
+    logger.info('Starting OpenAI evaluation', {
+      transcriptLength: request.transcript.length,
+      criteriaCount: request.criteria.length,
+      language: request.language || 'en'
     });
 
-    if (error) {
-      const errorMessage = `OpenAI API error: ${error.message}. Model attempted: ${this.lastAttemptedModel}`;
-      throw new Error(errorMessage);
-    }
-
-    this.updateProgress('processing_response', 60, 'Processing OpenAI response...');
-
-    const content = data.choices[0]?.message?.content;
-    
-    if (!content) {
-      throw new Error(`No response content from OpenAI. Model attempted: ${this.lastAttemptedModel}`);
-    }
-
-    let evaluationData;
     try {
-      evaluationData = JSON.parse(content);
-    } catch (parseError) {
-      console.error('Failed to parse OpenAI response as JSON:', content);
-      throw new Error(`Invalid JSON response from OpenAI. Model attempted: ${this.lastAttemptedModel}`);
+      const startTime = Date.now();
+
+      const { data, error } = await supabase.functions
+        .invoke('openai-evaluate', {
+          body: {
+            transcript: request.transcript,
+            criteria: request.criteria,
+            context: request.context,
+            language: request.language || 'en',
+            model: 'gpt-4',
+            temperature: 0.3
+          }
+        });
+
+      if (error) {
+        logger.error('OpenAI evaluation failed', error, {
+          transcriptLength: request.transcript.length,
+          criteriaCount: request.criteria.length
+        });
+        throw new Error(`Evaluation failed: ${error.message}`);
+      }
+
+      const duration = Date.now() - startTime;
+      logger.info('OpenAI evaluation completed', {
+        duration: `${duration}ms`,
+        overallScore: data.overall_score
+      });
+
+      return {
+        id: data.id || Math.random().toString(36),
+        scores: data.scores || {},
+        feedback: data.feedback || '',
+        suggestions: data.suggestions || [],
+        overall_score: data.overall_score || 0,
+        metadata: data.metadata
+      };
+
+    } catch (error) {
+      logger.error('OpenAI evaluation service error', error as Error, {
+        transcriptLength: request.transcript.length
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get evaluation history for a dialog
+   */
+  async getEvaluationHistory(dialogId: string): Promise<EvaluationResult[]> {
+    if (!dialogId?.trim()) {
+      throw new Error('Dialog ID is required');
     }
 
-    this.updateProgress('processing_response', 80, 'Formatting results...');
+    try {
+      const { data, error } = await supabase
+        .from('evaluations')
+        .select('*')
+        .eq('dialog_id', dialogId)
+        .eq('evaluation_type', 'openai')
+        .order('created_at', { ascending: false });
 
-    // Get token usage from the response
-    const tokenEstimation = data.tokenEstimation;
-    const inputTokens = tokenEstimation?.actualInputTokens || 0;
-    const outputTokens = tokenEstimation?.outputTokens || 0;
-    const cost = ((inputTokens + outputTokens) / 1000) * model.costPer1kTokens;
+      if (error) {
+        logger.error('Failed to get evaluation history', error, { dialogId });
+        throw new Error(`Failed to get history: ${error.message}`);
+      }
 
-    // Ensure mistakes have required fields
-    const mistakes: OpenAIEvaluationMistake[] = (evaluationData.mistakes || []).map((mistake: any, index: number) => ({
-      id: mistake.id || `mistake_${index}`,
-      level: mistake.level || 'minor',
-      category: mistake.category || 'other',
-      subcategory: mistake.subcategory,
-      mistakeName: mistake.mistakeName || mistake.description?.substring(0, 50) || 'Unnamed mistake',
-      description: mistake.description || 'No description provided',
-      text: mistake.text || '',
-      position: mistake.position || 0,
-      speaker: mistake.speaker || 'Agent',
-      suggestion: mistake.suggestion || 'No suggestion provided',
-      impact: mistake.impact || 'low',
-      confidence: mistake.confidence || 75,
-      timestamp: mistake.timestamp
-    }));
+      return data.map(item => ({
+        id: item.id,
+        scores: item.scores || {},
+        feedback: item.feedback || '',
+        suggestions: item.suggestions || [],
+        overall_score: item.overall_score || 0,
+        metadata: item.metadata
+      }));
 
-    const result: OpenAIEvaluationResult = {
-      overallScore: evaluationData.overallScore || 0,
-      categoryScores: evaluationData.categoryScores || {},
-      mistakes,
-      recommendations: evaluationData.recommendations || [],
-      summary: evaluationData.summary || 'No summary provided',
-      confidence: evaluationData.confidence || 75,
-      processingTime: Date.now() - startTime,
-      tokenUsage: {
-        input: inputTokens,
-        output: outputTokens,
-        cost
-      },
-      modelUsed: model.name,
-      analysisId: `openai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-    };
-
-    return result;
+    } catch (error) {
+      logger.error('Error getting evaluation history', error as Error, { dialogId });
+      throw error;
+    }
   }
 
-  validateApiKey(): boolean {
-    // API key validation is now handled by the edge function
-    return true;
-  }
+  private validateRequest(request: EvaluationRequest): void {
+    if (!request.transcript?.trim()) {
+      throw new Error('Transcript is required and cannot be empty');
+    }
 
-  getLastAttemptedModel(): string {
-    return this.lastAttemptedModel;
+    if (request.transcript.length > 50000) {
+      throw new Error('Transcript exceeds maximum length of 50,000 characters');
+    }
+
+    if (!request.criteria || request.criteria.length === 0) {
+      throw new Error('At least one evaluation criterion is required');
+    }
+
+    if (request.criteria.some(criterion => !criterion?.trim())) {
+      throw new Error('All evaluation criteria must be non-empty strings');
+    }
+
+    if (request.context && request.context.length > 5000) {
+      throw new Error('Context exceeds maximum length of 5,000 characters');
+    }
   }
 }
 

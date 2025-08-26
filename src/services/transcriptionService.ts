@@ -1,233 +1,172 @@
 
-import { AssemblyAIConfig, UnifiedTranscriptionProgress } from '../types';
+import { supabase } from '../integrations/supabase/client';
+import { logger } from './loggingService';
 
-export interface TranscriptionOptions {
-  model?: string;
-  language?: string;
-  speakerLabels?: boolean;
+interface TranscriptionResult {
+  id: string;
+  transcript: string;
+  confidence: number;
+  speaker_labels?: any[];
+  metadata?: any;
 }
 
-class TranscriptionService {
-  private progressCallback: ((progress: UnifiedTranscriptionProgress) => void) | null = null;
-  private modelLoaded = false;
-  private currentModel: string | null = null;
+interface TranscriptionError {
+  message: string;
+  code?: string;
+  details?: any;
+}
 
-  setProgressCallback(callback: (progress: UnifiedTranscriptionProgress) => void) {
-    this.progressCallback = callback;
-    console.log('[TranscriptionService] Progress callback set');
-  }
-
-  private updateProgress(stage: UnifiedTranscriptionProgress['stage'], progress: number, message: string) {
-    console.log(`[TranscriptionService] Progress: ${stage} (${progress}%) - ${message}`);
-    if (this.progressCallback) {
-      try {
-        this.progressCallback({ stage, progress, message });
-      } catch (error) {
-        console.error('Error in progress callback:', error);
-      }
+export class TranscriptionService {
+  /**
+   * Upload and transcribe an audio file
+   */
+  async transcribeFile(
+    file: File,
+    options: {
+      model?: string;
+      language?: string;
+      punctuate?: boolean;
+      diarize?: boolean;
+    } = {}
+  ): Promise<TranscriptionResult> {
+    if (!file) {
+      throw new Error('File is required for transcription');
     }
-  }
 
-  async transcribeAudio(
-    file: File, 
-    assignedAgent: string, 
-    assignedSupervisor: string,
-    config?: AssemblyAIConfig
-  ): Promise<string> {
-    console.log('[TranscriptionService] transcribeAudio called with:', {
+    if (file.size > 100 * 1024 * 1024) { // 100MB limit
+      throw new Error('File size exceeds maximum limit of 100MB');
+    }
+
+    const allowedTypes = ['audio/wav', 'audio/mp3', 'audio/mpeg', 'audio/mp4', 'audio/m4a'];
+    if (!allowedTypes.includes(file.type)) {
+      throw new Error(`Unsupported file type: ${file.type}. Supported types: ${allowedTypes.join(', ')}`);
+    }
+
+    logger.info('Starting transcription', {
       fileName: file.name,
       fileSize: file.size,
-      assignedAgent,
-      assignedSupervisor,
-      config
+      fileType: file.type,
+      options
     });
 
     try {
-      if (!file) {
-        throw new Error('No file provided');
+      const startTime = Date.now();
+      
+      // Upload file to storage
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+      
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('audio-files')
+        .upload(fileName, file);
+
+      if (uploadError) {
+        logger.error('File upload failed', uploadError, { fileName: file.name });
+        throw new Error(`Upload failed: ${uploadError.message}`);
       }
 
-      if (file.size > 100 * 1024 * 1024) {
-        throw new Error('File size exceeds 100MB limit');
+      // Get file URL
+      const { data: urlData } = supabase.storage
+        .from('audio-files')
+        .getPublicUrl(fileName);
+
+      if (!urlData?.publicUrl) {
+        throw new Error('Failed to get file URL');
       }
 
-      this.updateProgress('uploading', 10, 'Starting transcription...');
-      
-      // Ensure user is authenticated
-      console.log('[TranscriptionService] Checking authentication...');
-      const { supabase } = await import('../integrations/supabase/client');
-      const { data: { session }, error: authError } = await supabase.auth.getSession();
-      
-      if (authError) {
-        console.error('[TranscriptionService] Authentication error:', authError);
-        throw new Error(`Authentication failed: ${authError.message}`);
-      }
-      
-      if (!session) {
-        console.error('[TranscriptionService] No active session found');
-        throw new Error('Please log in to use transcription services');
-      }
-      
-      console.log('[TranscriptionService] Authentication verified, user:', session.user.email);
-      
-      const formData = new FormData();
-      formData.append('audio', file);
-      formData.append('assignedAgent', assignedAgent);
-      formData.append('assignedSupervisor', assignedSupervisor);
-      
-      if (config) {
-        formData.append('config', JSON.stringify(config));
+      // Call transcription function
+      const { data: transcriptionData, error: transcriptionError } = await supabase.functions
+        .invoke('deepgram-transcribe', {
+          body: {
+            audioUrl: urlData.publicUrl,
+            options: {
+              model: options.model || 'nova-2',
+              language: options.language || 'en',
+              punctuate: options.punctuate !== false,
+              diarize: options.diarize || false,
+              smart_format: true,
+              utterances: true
+            }
+          }
+        });
+
+      if (transcriptionError) {
+        logger.error('Transcription failed', transcriptionError, { 
+          fileName: file.name,
+          options 
+        });
+        throw new Error(`Transcription failed: ${transcriptionError.message}`);
       }
 
-      this.updateProgress('processing', 30, 'Processing audio file...');
-
-      console.log('[TranscriptionService] Making request to process-dialog endpoint...');
-      
-      const response = await fetch('https://sahudeguwojdypmmlbkd.supabase.co/functions/v1/process-dialog', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: formData,
+      const duration = Date.now() - startTime;
+      logger.info('Transcription completed successfully', {
+        fileName: file.name,
+        duration: `${duration}ms`,
+        transcriptLength: transcriptionData?.transcript?.length || 0
       });
 
-      console.log('[TranscriptionService] Response status:', response.status);
+      return {
+        id: transcriptionData.id || Math.random().toString(36),
+        transcript: transcriptionData.transcript || '',
+        confidence: transcriptionData.confidence || 0,
+        speaker_labels: transcriptionData.speaker_labels,
+        metadata: transcriptionData.metadata
+      };
 
-      if (!response.ok) {
-        const responseText = await response.text();
-        console.error('[TranscriptionService] Error response body:', responseText);
-        
-        let errorData;
-        try {
-          errorData = JSON.parse(responseText);
-        } catch {
-          errorData = { message: responseText || `Transcription failed: ${response.statusText}` };
-        }
-        
-        console.error('[TranscriptionService] Transcription request failed:', errorData);
-        throw new Error(errorData.message || `Transcription failed: ${response.statusText}`);
-      }
-
-      const responseData = await response.json();
-      console.log('[TranscriptionService] Success response:', responseData);
-      
-      const { dialogId } = responseData;
-      console.log('[TranscriptionService] Transcription request successful, dialogId:', dialogId);
-      
-      this.updateProgress('complete', 100, 'Transcription completed successfully');
-      
-      return dialogId;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Transcription failed';
-      console.error('[TranscriptionService] Transcription error:', errorMessage);
-      
-      this.updateProgress('error', 0, errorMessage);
-      throw error;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown transcription error';
+      logger.error('Transcription service error', error as Error, {
+        fileName: file.name,
+        fileSize: file.size
+      });
+      throw new Error(errorMessage);
     }
   }
 
-  async processTranscription(dialogId: string): Promise<void> {
-    console.log('[TranscriptionService] processTranscription called with dialogId:', dialogId);
-    
+  /**
+   * Get transcription status
+   */
+  async getTranscriptionStatus(transcriptionId: string): Promise<{
+    status: 'pending' | 'processing' | 'completed' | 'failed';
+    result?: TranscriptionResult;
+    error?: TranscriptionError;
+  }> {
+    if (!transcriptionId?.trim()) {
+      throw new Error('Transcription ID is required');
+    }
+
     try {
-      const { supabase } = await import('../integrations/supabase/client');
-      const { data: { session }, error: authError } = await supabase.auth.getSession();
-      
-      if (authError || !session) {
-        throw new Error('Authentication required for transcription processing');
-      }
-      
-      console.log('[TranscriptionService] Making process transcription request...');
-      const response = await fetch(`https://sahudeguwojdypmmlbkd.supabase.co/functions/v1/process-transcription/${dialogId}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-      });
+      const { data, error } = await supabase
+        .from('transcriptions')
+        .select('*')
+        .eq('id', transcriptionId)
+        .single();
 
-      console.log('[TranscriptionService] Process response status:', response.status);
-
-      if (!response.ok) {
-        const responseText = await response.text();
-        console.error('[TranscriptionService] Process error response:', responseText);
-        throw new Error(`Transcription processing failed: ${response.statusText}`);
+      if (error) {
+        logger.error('Failed to get transcription status', error, { transcriptionId });
+        throw new Error(`Failed to get status: ${error.message}`);
       }
 
-      const data = await response.json();
-      console.log('[TranscriptionService] Transcription processed successfully:', data);
+      return {
+        status: data.status,
+        result: data.status === 'completed' ? {
+          id: data.id,
+          transcript: data.transcript,
+          confidence: data.confidence,
+          speaker_labels: data.speaker_labels,
+          metadata: data.metadata
+        } : undefined,
+        error: data.status === 'failed' ? {
+          message: data.error_message || 'Transcription failed',
+          code: data.error_code,
+          details: data.error_details
+        } : undefined
+      };
+
     } catch (error) {
-      console.error('[TranscriptionService] Error processing transcription:', error);
+      logger.error('Error getting transcription status', error as Error, { transcriptionId });
       throw error;
     }
-  }
-
-  async estimateTokenCost(file: File): Promise<{ audioLengthMinutes: number; estimatedCost: number }> {
-    console.log('[TranscriptionService] estimateTokenCost called with file:', file.name);
-    
-    try {
-      const { supabase } = await import('../integrations/supabase/client');
-      const { data: { session }, error: authError } = await supabase.auth.getSession();
-      
-      if (authError || !session) {
-        throw new Error('Authentication required for cost estimation');
-      }
-      
-      const formData = new FormData();
-      formData.append('audio', file);
-
-      console.log('[TranscriptionService] Making token cost estimation request...');
-      const response = await fetch('https://sahudeguwojdypmmlbkd.supabase.co/functions/v1/estimate-token-cost', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: formData,
-      });
-
-      console.log('[TranscriptionService] Estimation response status:', response.status);
-
-      if (!response.ok) {
-        const responseText = await response.text();
-        console.error('[TranscriptionService] Estimation error response:', responseText);
-        throw new Error(`Token estimation failed: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      console.log('[TranscriptionService] Token estimation result:', result);
-      return result;
-    } catch (error) {
-      console.error('[TranscriptionService] Error estimating token cost:', error);
-      throw error;
-    }
-  }
-
-  async loadModel(options: TranscriptionOptions): Promise<void> {
-    console.log('[TranscriptionService] Loading model with options:', options);
-    this.updateProgress('queued', 50, 'Loading transcription model...');
-    
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    this.currentModel = options.model || 'default';
-    this.modelLoaded = true;
-    console.log('[TranscriptionService] Model loaded:', this.currentModel);
-    this.updateProgress('complete', 100, 'Model loaded successfully');
-  }
-
-  isModelLoaded(): boolean {
-    return this.modelLoaded;
-  }
-
-  getCurrentModel(): string | null {
-    return this.currentModel;
-  }
-
-  getModelInfo(modelName: string) {
-    return { name: modelName, size: 'unknown' };
-  }
-
-  getAllModelInfo() {
-    return [{ name: 'default', size: 'small' }];
   }
 }
 
