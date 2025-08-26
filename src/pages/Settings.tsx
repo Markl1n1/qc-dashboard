@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -18,7 +19,6 @@ import {
   Users,
   Shield,
   FileText,
-  Code,
   AlertCircle,
   CheckCircle,
   Loader2
@@ -28,7 +28,6 @@ import { useEnhancedSettingsStore } from '../store/enhancedSettingsStore';
 import { useUserRole } from '../hooks/useUserRole';
 import { supabase } from '../integrations/supabase/client';
 import AIInstructionsManager from '../components/AIInstructionsManager';
-import OpenAIRequestDemo from '../components/OpenAIRequestDemo';
 
 interface SettingsProps {}
 
@@ -149,7 +148,7 @@ const Settings = () => {
       </div>
 
       <Tabs defaultValue="ai-analysis" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="ai-analysis" className="flex items-center gap-2">
             <Brain className="h-4 w-4" />
             AI Analysis
@@ -161,10 +160,6 @@ const Settings = () => {
           <TabsTrigger value="instructions" className="flex items-center gap-2">
             <FileText className="h-4 w-4" />
             AI Instructions
-          </TabsTrigger>
-          <TabsTrigger value="demo" className="flex items-center gap-2">
-            <Code className="h-4 w-4" />
-            API Demo
           </TabsTrigger>
         </TabsList>
 
@@ -211,7 +206,7 @@ const Settings = () => {
                     </SelectContent>
                   </Select>
                   <p className="text-sm text-muted-foreground">
-                    Reasoning effort level for newer OpenAI models.
+                    Reasoning effort level for GPT-5 models.
                   </p>
                 </div>
 
@@ -244,23 +239,6 @@ const Settings = () => {
                   />
                   <p className="text-sm text-muted-foreground">
                     Maximum completion tokens for GPT-5 flagship model.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="ai_temperature">Temperature (Legacy Models)</Label>
-                  <Input
-                    id="ai_temperature"
-                    type="number"
-                    min="0"
-                    max="2"
-                    step="0.1"
-                    value={localConfig.ai_temperature || '0.7'}
-                    onChange={(e) => handleConfigChange('ai_temperature', e.target.value)}
-                    placeholder="0.7"
-                  />
-                  <p className="text-sm text-muted-foreground">
-                    Temperature for legacy models (GPT-4o family). Not used with GPT-5 models.
                   </p>
                 </div>
               </div>
@@ -330,10 +308,6 @@ const Settings = () => {
 
         <TabsContent value="instructions" className="space-y-6">
           <AIInstructionsManager />
-        </TabsContent>
-
-        <TabsContent value="demo" className="space-y-6">
-          <OpenAIRequestDemo />
         </TabsContent>
       </Tabs>
     </div>
