@@ -37,16 +37,16 @@ const Index = () => {
     }
 
     // Apply status filter
-    if (filters.status !== 'all') {
-      filtered = filtered.filter(dialog => {
-        if (filters.status === 'processed') {
-          return dialog.transcription && dialog.transcription.length > 0;
-        } else if (filters.status === 'pending') {
-          return !dialog.transcription || dialog.transcription.length === 0;
-        }
-        return true;
-      });
+    if (filters.status === 'processed') {
+      filtered = filtered.filter(dialog => 
+        dialog.transcription && dialog.transcription.length > 0
+      );
+    } else if (filters.status === 'pending') {
+      filtered = filtered.filter(dialog => 
+        !dialog.transcription || dialog.transcription.length === 0
+      );
     }
+    // If filters.status === 'all', don't filter by status
 
     // Apply sorting
     filtered.sort((a, b) => {
@@ -112,11 +112,11 @@ const Index = () => {
       {/* Filters */}
       <DialogFilters 
         searchTerm={filters.search}
-        onSearchTermChange={(search) => setFilters(prev => ({ ...prev, search }))}
+        onSearchChange={(search) => setFilters(prev => ({ ...prev, search }))}
         sortBy={filters.sortBy}
-        onSortByChange={(sortBy) => setFilters(prev => ({ ...prev, sortBy }))}
+        onSortChange={(sortBy) => setFilters(prev => ({ ...prev, sortBy }))}
         statusFilter={filters.status}
-        onStatusFilterChange={(status) => setFilters(prev => ({ ...prev, status }))}
+        onStatusChange={(status) => setFilters(prev => ({ ...prev, status }))}
       />
 
       {/* Stats */}
