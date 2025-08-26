@@ -214,9 +214,9 @@ export class OpenAIEvaluationService {
 
       return data.map(item => ({
         id: item.id,
-        scores: item.category_scores || {},
+        scores: this.parseJsonField(item.category_scores, {}),
         feedback: item.summary || '',
-        suggestions: item.recommendations || [],
+        suggestions: this.parseJsonField(item.recommendations, []),
         overall_score: item.overall_score || 0,
         metadata: item.token_usage
       }));
@@ -225,6 +225,29 @@ export class OpenAIEvaluationService {
       logger.error('Error getting evaluation history', error as Error, { dialogId });
       throw error;
     }
+  }
+
+  /**
+   * Helper method to safely parse JSON fields from database
+   */
+  private parseJsonField<T>(field: any, defaultValue: T): T {
+    if (field === null || field === undefined) {
+      return defaultValue;
+    }
+    
+    if (typeof field === 'string') {
+      try {
+        return JSON.parse(field);
+      } catch {
+        return defaultValue;
+      }
+    }
+    
+    if (typeof field === 'object') {
+      return field as T;
+    }
+    
+    return defaultValue;
   }
 
   private validateRequest(request: EvaluationRequest): void {
