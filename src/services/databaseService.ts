@@ -1,6 +1,6 @@
-
 import { supabase } from '../integrations/supabase/client';
 import { Dialog, SpeakerUtterance, AIAnalysis } from '../types';
+import { logger } from './loggingService';
 
 export interface DatabaseDialog {
   id: string;
@@ -66,73 +66,193 @@ export interface DatabaseAnalysis {
   updated_at: string;
 }
 
+/**
+ * Input validation utilities
+ */
+class ValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ValidationError';
+  }
+}
+
+const validateUuid = (id: string, fieldName: string): void => {
+  if (!id || typeof id !== 'string') {
+    throw new ValidationError(`${fieldName} is required and must be a string`);
+  }
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(id)) {
+    throw new ValidationError(`${fieldName} must be a valid UUID`);
+  }
+};
+
+const validateRequired = (value: unknown, fieldName: string): void => {
+  if (value === null || value === undefined || value === '') {
+    throw new ValidationError(`${fieldName} is required`);
+  }
+};
+
 class DatabaseService {
-  // Dialog operations
+  /**
+   * Create a new dialog with input validation
+   */
   async createDialog(dialog: Omit<DatabaseDialog, 'id' | 'created_at' | 'updated_at' | 'expires_at'>): Promise<DatabaseDialog> {
-    const { data, error } = await supabase
-      .from('dialogs')
-      .insert([dialog])
-      .select()
-      .single();
+    try {
+      // Validate required fields
+      validateRequired(dialog.user_id, 'user_id');
+      validateRequired(dialog.file_name, 'file_name');
+      validateRequired(dialog.assigned_agent, 'assigned_agent');
+      validateRequired(dialog.assigned_supervisor, 'assigned_supervisor');
+      
+      validateUuid(dialog.user_id, 'user_id');
 
-    if (error) throw error;
-    return data as DatabaseDialog;
-  }
+      const { data, error } = await supabase
+        .from('dialogs')
+        .insert([dialog])
+        .select()
+        .single();
 
-  async getDialogs(userId?: string): Promise<DatabaseDialog[]> {
-    let query = supabase.from('dialogs').select('*').order('upload_date', { ascending: false });
-    
-    if (userId) {
-      query = query.eq('user_id', userId);
+      if (error) {
+        logger.error('Failed to create dialog', error, { dialog });
+        throw error;
+      }
+
+      logger.info('Dialog created successfully', { dialogId: data.id });
+      return data as DatabaseDialog;
+    } catch (error) {
+      logger.error('Database service: createDialog failed', error as Error, { dialog });
+      throw error;
     }
-
-    const { data, error } = await query;
-    if (error) throw error;
-    return (data || []) as DatabaseDialog[];
   }
 
+  /**
+   * Get dialogs with optional user filtering and input validation
+   */
+  async getDialogs(userId?: string): Promise<DatabaseDialog[]> {
+    try {
+      if (userId) {
+        validateUuid(userId, 'userId');
+      }
+
+      let query = supabase.from('dialogs').select('*').order('upload_date', { ascending: false });
+      
+      if (userId) {
+        query = query.eq('user_id', userId);
+      }
+
+      const { data, error } = await query;
+      
+      if (error) {
+        logger.error('Failed to fetch dialogs', error, { userId });
+        throw error;
+      }
+
+      return (data || []) as DatabaseDialog[];
+    } catch (error) {
+      logger.error('Database service: getDialogs failed', error as Error, { userId });
+      throw error;
+    }
+  }
+
+  /**
+   * Get a single dialog by ID with validation
+   */
   async getDialog(id: string): Promise<DatabaseDialog | null> {
-    const { data, error } = await supabase
-      .from('dialogs')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle();
+    try {
+      validateUuid(id, 'id');
 
-    if (error) throw error;
-    return data as DatabaseDialog | null;
+      const { data, error } = await supabase
+        .from('dialogs')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (error) {
+        logger.error('Failed to fetch dialog', error, { dialogId: id });
+        throw error;
+      }
+
+      return data as DatabaseDialog | null;
+    } catch (error) {
+      logger.error('Database service: getDialog failed', error as Error, { dialogId: id });
+      throw error;
+    }
   }
 
+  /**
+   * Update dialog with validation
+   */
   async updateDialog(id: string, updates: Partial<DatabaseDialog>): Promise<DatabaseDialog> {
-    const { data, error } = await supabase
-      .from('dialogs')
-      .update({ ...updates, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .select()
-      .single();
+    try {
+      validateUuid(id, 'id');
+      validateRequired(updates, 'updates');
 
-    if (error) throw error;
-    return data as DatabaseDialog;
+      const { data, error } = await supabase
+        .from('dialogs')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        logger.error('Failed to update dialog', error, { dialogId: id, updates });
+        throw error;
+      }
+
+      logger.info('Dialog updated successfully', { dialogId: id });
+      return data as DatabaseDialog;
+    } catch (error) {
+      logger.error('Database service: updateDialog failed', error as Error, { dialogId: id, updates });
+      throw error;
+    }
   }
 
+  /**
+   * Delete dialog with validation
+   */
   async deleteDialog(id: string): Promise<void> {
-    const { error } = await supabase
-      .from('dialogs')
-      .delete()
-      .eq('id', id);
+    try {
+      validateUuid(id, 'id');
 
-    if (error) throw error;
+      const { error } = await supabase
+        .from('dialogs')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        logger.error('Failed to delete dialog', error, { dialogId: id });
+        throw error;
+      }
+
+      logger.info('Dialog deleted successfully', { dialogId: id });
+    } catch (error) {
+      logger.error('Database service: deleteDialog failed', error as Error, { dialogId: id });
+      throw error;
+    }
   }
 
   // Transcription operations
   async createTranscription(transcription: Omit<DatabaseTranscription, 'id' | 'created_at' | 'updated_at'>): Promise<DatabaseTranscription> {
-    const { data, error } = await supabase
-      .from('dialog_transcriptions')
-      .insert([transcription])
-      .select()
-      .single();
+    try {
+      validateUuid(transcription.dialog_id, 'dialog_id');
+      validateRequired(transcription.transcription_type, 'transcription_type');
 
-    if (error) throw error;
-    return data as DatabaseTranscription;
+      const { data, error } = await supabase
+        .from('dialog_transcriptions')
+        .insert([transcription])
+        .select()
+        .single();
+
+      if (error) {
+        logger.error('Failed to create transcription', error, { transcription });
+        throw error;
+      }
+
+      return data as DatabaseTranscription;
+    } catch (error) {
+      logger.error('Database service: createTranscription failed', error as Error, { transcription });
+      throw error;
+    }
   }
 
   async getTranscriptions(dialogId: string): Promise<DatabaseTranscription[]> {
@@ -347,3 +467,4 @@ class DatabaseService {
 }
 
 export const databaseService = new DatabaseService();
+export { ValidationError };

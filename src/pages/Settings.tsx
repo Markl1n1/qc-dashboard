@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -28,6 +27,7 @@ import { useEnhancedSettingsStore } from '../store/enhancedSettingsStore';
 import { useUserRole } from '../hooks/useUserRole';
 import { supabase } from '../integrations/supabase/client';
 import AIInstructionsManager from '../components/AIInstructionsManager';
+import { logger } from '../services/loggingService';
 
 interface SettingsProps {}
 
@@ -56,31 +56,33 @@ const Settings = () => {
     }
   }, [systemConfig]);
 
-  const handleConfigChange = (key: string, value: string) => {
+  const handleConfigChange = (key: string, value: string): void => {
     setLocalConfig(prev => ({ ...prev, [key]: value }));
     setHasUnsavedChanges(true);
   };
 
-  const handleSaveConfig = async () => {
+  const handleSaveConfig = async (): Promise<void> => {
     setIsSaving(true);
     try {
       await updateSystemConfig(localConfig);
       setHasUnsavedChanges(false);
       toast.success('Settings saved successfully');
+      logger.info('System settings updated successfully');
     } catch (error) {
-      console.error('Error saving settings:', error);
+      logger.error('Failed to save settings', error as Error, { configKeys: Object.keys(localConfig) });
       toast.error('Failed to save settings');
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleResetDefaults = async () => {
+  const handleResetDefaults = async (): Promise<void> => {
     try {
       await resetToDefaults();
       toast.success('Settings reset to defaults');
+      logger.info('System settings reset to defaults');
     } catch (error) {
-      console.error('Error resetting settings:', error);
+      logger.error('Failed to reset settings', error as Error);
       toast.error('Failed to reset settings');
     }
   };

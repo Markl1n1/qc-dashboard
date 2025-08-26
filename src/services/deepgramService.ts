@@ -2,23 +2,27 @@
 import { DeepgramOptions, DeepgramTranscriptionResult, DeepgramProgress } from '../types/deepgram';
 import { SpeakerUtterance, UnifiedTranscriptionProgress } from '../types';
 import { supabase } from '../integrations/supabase/client';
-import { logger } from '../utils/logger';
+import { logger } from './loggingService';
 
 class DeepgramService {
   private progressCallback: ((progress: UnifiedTranscriptionProgress) => void) | null = null;
 
-  setProgressCallback(callback: (progress: UnifiedTranscriptionProgress) => void) {
+  setProgressCallback(callback: (progress: UnifiedTranscriptionProgress) => void): void {
     this.progressCallback = callback;
   }
 
-  private updateProgress(stage: UnifiedTranscriptionProgress['stage'], progress: number, message: string) {
+  private updateProgress(stage: UnifiedTranscriptionProgress['stage'], progress: number, message: string): void {
     if (this.progressCallback) {
       this.progressCallback({ stage, progress, message });
     }
   }
 
   async transcribe(audioFile: File, options: DeepgramOptions): Promise<{ text: string; speakerUtterances: SpeakerUtterance[] }> {
-    logger.info('🎙️ Starting Deepgram transcription', { fileName: audioFile.name, options });
+    logger.info('Starting Deepgram transcription', { 
+      fileName: audioFile.name, 
+      fileSize: audioFile.size,
+      options 
+    });
 
     try {
       this.updateProgress('uploading', 10, 'Uploading audio to Deepgram...');
@@ -47,31 +51,27 @@ class DeepgramService {
       });
 
       if (error) {
-        logger.error('❌ Deepgram edge function error:', error);
+        logger.error('Deepgram edge function error', error, { fileName: audioFile.name });
         throw new Error(`Deepgram transcription failed: ${error.message}`);
       }
 
       if (!data || !data.success) {
-        throw new Error(data?.error || 'Deepgram transcription failed');
+        const errorMsg = data?.error || 'Deepgram transcription failed';
+        logger.error('Deepgram transcription failed', new Error(errorMsg), { fileName: audioFile.name });
+        throw new Error(errorMsg);
       }
 
       this.updateProgress('processing', 80, 'Processing speaker diarization...');
 
       const result = data.result as DeepgramTranscriptionResult;
       
-      // LOG THE COMPLETE RAW RESPONSE FOR DEBUGGING
-      logger.warn('🔍 DEEPGRAM RAW RESPONSE STRUCTURE:');
-      logger.warn('🔍 Full result object:', result);
-      logger.warn('🔍 Speaker utterances array:', result.speakerUtterances);
-      logger.warn('🔍 Detected language:', result.detectedLanguage);
-      logger.warn('🔍 Metadata:', result.metadata);
-      
-      // Convert to unified format - USE RAW SPEAKER NUMBERS
+      // Process utterances
       const speakerUtterances = this.processRawSpeakerUtterances(result.speakerUtterances);
       
       this.updateProgress('complete', 100, 'Transcription complete!');
 
-      logger.info('✅ Deepgram transcription completed', {
+      logger.info('Deepgram transcription completed successfully', {
+        fileName: audioFile.name,
         textLength: result.text.length,
         utteranceCount: speakerUtterances.length,
         detectedLanguage: result.detectedLanguage
@@ -83,7 +83,7 @@ class DeepgramService {
       };
 
     } catch (error) {
-      logger.error('❌ Deepgram service error:', error);
+      logger.error('Deepgram service error', error as Error, { fileName: audioFile.name });
       this.updateProgress('error', 0, error instanceof Error ? error.message : 'Transcription failed');
       throw error;
     }
@@ -103,26 +103,17 @@ class DeepgramService {
     });
   }
 
-  private processRawSpeakerUtterances(utterances: any[]): SpeakerUtterance[] {
-    logger.warn('🔍 PROCESSING DEEPGRAM UTTERANCES:');
-    logger.warn('🔍 Input utterances array length:', utterances?.length || 0);
+  private processRawSpeakerUtterances(utterances: unknown[]): SpeakerUtterance[] {
+    logger.debug('Processing Deepgram utterances', { 
+      utteranceCount: utterances?.length || 0 
+    });
     
     if (!utterances || !Array.isArray(utterances)) {
-      logger.warn('🔍 No utterances array found or invalid format');
+      logger.warn('No utterances array found or invalid format');
       return [];
     }
 
-    const processedUtterances = utterances.map((utterance, index) => {
-      // LOG EACH INDIVIDUAL UTTERANCE STRUCTURE
-      logger.warn(`🔍 Utterance ${index}:`, {
-        speaker: utterance.speaker,
-        text: utterance.text?.substring(0, 50) + '...',
-        confidence: utterance.confidence,
-        start: utterance.start,
-        end: utterance.end,
-        fullObject: utterance
-      });
-
+    const processedUtterances = utterances.map((utterance: any, index: number) => {
       // Use RAW speaker numbers - no intelligent detection
       const speakerNumber = utterance.speaker !== undefined ? utterance.speaker : 0;
       const speakerLabel = `Speaker ${speakerNumber}`;
@@ -136,14 +127,16 @@ class DeepgramService {
       };
     });
 
-    // LOG SPEAKER DISTRIBUTION FOR ANALYSIS
-    const speakerDistribution = processedUtterances.reduce((acc: any, utterance: any) => {
+    // Log speaker distribution for analysis
+    const speakerDistribution = processedUtterances.reduce((acc: Record<string, number>, utterance) => {
       acc[utterance.speaker] = (acc[utterance.speaker] || 0) + 1;
       return acc;
     }, {});
     
-    logger.warn('🔍 FINAL SPEAKER DISTRIBUTION:', speakerDistribution);
-    logger.warn('🔍 TOTAL PROCESSED UTTERANCES:', processedUtterances.length);
+    logger.debug('Speaker distribution analysis', { 
+      speakerDistribution, 
+      totalUtterances: processedUtterances.length 
+    });
 
     return processedUtterances;
   }
