@@ -6,13 +6,16 @@ export const formatDialogForCopy = (utterances: SpeakerUtterance[]): string => {
   let currentSpeaker = '';
 
   for (const utterance of utterances) {
+    // Clean speaker label - remove duplicate "Speaker" text
+    const cleanSpeaker = utterance.speaker.replace(/^Speaker\s+/, '');
+    
     // Only add speaker label if it's different from the previous one
-    if (utterance.speaker !== currentSpeaker) {
+    if (cleanSpeaker !== currentSpeaker) {
       if (formattedText) {
         formattedText += '\n'; // Add extra line break between speakers
       }
-      formattedText += `${utterance.speaker}: \n`;
-      currentSpeaker = utterance.speaker;
+      formattedText += `Speaker ${cleanSpeaker}: \n`;
+      currentSpeaker = cleanSpeaker;
     }
     
     formattedText += `- ${utterance.text}\n`;

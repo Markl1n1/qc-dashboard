@@ -10,6 +10,7 @@ import { Link } from 'react-router-dom';
 import { Dialog } from '../types';
 import { useDatabaseDialogs } from '../hooks/useDatabaseDialogs';
 import { toast } from 'sonner';
+import { extractUsernameFromEmail, capitalizeStatus } from '../utils/userUtils';
 import DeepgramSpeakerDialog from '../components/DeepgramSpeakerDialog';
 
 const DialogDetail = () => {
@@ -58,7 +59,8 @@ const DialogDetail = () => {
   };
 
   const getStatusColor = (status: Dialog['status']) => {
-    switch (status) {
+    const normalizedStatus = status.toLowerCase();
+    switch (normalizedStatus) {
       case 'completed':
         return 'text-green-600 bg-green-50 border-green-200';
       case 'processing':
@@ -97,13 +99,13 @@ const DialogDetail = () => {
             </Link>
           </Button>
           <Badge className={getStatusColor(dialog.status)}>
-            {dialog.status}
+            {capitalizeStatus(dialog.status)}
           </Badge>
         </div>
         
         <h1 className="text-3xl font-bold mb-2">{dialog.fileName}</h1>
         <div className="flex items-center space-x-4 text-sm text-muted-foreground">
-          <span>Supervisor: {dialog.assignedSupervisor}</span>
+          <span>Supervisor: {extractUsernameFromEmail(dialog.assignedSupervisor)}</span>
           <span>•</span>
           <span>Uploaded: {new Date(dialog.uploadDate).toLocaleDateString()}</span>
           {dialog.qualityScore && (

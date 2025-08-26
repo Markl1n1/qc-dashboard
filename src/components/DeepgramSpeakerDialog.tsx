@@ -70,15 +70,21 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
     return speakerColors[colorIndex];
   };
 
-  // Merge consecutive utterances from the same speaker
+  // Merge consecutive utterances from the same speaker and clean speaker labels
   const mergeConsecutiveUtterances = (utterances: SpeakerUtterance[]): SpeakerUtterance[] => {
     if (!utterances || utterances.length === 0) return [];
 
     const merged: SpeakerUtterance[] = [];
-    let current = { ...utterances[0] };
+    let current = { 
+      ...utterances[0], 
+      speaker: utterances[0].speaker.replace(/^Speaker\s+/, 'Speaker ') // Clean speaker label
+    };
 
     for (let i = 1; i < utterances.length; i++) {
-      const next = utterances[i];
+      const next = { 
+        ...utterances[i], 
+        speaker: utterances[i].speaker.replace(/^Speaker\s+/, 'Speaker ') // Clean speaker label
+      };
       
       if (current.speaker === next.speaker) {
         // Merge with current utterance
@@ -165,8 +171,6 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
             {Object.entries(speakerStats).map(([speaker, stats]) => {
               const style = getSpeakerStyle(speaker);
               const Icon = style.icon;
-              // Clean speaker label - remove duplicate "Speaker" text
-              const cleanSpeaker = speaker.replace(/^Speaker\s+/, '');
               
               return (
                 <div
@@ -179,7 +183,7 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
                   }}
                 >
                   <Icon className="h-4 w-4" />
-                  <span className="font-medium">{cleanSpeaker}</span>
+                  <span className="font-medium">{speaker}</span>
                   <Badge variant="outline" className="text-xs">
                     {stats.count} segments
                   </Badge>
@@ -201,8 +205,6 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
               {mergedUtterances.map((utterance, index) => {
                 const style = getSpeakerStyle(utterance.speaker);
                 const Icon = style.icon;
-                // Clean speaker label - remove duplicate "Speaker" text
-                const cleanSpeaker = utterance.speaker.replace(/^Speaker\s+/, '');
                 
                 return (
                   <div
@@ -228,7 +230,7 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
                           className="font-medium text-sm"
                           style={{ color: style.textColor }}
                         >
-                          {cleanSpeaker}
+                          {utterance.speaker}
                         </span>
                         <span className="text-xs text-muted-foreground">
                           {formatTime(utterance.start)} - {formatTime(utterance.end)}

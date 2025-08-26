@@ -30,7 +30,7 @@ const Upload: React.FC<UploadProps> = () => {
   };
 
   const { user } = useAuthStore();
-  const { addDialog, saveTranscription, saveSpeakerTranscription } = useDatabaseDialogs();
+  const { addDialog, updateDialog, saveTranscription, saveSpeakerTranscription } = useDatabaseDialogs();
 
   const { 
     transcribe: transcribeDeepgram, 
@@ -39,8 +39,9 @@ const Upload: React.FC<UploadProps> = () => {
     error: deepgramError
   } = useDeepgramTranscription();
 
+  // Expanded audio format support based on Deepgram's capabilities
   const acceptedFileTypes: Accept = {
-    'audio/*': ['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac']
+    'audio/*': ['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac', '.mp4', '.webm', '.mp2', '.opus']
   };
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
@@ -69,10 +70,10 @@ const Upload: React.FC<UploadProps> = () => {
     console.log('Starting transcription for file:', audioFile.name);
     
     try {
-      // Create dialog record first
+      // Create dialog record first with "Processing" status
       const dialogId = await addDialog({
         fileName: audioFile.name,
-        status: 'processing',
+        status: 'Processing',
         assignedAgent: user.email || 'Unknown',
         assignedSupervisor: user.email || 'Unknown',
         uploadDate: new Date().toISOString(),
@@ -92,19 +93,9 @@ const Upload: React.FC<UploadProps> = () => {
         await saveSpeakerTranscription(dialogId, result.speakerUtterances, 'speaker');
       }
 
-      // Update dialog status to completed
-      await addDialog({
-        fileName: audioFile.name,
-        status: 'completed',
-        assignedAgent: user.email || 'Unknown',
-        assignedSupervisor: user.email || 'Unknown',
-        uploadDate: new Date().toISOString(),
-        tokenEstimation: {
-          audioLengthMinutes: 0,
-          estimatedCost: 0
-        },
-        isSegmented: false,
-        currentLanguage: 'original'
+      // Update dialog status to "Completed" instead of creating a new dialog
+      await updateDialog(dialogId, {
+        status: 'Completed'
       });
 
       toast.success('Transcription completed successfully!');
@@ -115,6 +106,14 @@ const Upload: React.FC<UploadProps> = () => {
     } catch (err: any) {
       console.error('Transcription failed', err);
       toast.error(`Transcription failed: ${err.message}`);
+      
+      // Update dialog status to "Failed" on error
+      if (dialogId) {
+        await updateDialog(dialogId, {
+          status: 'Failed',
+          error: err.message
+        });
+      }
     }
   };
 
@@ -134,11 +133,19 @@ const Upload: React.FC<UploadProps> = () => {
             {isDragActive ? (
               <p>Drop the audio here ...</p>
             ) : (
-              <p>Drag 'n' drop an audio file here, or click to select files</p>
+              <div className="text-center">
+                <p className="mb-2">Drag 'n' drop an audio file here, or click to select files</p>
+                <p className="text-sm text-muted-foreground">
+                  Supports: MP3, WAV, M4A, AAC, OGG, FLAC, MP4, WebM, MP2, Opus
+                </p>
+              </div>
             )}
             {audioFile && (
-              <div className="mt-2">
-                Selected file: {audioFile.name} ({Math.round(audioFile.size / 1024)} KB)
+              <div className="mt-2 text-center">
+                <div className="font-medium">Selected file: {audioFile.name}</div>
+                <div className="text-sm text-muted-foreground">
+                  ({Math.round(audioFile.size / 1024)} KB)
+                </div>
               </div>
             )}
           </div>

@@ -7,6 +7,7 @@ import { Link } from 'react-router-dom';
 import { Dialog } from '../types';
 import { useDatabaseDialogs } from '../hooks/useDatabaseDialogs';
 import { toast } from 'sonner';
+import { extractUsernameFromEmail, capitalizeStatus } from '../utils/userUtils';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,7 +38,8 @@ const Index = () => {
   };
 
   const getStatusColor = (status: Dialog['status']) => {
-    switch (status) {
+    const normalizedStatus = status.toLowerCase();
+    switch (normalizedStatus) {
       case 'completed':
         return 'text-green-600 bg-green-50 border-green-200';
       case 'processing':
@@ -108,7 +110,7 @@ const Index = () => {
                   <div className="flex-1">
                     <h3 className="font-medium">{dialog.fileName}</h3>
                     <div className="flex items-center space-x-4 text-sm text-muted-foreground">
-                      <span>Supervisor: {dialog.assignedSupervisor}</span>
+                      <span>Supervisor: {extractUsernameFromEmail(dialog.assignedSupervisor)}</span>
                       <span>•</span>
                       <span>{new Date(dialog.uploadDate).toLocaleDateString()}</span>
                       {dialog.qualityScore && (
@@ -121,7 +123,7 @@ const Index = () => {
                   </div>
                   <div className="flex items-center space-x-2">
                     <span className={`px-2 py-1 text-xs rounded-full border ${getStatusColor(dialog.status)}`}>
-                      {dialog.status}
+                      {capitalizeStatus(dialog.status)}
                     </span>
                     <Button variant="ghost" size="sm" asChild>
                       <Link to={`/dialog/${dialog.id}`}>View Details</Link>
