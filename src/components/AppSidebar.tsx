@@ -24,7 +24,7 @@ import {
   useSidebar,
 } from './ui/sidebar';
 import { useAuthStore } from '../store/authStore';
-import { VoiceQCLogo } from './VoiceQCLogo';
+import VoiceQCLogo from './VoiceQCLogo';
 
 const navigationItems = [
   { title: 'Dashboard', url: '/unified-dashboard', icon: Home },
@@ -34,21 +34,21 @@ const navigationItems = [
 ];
 
 export function AppSidebar() {
-  const { collapsed } = useSidebar();
+  const { state } = useSidebar();
   const location = useLocation();
-  const { signOut } = useAuthStore();
+  const { logout } = useAuthStore();
   
   const currentPath = location.pathname;
+  const collapsed = state === 'collapsed';
   
   const isActive = (path: string) => currentPath === path;
-  const isExpanded = navigationItems.some((i) => isActive(i.url));
   
   const getNavCls = ({ isActive }: { isActive: boolean }) =>
     isActive ? "bg-muted text-primary font-medium" : "hover:bg-muted/50";
 
   const handleSignOut = async () => {
     try {
-      await signOut();
+      await logout();
     } catch (error) {
       console.error('Sign out error:', error);
     }
@@ -57,22 +57,18 @@ export function AppSidebar() {
   return (
     <Sidebar
       className={collapsed ? "w-14" : "w-60"}
-      collapsible
+      collapsible="icon"
     >
       {/* Header with logo and trigger */}
       <div className="p-4 border-b">
         <div className="flex items-center gap-2">
-          <VoiceQCLogo size={collapsed ? 24 : 32} />
-          {!collapsed && <span className="font-bold text-lg">VoiceQC</span>}
+          <VoiceQCLogo size={collapsed ? "sm" : "md"} showText={!collapsed} />
         </div>
         <SidebarTrigger className="mt-2" />
       </div>
 
       <SidebarContent>
-        <SidebarGroup
-          open={isExpanded}
-          onOpenChange={() => {}}
-        >
+        <SidebarGroup>
           <SidebarGroupLabel>Main Navigation</SidebarGroupLabel>
           
           <SidebarGroupContent>

@@ -1,20 +1,19 @@
 
-import React from 'react';
 import { Outlet } from 'react-router-dom';
-import { SidebarProvider } from './ui/sidebar';
+import { SidebarProvider, SidebarInset } from './ui/sidebar';
 import { AppSidebar } from './AppSidebar';
 
-const Layout: React.FC = () => {
+export default function Layout() {
   return (
-    <SidebarProvider collapsedWidth={56}>
+    <SidebarProvider>
       <div className="flex min-h-screen w-full">
         <AppSidebar />
-        <main className="flex-1">
-          <Outlet />
-        </main>
+        <SidebarInset className="flex-1">
+          <main className="flex-1 p-6">
+            <Outlet />
+          </main>
+        </SidebarInset>
       </div>
     </SidebarProvider>
   );
-};
-
-export default Layout;
+}
