@@ -41,7 +41,7 @@ serve(async (req) => {
     }
 
     const requestBody = await req.json();
-    const { model, messages, max_output_tokens } = requestBody;
+    const { model, messages, max_output_tokens, temperature, reasoning_effort } = requestBody;
 
     // Extract text from messages for token estimation
     const allText = messages.map((m: any) => m.content).join('\n');
@@ -65,18 +65,39 @@ serve(async (req) => {
     };
 
     // Handle different model parameter requirements
-    if (model && (model.includes('gpt-5') || model.includes('gpt-4.1') || model.includes('o3') || model.includes('o4'))) {
-      // Newer models use max_completion_tokens and don't support temperature
+    if (model && (model.includes('gpt-5') || model.includes('gpt-4.1'))) {
+      // Newer models use max_completion_tokens
       openAIRequestBody.max_completion_tokens = max_output_tokens || 1000;
+      
+      // Add reasoning effort for supported models
+      if (reasoning_effort && (model.includes('o3') || model.includes('o4'))) {
+        openAIRequestBody.reasoning_effort = reasoning_effort;
+      }
+      
+      // Only add temperature for models that support it (not o3/o4 reasoning models)
+      if (temperature !== undefined && !model.includes('o3') && !model.includes('o4')) {
+        openAIRequestBody.temperature = temperature;
+      }
     } else {
       // Legacy models use max_tokens and support temperature
       openAIRequestBody.max_tokens = max_output_tokens || 1000;
-      openAIRequestBody.temperature = 0.1;
+      if (temperature !== undefined) {
+        openAIRequestBody.temperature = temperature;
+      }
+    }
+
+    // Add reasoning effort for o3/o4 models
+    if (model && (model.includes('o3') || model.includes('o4')) && reasoning_effort) {
+      openAIRequestBody.reasoning_effort = reasoning_effort;
     }
 
     console.log('Making OpenAI request with model:', model);
-    console.log('Estimated input tokens:', inputTokens);
-    console.log('Max output tokens:', max_output_tokens);
+    console.log('Parameters:', {
+      estimated_input_tokens: inputTokens,
+      max_output_tokens,
+      temperature: openAIRequestBody.temperature,
+      reasoning_effort: openAIRequestBody.reasoning_effort
+    });
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',

@@ -6,8 +6,10 @@ export const formatDialogForCopy = (utterances: SpeakerUtterance[]): string => {
   let currentSpeaker = '';
 
   for (const utterance of utterances) {
-    // Clean speaker label - remove duplicate "Speaker" text
-    const cleanSpeaker = utterance.speaker.replace(/^Speaker\s+/, '');
+    // Clean speaker label - remove duplicate "Speaker" text more thoroughly
+    const cleanSpeaker = utterance.speaker
+      .replace(/^Speaker\s+Speaker\s*/, 'Speaker ') // Remove "Speaker Speaker" -> "Speaker"
+      .replace(/^Speaker\s+/, ''); // Then remove "Speaker " prefix to get just the number/identifier
     
     // Only add speaker label if it's different from the previous one
     if (cleanSpeaker !== currentSpeaker) {

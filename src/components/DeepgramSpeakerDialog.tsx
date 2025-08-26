@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
@@ -61,9 +60,13 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
       }
     ];
 
-    // Extract speaker number from speaker label (e.g., "Speaker 0" -> 0)
-    const speakerMatch = speaker.match(/Speaker (\d+)/);
-    const speakerIndex = speakerMatch ? parseInt(speakerMatch[1]) : 0;
+    // Clean speaker label to extract number - handle "Speaker Speaker 0" -> "0"
+    const cleanSpeaker = speaker
+      .replace(/^Speaker\s+Speaker\s*/, '') // Remove "Speaker Speaker" prefix
+      .replace(/^Speaker\s*/, ''); // Remove remaining "Speaker" prefix
+    
+    // Extract speaker number for color assignment
+    const speakerIndex = parseInt(cleanSpeaker) || 0;
     
     // Use modulo to cycle through colors if we have more speakers than colors
     const colorIndex = speakerIndex % speakerColors.length;
@@ -77,13 +80,17 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
     const merged: SpeakerUtterance[] = [];
     let current = { 
       ...utterances[0], 
-      speaker: utterances[0].speaker.replace(/^Speaker\s+/, 'Speaker ') // Clean speaker label
+      speaker: utterances[0].speaker
+        .replace(/^Speaker\s+Speaker\s*/, 'Speaker ') // Clean "Speaker Speaker X" -> "Speaker X"
+        .replace(/^Speaker\s+/, 'Speaker ') // Ensure consistent "Speaker " prefix
     };
 
     for (let i = 1; i < utterances.length; i++) {
       const next = { 
         ...utterances[i], 
-        speaker: utterances[i].speaker.replace(/^Speaker\s+/, 'Speaker ') // Clean speaker label
+        speaker: utterances[i].speaker
+          .replace(/^Speaker\s+Speaker\s*/, 'Speaker ') // Clean "Speaker Speaker X" -> "Speaker X"
+          .replace(/^Speaker\s+/, 'Speaker ') // Ensure consistent "Speaker " prefix
       };
       
       if (current.speaker === next.speaker) {
@@ -101,6 +108,12 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
     // Add the last utterance
     merged.push(current);
     return merged;
+  };
+
+  const formatTime = (seconds: number): string => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
 
   const mergedUtterances = mergeConsecutiveUtterances(utterances);

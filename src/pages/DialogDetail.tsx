@@ -5,20 +5,24 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Badge } from '../components/ui/badge';
-import { ArrowLeft, Play, Users, BarChart3, Loader2 } from 'lucide-react';
+import { ArrowLeft, Play, Users, BarChart3, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Dialog } from '../types';
 import { useDatabaseDialogs } from '../hooks/useDatabaseDialogs';
 import { toast } from 'sonner';
 import { extractUsernameFromEmail, capitalizeStatus } from '../utils/userUtils';
 import DeepgramSpeakerDialog from '../components/DeepgramSpeakerDialog';
+import { openaiEvaluationService } from '../services/openaiEvaluationService';
+import { OpenAIEvaluationProgress } from '../types/openaiEvaluation';
+import { supabase } from '../integrations/supabase/client';
 
 const DialogDetail = () => {
   const { id } = useParams<{ id: string }>();
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const { getDialog } = useDatabaseDialogs();
+  const [analysisProgress, setAnalysisProgress] = useState<OpenAIEvaluationProgress | null>(null);
+  const { getDialog, updateDialog } = useDatabaseDialogs();
 
   useEffect(() => {
     if (id) {
@@ -42,17 +46,70 @@ const DialogDetail = () => {
   };
 
   const handleStartAnalysis = async () => {
-    if (!dialog) return;
+    if (!dialog || !dialog.speakerTranscription || dialog.speakerTranscription.length === 0) {
+      toast.error('No transcription available for analysis');
+      return;
+    }
     
     setIsAnalyzing(true);
+    setAnalysisProgress(null);
+    
     try {
-      // TODO: Implement OpenAI analysis call
-      toast.success('Analysis started successfully!');
+      // Set up progress callback
+      openaiEvaluationService.setProgressCallback((progress) => {
+        setAnalysisProgress(progress);
+      });
+
+      console.log('Starting OpenAI analysis for dialog:', dialog.id);
+      
+      // Perform the analysis
+      const result = await openaiEvaluationService.evaluateConversation(
+        dialog.speakerTranscription,
+        'gpt-5-mini-2025-08-07'
+      );
+
+      console.log('OpenAI analysis completed:', result);
+
+      // Save analysis results to database
+      const { error: analysisError } = await supabase
+        .from('dialog_analysis')
+        .insert({
+          dialog_id: dialog.id,
+          analysis_type: 'openai',
+          overall_score: result.overallScore,
+          category_scores: result.categoryScores,
+          mistakes: result.mistakes,
+          recommendations: result.recommendations,
+          summary: result.summary,
+          confidence: result.confidence,
+          token_usage: result.tokenUsage,
+          processing_time: result.processingTime
+        });
+
+      if (analysisError) {
+        throw analysisError;
+      }
+
+      // Update dialog with OpenAI evaluation results
+      await updateDialog(dialog.id, {
+        openaiEvaluation: result,
+        qualityScore: result.overallScore
+      });
+
+      toast.success('AI analysis completed successfully!');
+      
       // Reload dialog to get updated analysis results
       await loadDialog(dialog.id);
+      
     } catch (error) {
       console.error('Error starting analysis:', error);
-      toast.error('Failed to start analysis');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      toast.error(`Analysis failed: ${errorMessage}`);
+      setAnalysisProgress({
+        stage: 'error',
+        progress: 0,
+        message: `Analysis failed: ${errorMessage}`
+      });
     } finally {
       setIsAnalyzing(false);
     }
@@ -70,6 +127,41 @@ const DialogDetail = () => {
       default:
         return 'text-gray-600 bg-gray-50 border-gray-200';
     }
+  };
+
+  const renderProgressIndicator = () => {
+    if (!analysisProgress) return null;
+
+    const getStageIcon = () => {
+      switch (analysisProgress.stage) {
+        case 'complete':
+          return <CheckCircle className="h-4 w-4 text-green-500" />;
+        case 'error':
+          return <AlertCircle className="h-4 w-4 text-red-500" />;
+        default:
+          return <Loader2 className="h-4 w-4 animate-spin text-blue-500" />;
+      }
+    };
+
+    return (
+      <div className="mt-4 p-4 border rounded-lg">
+        <div className="flex items-center gap-2 mb-2">
+          {getStageIcon()}
+          <span className="font-medium">{analysisProgress.message}</span>
+        </div>
+        {analysisProgress.progress > 0 && (
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div 
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+              style={{ width: `${analysisProgress.progress}%` }}
+            />
+          </div>
+        )}
+        {analysisProgress.currentStep && (
+          <p className="text-sm text-muted-foreground mt-2">{analysisProgress.currentStep}</p>
+        )}
+      </div>
+    );
   };
 
   if (isLoading) {
@@ -157,34 +249,37 @@ const DialogDetail = () => {
           <Card>
             <CardHeader>
               <CardTitle>AI Quality Analysis</CardTitle>
-              <CardContent>
-                <p className="text-muted-foreground mb-4">
-                  Run AI-powered analysis on this dialog to evaluate quality, detect issues, and get improvement recommendations.
-                </p>
-                <Button 
-                  onClick={handleStartAnalysis}
-                  disabled={isAnalyzing || !dialog.speakerTranscription}
-                  size="lg"
-                >
-                  {isAnalyzing ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Analyzing...
-                    </>
-                  ) : (
-                    <>
-                      <Play className="h-4 w-4 mr-2" />
-                      Start AI Analysis
-                    </>
-                  )}
-                </Button>
-                {!dialog.speakerTranscription && (
-                  <p className="text-sm text-muted-foreground mt-2">
-                    Transcription required before analysis can be performed.
-                  </p>
-                )}
-              </CardContent>
             </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground mb-4">
+                Run AI-powered analysis on this dialog to evaluate quality, detect issues, and get improvement recommendations using the latest OpenAI models with configurable system instructions.
+              </p>
+              <Button 
+                onClick={handleStartAnalysis}
+                disabled={isAnalyzing || !dialog.speakerTranscription}
+                size="lg"
+              >
+                {isAnalyzing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-4 w-4 mr-2" />
+                    Start AI Analysis
+                  </>
+                )}
+              </Button>
+              {!dialog.speakerTranscription && (
+                <p className="text-sm text-muted-foreground mt-2">
+                  Transcription required before analysis can be performed.
+                </p>
+              )}
+              
+              {/* Progress Indicator */}
+              {renderProgressIndicator()}
+            </CardContent>
           </Card>
         </TabsContent>
 
@@ -192,39 +287,138 @@ const DialogDetail = () => {
           <div className="space-y-6">
             {/* OpenAI Analysis Results */}
             {dialog.openaiEvaluation ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle>OpenAI Analysis Results</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div>
-                      <h4 className="font-medium mb-2">Overall Score</h4>
-                      <div className="text-2xl font-bold text-primary">
-                        {dialog.openaiEvaluation.overallScore}%
+              <div className="space-y-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Overall Analysis Results</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <h4 className="font-medium mb-2">Overall Score</h4>
+                        <div className="text-3xl font-bold text-primary">
+                          {dialog.openaiEvaluation.overallScore}%
+                        </div>
+                        <div className="text-sm text-muted-foreground mt-1">
+                          Confidence: {dialog.openaiEvaluation.confidence}%
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <h4 className="font-medium mb-2">Model Used</h4>
+                        <Badge variant="outline" className="text-sm">
+                          {dialog.openaiEvaluation.modelUsed}
+                        </Badge>
+                        <div className="text-sm text-muted-foreground mt-1">
+                          Processing time: {Math.round(dialog.openaiEvaluation.processingTime / 1000)}s
+                        </div>
                       </div>
                     </div>
-                    
-                    {dialog.openaiEvaluation.summary && (
-                      <div>
-                        <h4 className="font-medium mb-2">Summary</h4>
-                        <p className="text-muted-foreground">{dialog.openaiEvaluation.summary}</p>
-                      </div>
-                    )}
+                  </CardContent>
+                </Card>
 
-                    {dialog.openaiEvaluation.recommendations && dialog.openaiEvaluation.recommendations.length > 0 && (
-                      <div>
-                        <h4 className="font-medium mb-2">Recommendations</h4>
-                        <ul className="list-disc pl-6 space-y-1">
-                          {dialog.openaiEvaluation.recommendations.map((rec, index) => (
-                            <li key={index} className="text-muted-foreground">{rec}</li>
-                          ))}
-                        </ul>
+                {/* Category Scores */}
+                {dialog.openaiEvaluation.categoryScores && Object.keys(dialog.openaiEvaluation.categoryScores).length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Category Scores</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {Object.entries(dialog.openaiEvaluation.categoryScores).map(([category, score]) => (
+                          <div key={category} className="p-3 border rounded">
+                            <div className="text-sm font-medium capitalize mb-1">
+                              {category.replace(/_/g, ' ')}
+                            </div>
+                            <div className="text-2xl font-bold">{score}%</div>
+                          </div>
+                        ))}
                       </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Summary */}
+                {dialog.openaiEvaluation.summary && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Analysis Summary</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-muted-foreground leading-relaxed">
+                        {dialog.openaiEvaluation.summary}
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Recommendations */}
+                {dialog.openaiEvaluation.recommendations && dialog.openaiEvaluation.recommendations.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Recommendations</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="list-disc pl-6 space-y-2">
+                        {dialog.openaiEvaluation.recommendations.map((rec, index) => (
+                          <li key={index} className="text-muted-foreground leading-relaxed">{rec}</li>
+                        ))}
+                      </ul>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Mistakes */}
+                {dialog.openaiEvaluation.mistakes && dialog.openaiEvaluation.mistakes.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Detected Issues ({dialog.openaiEvaluation.mistakes.length})</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        {dialog.openaiEvaluation.mistakes.map((mistake, index) => (
+                          <div key={mistake.id || index} className="p-4 border rounded-lg">
+                            <div className="flex items-start justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <Badge 
+                                  variant={
+                                    mistake.level === 'critical' ? 'destructive' :
+                                    mistake.level === 'major' ? 'default' : 'secondary'
+                                  }
+                                >
+                                  {mistake.level}
+                                </Badge>
+                                <Badge variant="outline">{mistake.category}</Badge>
+                                <span className="text-sm text-muted-foreground">
+                                  {mistake.speaker}
+                                </span>
+                              </div>
+                              <Badge variant="outline" className="text-xs">
+                                {mistake.confidence}% confident
+                              </Badge>
+                            </div>
+                            
+                            <h5 className="font-medium mb-2">{mistake.mistakeName}</h5>
+                            <p className="text-sm text-muted-foreground mb-2">{mistake.description}</p>
+                            
+                            {mistake.text && (
+                              <div className="bg-muted p-2 rounded text-sm mb-2">
+                                <strong>Quote:</strong> "{mistake.text}"
+                              </div>
+                            )}
+                            
+                            {mistake.suggestion && (
+                              <div className="text-sm">
+                                <strong>Suggestion:</strong> {mistake.suggestion}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
             ) : (
               <Card>
                 <CardContent className="pt-6">

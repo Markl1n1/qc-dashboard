@@ -1,18 +1,19 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Switch } from '../components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { useToast } from '../hooks/use-toast';
 import { useUserRole } from '../hooks/useUserRole';
-import { Navigate } from 'react-router-dom';
-import { Settings as SettingsIcon, Trash2, RefreshCw, Database, Clock, ExternalLink } from 'lucide-react';
+import { Settings as SettingsIcon, Trash2, RefreshCw, Database, Clock, ExternalLink, Brain } from 'lucide-react';
 import { useEnhancedSettingsStore } from '../store/enhancedSettingsStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { Separator } from '../components/ui/separator';
 import { Alert, AlertDescription } from '../components/ui/alert';
+import { supabase } from '../integrations/supabase/client';
+import AIInstructionsManager from '../components/AIInstructionsManager';
 
 const Settings = () => {
   const { isAdmin } = useUserRole();
@@ -45,6 +46,13 @@ const Settings = () => {
   const [localMaxFileSizeMb, setLocalMaxFileSizeMb] = useState<number>(maxFileSizeMb);
   const [localMaxConcurrentTranscriptions, setLocalMaxConcurrentTranscriptions] = useState<number>(maxConcurrentTranscriptions);
   const [localAutoDeleteEnabled, setLocalAutoDeleteEnabled] = useState<boolean>(autoDeleteEnabled);
+
+  // AI Configuration state
+  const [aiConfidenceThreshold, setAiConfidenceThreshold] = useState<number>(0.8);
+  const [aiMaxTokensGpt5Mini, setAiMaxTokensGpt5Mini] = useState<number>(1000);
+  const [aiMaxTokensGpt5, setAiMaxTokensGpt5] = useState<number>(2000);
+  const [aiTemperature, setAiTemperature] = useState<number>(0.7);
+  const [aiReasoningEffort, setAiReasoningEffort] = useState<string>('medium');
   
   const [isUpdating, setIsUpdating] = useState(false);
   const [isCleaning, setIsCleaning] = useState(false);
@@ -53,6 +61,7 @@ const Settings = () => {
   useEffect(() => {
     if (isAdmin) {
       loadSettings();
+      loadAISettings();
     }
   }, [isAdmin, loadSettings]);
 
@@ -64,6 +73,47 @@ const Settings = () => {
     setLocalMaxConcurrentTranscriptions(maxConcurrentTranscriptions);
     setLocalAutoDeleteEnabled(autoDeleteEnabled);
   }, [localMaxTokens, dbMaxTokens, dataRetentionDays, maxFileSizeMb, maxConcurrentTranscriptions, autoDeleteEnabled]);
+
+  const loadAISettings = async () => {
+    if (!isAdmin) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('system_config')
+        .select('key, value')
+        .in('key', [
+          'ai_confidence_threshold',
+          'ai_max_tokens_gpt5_mini',
+          'ai_max_tokens_gpt5',
+          'ai_temperature',
+          'ai_reasoning_effort'
+        ]);
+
+      if (error) throw error;
+
+      data?.forEach(({ key, value }) => {
+        switch (key) {
+          case 'ai_confidence_threshold':
+            setAiConfidenceThreshold(parseFloat(value) || 0.8);
+            break;
+          case 'ai_max_tokens_gpt5_mini':
+            setAiMaxTokensGpt5Mini(parseInt(value) || 1000);
+            break;
+          case 'ai_max_tokens_gpt5':
+            setAiMaxTokensGpt5(parseInt(value) || 2000);
+            break;
+          case 'ai_temperature':
+            setAiTemperature(parseFloat(value) || 0.7);
+            break;
+          case 'ai_reasoning_effort':
+            setAiReasoningEffort(value || 'medium');
+            break;
+        }
+      });
+    } catch (error) {
+      console.error('Error loading AI settings:', error);
+    }
+  };
 
   const updateMaxTokens = async () => {
     setIsUpdating(true);
@@ -109,6 +159,43 @@ const Settings = () => {
       toast({
         title: "Error",
         description: "Failed to update admin settings",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleUpdateAISettings = async () => {
+    if (!isAdmin) return;
+    
+    setIsUpdating(true);
+    try {
+      const updates = [
+        { key: 'ai_confidence_threshold', value: aiConfidenceThreshold.toString() },
+        { key: 'ai_max_tokens_gpt5_mini', value: aiMaxTokensGpt5Mini.toString() },
+        { key: 'ai_max_tokens_gpt5', value: aiMaxTokensGpt5.toString() },
+        { key: 'ai_temperature', value: aiTemperature.toString() },
+        { key: 'ai_reasoning_effort', value: aiReasoningEffort }
+      ];
+
+      for (const update of updates) {
+        const { error } = await supabase
+          .from('system_config')
+          .update({ value: update.value })
+          .eq('key', update.key);
+
+        if (error) throw error;
+      }
+      
+      toast({
+        title: "Success",
+        description: "AI settings updated successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update AI settings",
         variant: "destructive",
       });
     } finally {
@@ -211,6 +298,99 @@ const Settings = () => {
         {/* Admin-only settings */}
         {isAdmin && (
           <>
+            {/* AI Configuration for Admins */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Brain className="h-5 w-5" />
+                  AI Analysis Configuration
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="ai-confidence">Confidence Threshold</Label>
+                    <Input
+                      id="ai-confidence"
+                      type="number"
+                      min="0.1"
+                      max="1.0"
+                      step="0.1"
+                      value={aiConfidenceThreshold}
+                      onChange={(e) => setAiConfidenceThreshold(parseFloat(e.target.value) || 0.8)}
+                    />
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Switch to GPT-5 if confidence below this value (0.1-1.0)
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="ai-temperature">Temperature</Label>
+                    <Input
+                      id="ai-temperature"
+                      type="number"
+                      min="0.0"
+                      max="2.0"
+                      step="0.1"
+                      value={aiTemperature}
+                      onChange={(e) => setAiTemperature(parseFloat(e.target.value) || 0.7)}
+                    />
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Randomness level for compatible models (0.0-2.0)
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="ai-tokens-mini">GPT-5 Mini Max Tokens</Label>
+                    <Input
+                      id="ai-tokens-mini"
+                      type="number"
+                      min="100"
+                      max="4000"
+                      value={aiMaxTokensGpt5Mini}
+                      onChange={(e) => setAiMaxTokensGpt5Mini(parseInt(e.target.value) || 1000)}
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="ai-tokens-full">GPT-5 Max Tokens</Label>
+                    <Input
+                      id="ai-tokens-full"
+                      type="number"
+                      min="100"
+                      max="4000"
+                      value={aiMaxTokensGpt5}
+                      onChange={(e) => setAiMaxTokensGpt5(parseInt(e.target.value) || 2000)}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="ai-reasoning">Reasoning Effort</Label>
+                  <Select value={aiReasoningEffort} onValueChange={setAiReasoningEffort}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Reasoning effort level for supported models
+                  </p>
+                </div>
+
+                <Button onClick={handleUpdateAISettings} disabled={isUpdating}>
+                  {isUpdating ? 'Updating...' : 'Update AI Settings'}
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* AI Instructions Management */}
+            <AIInstructionsManager />
+
             {/* Data Retention Configuration */}
             <Card>
               <CardHeader>

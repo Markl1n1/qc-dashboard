@@ -2,6 +2,15 @@
 import { SpeakerUtterance } from '../types';
 import { OpenAIEvaluationResult, OpenAIEvaluationProgress, OpenAIModel, OPENAI_MODELS, OpenAIEvaluationMistake } from '../types/openaiEvaluation';
 import { supabase } from '../integrations/supabase/client';
+import { formatDialogForCopy } from '../utils/dialogFormatting';
+
+interface AISettings {
+  confidenceThreshold: number;
+  maxTokensGpt5Mini: number;
+  maxTokensGpt5: number;
+  temperature: number;
+  reasoningEffort: string;
+}
 
 class OpenAIEvaluationService {
   private progressCallback: ((progress: OpenAIEvaluationProgress) => void) | null = null;
@@ -21,93 +30,100 @@ class OpenAIEvaluationService {
     return OPENAI_MODELS;
   }
 
-  private async getMaxTokens(): Promise<number> {
+  private async getAISettings(): Promise<AISettings> {
     try {
       const { data, error } = await supabase
         .from('system_config')
-        .select('value')
-        .eq('key', 'openai_max_tokens')
-        .single();
+        .select('key, value')
+        .in('key', [
+          'ai_confidence_threshold',
+          'ai_max_tokens_gpt5_mini',
+          'ai_max_tokens_gpt5',
+          'ai_temperature',
+          'ai_reasoning_effort'
+        ]);
 
-      if (data && !error) {
-        return parseInt(data.value) || 1000;
-      }
-    } catch (error) {
-      console.error('Error fetching max tokens from config:', error);
-    }
-    return 1000; // Default value
-  }
+      if (error) throw error;
 
-  async evaluateConversation(
-    utterances: SpeakerUtterance[],
-    modelId: string = 'gpt-5-mini-2025-08-07'
-  ): Promise<OpenAIEvaluationResult> {
-    const startTime = Date.now();
-    
-    try {
-      this.updateProgress('initializing', 0, 'Preparing evaluation request...');
+      const settings: AISettings = {
+        confidenceThreshold: 0.8,
+        maxTokensGpt5Mini: 1000,
+        maxTokensGpt5: 2000,
+        temperature: 0.7,
+        reasoningEffort: 'medium'
+      };
 
-      const model = OPENAI_MODELS.find(m => m.id === modelId);
-      if (!model) {
-        throw new Error(`Model ${modelId} not found`);
-      }
-
-      this.lastAttemptedModel = model.name;
-
-      // Get max tokens from settings
-      const maxTokens = await this.getMaxTokens();
-
-      this.updateProgress('analyzing', 20, 'Sending request to OpenAI...');
-
-      // First attempt with default model (gpt-5-mini)
-      let result = await this.performEvaluation(utterances, modelId, maxTokens);
-
-      // Check confidence for hybrid evaluation
-      if (result.confidence < 80 && modelId === 'gpt-5-mini-2025-08-07') {
-        this.updateProgress('analyzing', 50, 'Low confidence detected, retrying with GPT-5...');
-        console.log('Low confidence detected, retrying with GPT-5 model');
-        
-        // Retry with GPT-5 flagship model
-        const flagshipResult = await this.performEvaluation(utterances, 'gpt-5-2025-08-07', maxTokens);
-        
-        // Use the flagship result if it has better confidence
-        if (flagshipResult.confidence >= result.confidence) {
-          result = flagshipResult;
-          result.modelUsed += ' (Hybrid: upgraded from GPT-5 Mini due to low confidence)';
+      data?.forEach(({ key, value }) => {
+        switch (key) {
+          case 'ai_confidence_threshold':
+            settings.confidenceThreshold = parseFloat(value) || 0.8;
+            break;
+          case 'ai_max_tokens_gpt5_mini':
+            settings.maxTokensGpt5Mini = parseInt(value) || 1000;
+            break;
+          case 'ai_max_tokens_gpt5':
+            settings.maxTokensGpt5 = parseInt(value) || 2000;
+            break;
+          case 'ai_temperature':
+            settings.temperature = parseFloat(value) || 0.7;
+            break;
+          case 'ai_reasoning_effort':
+            settings.reasoningEffort = value || 'medium';
+            break;
         }
-      }
+      });
 
-      this.updateProgress('complete', 100, 'Evaluation completed successfully');
-      
-      return result;
-
+      return settings;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : `Unknown error occurred. Model attempted: ${this.lastAttemptedModel}`;
-      console.error('OpenAI evaluation failed:', errorMessage);
-      this.updateProgress('error', 0, `Evaluation failed: ${errorMessage}`);
-      
-      throw new Error(errorMessage);
+      console.error('Error fetching AI settings:', error);
+      // Return defaults
+      return {
+        confidenceThreshold: 0.8,
+        maxTokensGpt5Mini: 1000,
+        maxTokensGpt5: 2000,
+        temperature: 0.7,
+        reasoningEffort: 'medium'
+      };
     }
   }
 
-  private async performEvaluation(
-    utterances: SpeakerUtterance[], 
-    modelId: string, 
-    maxTokens: number
-  ): Promise<OpenAIEvaluationResult> {
-    const startTime = Date.now();
-    const model = OPENAI_MODELS.find(m => m.id === modelId);
-    if (!model) {
-      throw new Error(`Model ${modelId} not found`);
+  private async getSystemInstructions(): Promise<string> {
+    try {
+      // Get the latest instruction file
+      const { data: files, error: listError } = await supabase.storage
+        .from('ai-instructions')
+        .list('', {
+          limit: 1,
+          sortBy: { column: 'created_at', order: 'desc' }
+        });
+
+      if (listError || !files || files.length === 0) {
+        console.log('No custom instructions found, using default');
+        return this.getDefaultSystemPrompt();
+      }
+
+      const latestFile = files[0];
+      const { data: fileData, error: downloadError } = await supabase.storage
+        .from('ai-instructions')
+        .download(latestFile.name);
+
+      if (downloadError || !fileData) {
+        console.log('Failed to download instructions, using default');
+        return this.getDefaultSystemPrompt();
+      }
+
+      const instructions = await fileData.text();
+      console.log('Using custom system instructions from:', latestFile.name);
+      return instructions;
+
+    } catch (error) {
+      console.error('Error loading system instructions:', error);
+      return this.getDefaultSystemPrompt();
     }
+  }
 
-    // Create conversation text for user content
-    const conversationText = utterances
-      .map((u: any) => `${u.speaker}: ${u.text}`)
-      .join('\n');
-
-    // System prompt with evaluation instructions
-    const systemPrompt = `You are an expert call center quality analyst. Analyze customer service conversations and provide detailed evaluation.
+  private getDefaultSystemPrompt(): string {
+    return `You are an expert call center quality analyst. Analyze customer service conversations and provide detailed evaluation.
 
 EVALUATION CRITERIA:
 - Communication: Clarity, tone, active listening, empathy
@@ -148,6 +164,82 @@ Respond with valid JSON only in this exact structure:
 }
 
 Focus on actionable feedback and specific examples from the conversation.`;
+  }
+
+  async evaluateConversation(
+    utterances: SpeakerUtterance[],
+    modelId: string = 'gpt-5-mini-2025-08-07'
+  ): Promise<OpenAIEvaluationResult> {
+    const startTime = Date.now();
+    
+    try {
+      this.updateProgress('initializing', 0, 'Preparing evaluation request...');
+
+      const model = OPENAI_MODELS.find(m => m.id === modelId);
+      if (!model) {
+        throw new Error(`Model ${modelId} not found`);
+      }
+
+      this.lastAttemptedModel = model.name;
+
+      // Get AI settings and system instructions
+      const [aiSettings, systemInstructions] = await Promise.all([
+        this.getAISettings(),
+        this.getSystemInstructions()
+      ]);
+
+      this.updateProgress('analyzing', 20, 'Sending request to OpenAI...');
+
+      // First attempt with default model (gpt-5-mini)
+      let result = await this.performEvaluation(utterances, modelId, aiSettings, systemInstructions);
+
+      // Check confidence for hybrid evaluation
+      if (result.confidence < (aiSettings.confidenceThreshold * 100) && modelId === 'gpt-5-mini-2025-08-07') {
+        this.updateProgress('analyzing', 50, 'Low confidence detected, retrying with GPT-5...');
+        console.log(`Low confidence detected (${result.confidence}% < ${aiSettings.confidenceThreshold * 100}%), retrying with GPT-5 model`);
+        
+        // Retry with GPT-5 flagship model
+        const flagshipResult = await this.performEvaluation(utterances, 'gpt-5-2025-08-07', aiSettings, systemInstructions);
+        
+        // Use the flagship result if it has better confidence
+        if (flagshipResult.confidence >= result.confidence) {
+          result = flagshipResult;
+          result.modelUsed += ' (Hybrid: upgraded from GPT-5 Mini due to low confidence)';
+        }
+      }
+
+      this.updateProgress('complete', 100, 'Evaluation completed successfully');
+      
+      return result;
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : `Unknown error occurred. Model attempted: ${this.lastAttemptedModel}`;
+      console.error('OpenAI evaluation failed:', errorMessage);
+      this.updateProgress('error', 0, `Evaluation failed: ${errorMessage}`);
+      
+      throw new Error(errorMessage);
+    }
+  }
+
+  private async performEvaluation(
+    utterances: SpeakerUtterance[], 
+    modelId: string, 
+    aiSettings: AISettings,
+    systemInstructions: string
+  ): Promise<OpenAIEvaluationResult> {
+    const startTime = Date.now();
+    const model = OPENAI_MODELS.find(m => m.id === modelId);
+    if (!model) {
+      throw new Error(`Model ${modelId} not found`);
+    }
+
+    // Create conversation text using the same format as Copy Dialog
+    const conversationText = formatDialogForCopy(utterances);
+
+    // Get appropriate max tokens for the model
+    const maxTokens = modelId.includes('gpt-5-mini') 
+      ? aiSettings.maxTokensGpt5Mini 
+      : aiSettings.maxTokensGpt5;
 
     const { data, error } = await supabase.functions.invoke('openai-evaluate', {
       body: {
@@ -155,14 +247,16 @@ Focus on actionable feedback and specific examples from the conversation.`;
         messages: [
           {
             role: 'system',
-            content: systemPrompt
+            content: systemInstructions
           },
           {
             role: 'user',
             content: `Please evaluate this customer service conversation:\n\n${conversationText}`
           }
         ],
-        max_output_tokens: maxTokens
+        max_output_tokens: maxTokens,
+        temperature: aiSettings.temperature,
+        reasoning_effort: aiSettings.reasoningEffort
       }
     });
 
