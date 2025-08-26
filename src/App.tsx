@@ -7,7 +7,6 @@ import Index from './pages/Index';
 import Upload from './pages/Upload';
 import DialogDetail from './pages/DialogDetail';
 import Settings from './pages/Settings';
-import EnhancedSettings from './pages/EnhancedSettings';
 import Auth from './pages/Auth';
 import Login from './pages/Login';
 import EmailConfirmed from './pages/EmailConfirmed';
@@ -58,13 +57,6 @@ function App() {
             <ProtectedRoute>
               <Layout>
                 <Settings />
-              </Layout>
-            </ProtectedRoute>
-          } />
-          <Route path="/enhanced-settings" element={
-            <ProtectedRoute>
-              <Layout>
-                <EnhancedSettings />
               </Layout>
             </ProtectedRoute>
           } />

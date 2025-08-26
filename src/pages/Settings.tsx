@@ -6,7 +6,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
-import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
   Settings as SettingsIcon, 
@@ -16,109 +15,110 @@ import {
   AlertCircle,
   CheckCircle,
   Database,
-  HelpCircle
+  HelpCircle,
+  Cpu,
+  FileText
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '../store/authStore';
 import { useUserRole } from '../hooks/useUserRole';
-import { supabase } from '../integrations/supabase/client';
 import { databaseService } from '../services/databaseService';
-import { CategoryManager } from '../components/CategoryManager';
-import { EvaluationConfigurationManager } from '../components/EvaluationConfigurationManager';
-import { LanguageAwareRuleManager } from '../components/LanguageAwareRuleManager';
 import AIInstructionsManager from '../components/AIInstructionsManager';
-import { EvaluationCategory, EvaluationConfiguration } from '../types/lemurEvaluation';
-import { evaluationCategoriesService } from '../services/evaluationCategoriesService';
+import { useEnhancedSettingsStore } from '../store/enhancedSettingsStore';
 
 const Settings = () => {
   const { user } = useAuthStore();
   const { isAdmin } = useUserRole();
   const [isLoading, setIsLoading] = useState(false);
 
-  // Data Retention Settings
-  const [dataRetentionDays, setDataRetentionDays] = useState('30');
-  const [autoDeleteEnabled, setAutoDeleteEnabled] = useState(false);
-  const [isUpdatingRetention, setIsUpdatingRetention] = useState(false);
-  const [isCleaningUp, setIsCleaningUp] = useState(false);
+  // Enhanced settings store for GPT parameters
+  const {
+    maxTokens,
+    dataRetentionDays,
+    maxFileSizeMb,
+    maxConcurrentTranscriptions,
+    autoDeleteEnabled,
+    isLoading: storeLoading,
+    error: storeError,
+    loadSettings,
+    updateMaxTokens,
+    updateDataRetentionDays,
+    updateMaxFileSizeMb,
+    updateMaxConcurrentTranscriptions,
+    updateAutoDeleteEnabled,
+    cleanupExpiredDialogs,
+    updateDialogExpirationDates
+  } = useEnhancedSettingsStore();
 
-  // Categories state
-  const [categories, setCategories] = useState<EvaluationCategory[]>([]);
+  // Local state for form inputs
+  const [localMaxTokens, setLocalMaxTokens] = useState<number>(maxTokens);
+  const [localDataRetentionDays, setLocalDataRetentionDays] = useState<number>(dataRetentionDays);
+  const [localMaxFileSizeMb, setLocalMaxFileSizeMb] = useState<number>(maxFileSizeMb);
+  const [localMaxConcurrentTranscriptions, setLocalMaxConcurrentTranscriptions] = useState<number>(maxConcurrentTranscriptions);
+  const [localAutoDeleteEnabled, setLocalAutoDeleteEnabled] = useState<boolean>(autoDeleteEnabled);
+  
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [isCleaning, setIsCleaning] = useState(false);
+  const [isUpdatingExpirations, setIsUpdatingExpirations] = useState(false);
 
   useEffect(() => {
     if (isAdmin) {
-      loadSystemConfig();
-      loadCategories();
+      loadSettings();
     }
-  }, [isAdmin]);
+  }, [isAdmin, loadSettings]);
 
-  const loadSystemConfig = async () => {
+  useEffect(() => {
+    setLocalMaxTokens(maxTokens);
+    setLocalDataRetentionDays(dataRetentionDays);
+    setLocalMaxFileSizeMb(maxFileSizeMb);
+    setLocalMaxConcurrentTranscriptions(maxConcurrentTranscriptions);
+    setLocalAutoDeleteEnabled(autoDeleteEnabled);
+  }, [maxTokens, dataRetentionDays, maxFileSizeMb, maxConcurrentTranscriptions, autoDeleteEnabled]);
+
+  const handleUpdateAllSettings = async () => {
+    setIsUpdating(true);
     try {
-      setIsLoading(true);
-      const config = await databaseService.getAllSystemConfig();
+      await Promise.all([
+        updateMaxTokens(localMaxTokens),
+        updateDataRetentionDays(localDataRetentionDays),
+        updateMaxFileSizeMb(localMaxFileSizeMb),
+        updateMaxConcurrentTranscriptions(localMaxConcurrentTranscriptions),
+        updateAutoDeleteEnabled(localAutoDeleteEnabled)
+      ]);
       
-      setDataRetentionDays(config.data_retention_days || '30');
-      setAutoDeleteEnabled(config.auto_delete_enabled === 'true');
+      toast.success('All settings updated successfully');
     } catch (error) {
-      console.error('Error loading system config:', error);
-      toast.error('Failed to load system configuration');
+      console.error('Error updating settings:', error);
+      toast.error('Failed to update settings');
     } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loadCategories = () => {
-    const loadedCategories = evaluationCategoriesService.getCategories();
-    setCategories(loadedCategories);
-  };
-
-  const saveDataRetentionSettings = async () => {
-    try {
-      setIsLoading(true);
-      
-      await databaseService.updateSystemConfig('data_retention_days', dataRetentionDays);
-      await databaseService.updateSystemConfig('auto_delete_enabled', autoDeleteEnabled.toString());
-      
-      toast.success('Data retention settings saved successfully');
-    } catch (error) {
-      console.error('Error saving data retention settings:', error);
-      toast.error('Failed to save data retention settings');
-    } finally {
-      setIsLoading(false);
+      setIsUpdating(false);
     }
   };
 
   const handleUpdateExpirationDates = async () => {
     try {
-      setIsUpdatingRetention(true);
-      const updatedCount = await databaseService.updateDialogExpirationDates();
+      setIsUpdatingExpirations(true);
+      const updatedCount = await updateDialogExpirationDates();
       toast.success(`Updated expiration dates for ${updatedCount} dialogs`);
     } catch (error) {
       console.error('Error updating expiration dates:', error);
       toast.error('Failed to update expiration dates');
     } finally {
-      setIsUpdatingRetention(false);
+      setIsUpdatingExpirations(false);
     }
   };
 
   const handleCleanupExpiredData = async () => {
     try {
-      setIsCleaningUp(true);
-      const deletedCount = await databaseService.cleanupExpiredDialogs();
+      setIsCleaning(true);
+      const deletedCount = await cleanupExpiredDialogs();
       toast.success(`Cleaned up ${deletedCount} expired dialogs`);
     } catch (error) {
       console.error('Error cleaning up expired data:', error);
       toast.error('Failed to cleanup expired data');
     } finally {
-      setIsCleaningUp(false);
+      setIsCleaning(false);
     }
-  };
-
-  const handleConfigurationSave = (config: EvaluationConfiguration) => {
-    toast.success(`Configuration "${config.name}" saved successfully`);
-  };
-
-  const handleCategoriesChange = (updatedCategories: EvaluationCategory[]) => {
-    setCategories(updatedCategories);
   };
 
   if (!isAdmin) {
@@ -137,7 +137,18 @@ const Settings = () => {
         </Card>
       </div>
     );
-  };
+  }
+
+  if (storeLoading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex items-center justify-center">
+          <RefreshCw className="h-6 w-6 animate-spin" />
+          <span className="ml-2">Loading settings...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <TooltipProvider>
@@ -153,55 +164,94 @@ const Settings = () => {
           </div>
         </div>
 
-        {/* AI Analysis Configuration */}
+        {storeError && (
+          <Card className="border-destructive">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-2 text-destructive">
+                <AlertCircle className="h-4 w-4" />
+                <span>{storeError}</span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* AI System Configuration */}
         <Card>
           <CardHeader>
-            <CardTitle>AI Analysis Configuration</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Cpu className="h-5 w-5" />
+              AI System Configuration
+            </CardTitle>
             <CardDescription>
-              Configure AI evaluation parameters and thresholds
+              Configure OpenAI parameters and system limitations
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <EvaluationConfigurationManager onConfigurationSave={handleConfigurationSave} />
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <Label htmlFor="max-tokens">Max Output Tokens</Label>
+                <Input
+                  id="max-tokens"
+                  type="number"
+                  min="100"
+                  max="4000"
+                  value={localMaxTokens}
+                  onChange={(e) => setLocalMaxTokens(parseInt(e.target.value) || 1000)}
+                  placeholder="1000"
+                />
+                <p className="text-sm text-muted-foreground mt-1">
+                  Maximum number of tokens for AI response (100-4000)
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor="max-file-size">Max File Size (MB)</Label>
+                <Input
+                  id="max-file-size"
+                  type="number"
+                  min="1"
+                  max="1000"
+                  value={localMaxFileSizeMb}
+                  onChange={(e) => setLocalMaxFileSizeMb(parseInt(e.target.value) || 100)}
+                  placeholder="100"
+                />
+                <p className="text-sm text-muted-foreground mt-1">
+                  Maximum file size allowed for uploads (1-1000 MB)
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor="max-concurrent">Max Concurrent Transcriptions</Label>
+                <Input
+                  id="max-concurrent"
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={localMaxConcurrentTranscriptions}
+                  onChange={(e) => setLocalMaxConcurrentTranscriptions(parseInt(e.target.value) || 5)}
+                  placeholder="5"
+                />
+                <p className="text-sm text-muted-foreground mt-1">
+                  Maximum number of transcriptions that can run simultaneously (1-20)
+                </p>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
         {/* AI Instructions Management */}
         <Card>
           <CardHeader>
-            <CardTitle>AI Instructions Management</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              AI Instructions Management
+            </CardTitle>
             <CardDescription>
-              Manage AI system instructions and prompts
+              Manage AI system instructions and evaluation rules
             </CardDescription>
           </CardHeader>
           <CardContent>
             <AIInstructionsManager />
-          </CardContent>
-        </Card>
-
-        {/* Evaluation Categories */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Evaluation Categories</CardTitle>
-            <CardDescription>
-              Manage categories used for dialog evaluation
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <CategoryManager categories={categories} onCategoriesChange={handleCategoriesChange} />
-          </CardContent>
-        </Card>
-
-        {/* Language-Aware Rules */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Language-Aware Evaluation Rules</CardTitle>
-            <CardDescription>
-              Configure language-specific evaluation rules and banned words
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <LanguageAwareRuleManager />
           </CardContent>
         </Card>
 
@@ -223,34 +273,33 @@ const Settings = () => {
                 <Input
                   id="retention-days"
                   type="number"
-                  value={dataRetentionDays}
-                  onChange={(e) => setDataRetentionDays(e.target.value)}
+                  value={localDataRetentionDays}
+                  onChange={(e) => setLocalDataRetentionDays(parseInt(e.target.value) || 30)}
                   min="1"
                   max="365"
                   className="w-32"
                 />
                 <p className="text-sm text-muted-foreground mt-1">
-                  Number of days to keep dialog data before expiration
+                  Number of days to keep dialog data before expiration (1-365 days)
                 </p>
               </div>
 
               <div className="flex items-center space-x-2">
                 <Switch
                   id="auto-delete"
-                  checked={autoDeleteEnabled}
-                  onCheckedChange={setAutoDeleteEnabled}
+                  checked={localAutoDeleteEnabled}
+                  onCheckedChange={setLocalAutoDeleteEnabled}
                 />
                 <Label htmlFor="auto-delete">Enable Automatic Cleanup</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Automatically delete expired dialogs based on retention period</p>
+                  </TooltipContent>
+                </Tooltip>
               </div>
-
-              <Button 
-                onClick={saveDataRetentionSettings} 
-                disabled={isLoading}
-                className="w-full sm:w-auto"
-              >
-                <Save className="mr-2 h-4 w-4" />
-                Save Retention Settings
-              </Button>
             </div>
 
             <Separator />
@@ -263,16 +312,15 @@ const Settings = () => {
                     <Button
                       variant="outline"
                       onClick={handleUpdateExpirationDates}
-                      disabled={isUpdatingRetention}
+                      disabled={isUpdatingExpirations}
                       className="flex items-center gap-2"
                     >
-                      {isUpdatingRetention ? (
+                      {isUpdatingExpirations ? (
                         <RefreshCw className="h-4 w-4 animate-spin" />
                       ) : (
                         <RefreshCw className="h-4 w-4" />
                       )}
                       Update Expiration Dates
-                      <HelpCircle className="h-4 w-4 ml-1" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
@@ -285,16 +333,15 @@ const Settings = () => {
                     <Button
                       variant="destructive"
                       onClick={handleCleanupExpiredData}
-                      disabled={isCleaningUp}
+                      disabled={isCleaning}
                       className="flex items-center gap-2"
                     >
-                      {isCleaningUp ? (
+                      {isCleaning ? (
                         <RefreshCw className="h-4 w-4 animate-spin" />
                       ) : (
                         <Trash2 className="h-4 w-4" />
                       )}
                       Cleanup Expired Data
-                      <HelpCircle className="h-4 w-4 ml-1" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
@@ -305,6 +352,26 @@ const Settings = () => {
             </div>
           </CardContent>
         </Card>
+
+        {/* Save All Settings Button */}
+        <Button 
+          onClick={handleUpdateAllSettings} 
+          disabled={isUpdating} 
+          className="w-full"
+          size="lg"
+        >
+          {isUpdating ? (
+            <>
+              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              Updating Settings...
+            </>
+          ) : (
+            <>
+              <Save className="h-4 w-4 mr-2" />
+              Save All Settings
+            </>
+          )}
+        </Button>
 
         {/* Status Indicator */}
         <Card>

@@ -1,225 +1,218 @@
 
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Calendar, Clock, FileAudio, Download, Eye, Trash2 } from 'lucide-react';
-import { Button } from "@/components/ui/button";
-import { useDatabaseDialogs } from '@/hooks/useDatabaseDialogs';
-import { formatDistanceToNow } from 'date-fns';
-import { useNavigate } from 'react-router-dom';
-import { toast } from "sonner";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { Plus, Clock, FileText, User, Play, AlertCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import DialogFilters from '@/components/DialogFilters';
-import { Dialog as TypesDialog } from '@/types';
+import { Dialog } from '@/types';
+import { useDatabaseDialogs } from '@/hooks/useDatabaseDialogs';
+import { format } from 'date-fns';
 
 const Index = () => {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [dialogs, setDialogs] = useState<TypesDialog[]>([]);
   const [filters, setFilters] = useState({
-    searchTerm: '',
-    statusFilter: 'all',
-    sortBy: 'date'
+    search: '',
+    sortBy: 'newest' as const,
+    status: 'all' as const
   });
+  const [filteredDialogs, setFilteredDialogs] = useState<Dialog[]>([]);
 
-  const navigate = useNavigate();
-  const { dialogs: hookDialogs, isLoading, error: hookError, loadDialogs } = useDatabaseDialogs();
+  const { dialogs, isLoading, error, loadDialogs } = useDatabaseDialogs();
 
   useEffect(() => {
-    handleLoadDialogs();
-  }, []);
+    loadDialogs();
+  }, [loadDialogs]);
 
-  const handleLoadDialogs = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      await loadDialogs();
-      setDialogs(hookDialogs);
-      setError(hookError);
-    } catch (err) {
-      setError('Failed to load dialogs');
-      console.error(err);
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    let filtered = [...dialogs];
+
+    // Apply search filter
+    if (filters.search) {
+      filtered = filtered.filter(dialog =>
+        dialog.filename.toLowerCase().includes(filters.search.toLowerCase()) ||
+        dialog.transcript?.toLowerCase().includes(filters.search.toLowerCase())
+      );
     }
-  };
 
-  const filteredDialogs = dialogs.filter((dialog) => {
-    const statusFilter = filters.statusFilter === 'all' || dialog.status.toLowerCase() === filters.statusFilter.toLowerCase();
-    const searchFilter = !filters.searchTerm ||
-      dialog.fileName.toLowerCase().includes(filters.searchTerm.toLowerCase());
-
-    return statusFilter && searchFilter;
-  });
-
-  const handleRefresh = () => {
-    handleLoadDialogs();
-  };
-
-  const handleView = (dialog: TypesDialog) => {
-    navigate(`/dialog/${dialog.id}`);
-  };
-
-  const handleDownload = (dialog: TypesDialog) => {
-    // Note: This would need to be implemented with proper audio URL handling
-    toast.error('Audio download not implemented yet.');
-  };
-
-  const handleDelete = async (dialogId: string) => {
-    if (window.confirm('Are you sure you want to delete this dialog?')) {
-      try {
-        // Optimistically update the UI
-        setDialogs(prevDialogs => prevDialogs.filter(dialog => dialog.id !== dialogId));
-
-        // Call the Supabase function to delete the dialog
-        const response = await fetch(`/api/delete-dialog?id=${dialogId}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (!response.ok) {
-          // If the deletion failed, revert the UI update
-          handleLoadDialogs();
-          const errorData = await response.json();
-          toast.error(`Failed to delete dialog: ${errorData.message || response.statusText}`);
-        } else {
-          toast.success('Dialog deleted successfully.');
+    // Apply status filter
+    if (filters.status !== 'all') {
+      filtered = filtered.filter(dialog => {
+        if (filters.status === 'processed') {
+          return dialog.transcript && dialog.transcript.length > 0;
+        } else if (filters.status === 'pending') {
+          return !dialog.transcript || dialog.transcript.length === 0;
         }
-      } catch (error: any) {
-        // If the deletion failed, revert the UI update
-        handleLoadDialogs();
-        toast.error(`Failed to delete dialog: ${error.message || 'Unknown error'}`);
+        return true;
+      });
+    }
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+      if (filters.sortBy === 'newest') {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      } else if (filters.sortBy === 'oldest') {
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      } else if (filters.sortBy === 'filename') {
+        return a.filename.localeCompare(b.filename);
       }
-    }
-  };
+      return 0;
+    });
 
-  const getStatusBadgeVariant = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'completed':
-        return 'default';
-      case 'processing':
-        return 'secondary';
-      case 'failed':
-        return 'destructive';
-      default:
-        return 'outline';
-    }
-  };
+    setFilteredDialogs(filtered);
+  }, [dialogs, filters]);
 
-  const capitalizeStatus = (status: string) => {
-    return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
-  };
-
-  if (loading || isLoading) {
+  if (isLoading) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="text-center">Loading dialogs...</div>
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading dialogs...</p>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="text-center text-red-600">Error: {error}</div>
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2">Error Loading Dialogs</h3>
+              <p className="text-muted-foreground mb-4">{error}</p>
+              <Button onClick={loadDialogs}>Try Again</Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto px-4 py-8 space-y-6">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h1 className="text-3xl font-bold">Dialog History</h1>
-        <Button onClick={handleRefresh} variant="outline">
-          Refresh
-        </Button>
+        <div>
+          <h1 className="text-3xl font-bold">Dialog History</h1>
+          <p className="text-muted-foreground">
+            View and analyze your uploaded voice dialogs
+          </p>
+        </div>
+        <Link to="/upload">
+          <Button>
+            <Plus className="mr-2 h-4 w-4" />
+            Upload New Dialog
+          </Button>
+        </Link>
       </div>
 
-      <DialogFilters
-        searchTerm={filters.searchTerm}
-        onSearchChange={(value) => setFilters({ ...filters, searchTerm: value })}
-        statusFilter={filters.statusFilter}
-        onStatusChange={(value) => setFilters({ ...filters, statusFilter: value })}
-        sortBy={filters.sortBy}
-        onSortChange={(value) => setFilters({ ...filters, sortBy: value })}
-      />
+      {/* Filters */}
+      <DialogFilters filters={filters} onFiltersChange={setFilters} />
 
-      {filteredDialogs.length === 0 ? (
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card>
-          <CardContent className="p-12 text-center">
-            <FileAudio className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No dialogs found</h3>
-            <p className="text-muted-foreground mb-4">
-              {dialogs.length === 0
-                ? "Upload your first audio file to get started"
-                : "No dialogs match your current filters"
-              }
-            </p>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Dialogs</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{dialogs.length}</div>
           </CardContent>
         </Card>
-      ) : (
-        <div className="grid gap-4">
-          {filteredDialogs.map((dialog) => (
-            <Card key={dialog.id} className="hover:shadow-md transition-shadow">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between gap-4">
-                  {/* Left side - File info with proper vertical centering */}
-                  <div className="flex items-center gap-4 min-w-0 flex-1">
-                    <div className="flex-shrink-0 flex items-center">
-                      <FileAudio className="h-8 w-8 text-primary" />
-                    </div>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Processed</CardTitle>
+            <Play className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {dialogs.filter(d => d.transcript && d.transcript.length > 0).length}
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Pending</CardTitle>
+            <Clock className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {dialogs.filter(d => !d.transcript || d.transcript.length === 0).length}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
-                    <div className="min-w-0 flex-1 flex flex-col justify-center">
-                      <div className="flex items-center gap-3 mb-1">
-                        <h3 className="font-semibold text-lg truncate">{dialog.fileName}</h3>
-                        <Badge variant={getStatusBadgeVariant(dialog.status)}>
-                          {capitalizeStatus(dialog.status)}
+      {/* Dialog List */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Dialogs ({filteredDialogs.length})</CardTitle>
+          <CardDescription>
+            Click on any dialog to view details and analysis
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          {filteredDialogs.length === 0 ? (
+            <div className="text-center py-12">
+              <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No dialogs found</h3>
+              <p className="text-muted-foreground mb-4">
+                {dialogs.length === 0 
+                  ? "Get started by uploading your first voice dialog."
+                  : "Try adjusting your filters to see more results."
+                }
+              </p>
+              {dialogs.length === 0 && (
+                <Link to="/upload">
+                  <Button>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Upload Your First Dialog
+                  </Button>
+                </Link>
+              )}
+            </div>
+          ) : (
+            <div className="divide-y">
+              {filteredDialogs.map((dialog, index) => (
+                <Link 
+                  key={dialog.id} 
+                  to={`/dialog/${dialog.id}`}
+                  className="block p-6 hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="font-semibold truncate">{dialog.filename}</h3>
+                        <Badge variant={dialog.transcript && dialog.transcript.length > 0 ? "default" : "secondary"}>
+                          {dialog.transcript && dialog.transcript.length > 0 ? "Processed" : "Pending"}
                         </Badge>
                       </div>
-
                       <div className="flex items-center gap-4 text-sm text-muted-foreground">
                         <div className="flex items-center gap-1">
-                          <Calendar className="h-4 w-4" />
-                          <span>{formatDistanceToNow(new Date(dialog.uploadDate), { addSuffix: true })}</span>
+                          <Clock className="h-4 w-4" />
+                          {format(new Date(dialog.created_at), 'MMM d, yyyy HH:mm')}
                         </div>
+                        {dialog.user_id && (
+                          <div className="flex items-center gap-1">
+                            <User className="h-4 w-4" />
+                            <span>User {dialog.user_id.slice(0, 8)}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
-
-                  {/* Right side - Actions with proper vertical centering */}
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleView(dialog)}
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDownload(dialog)}
-                    >
-                      <Download className="h-4 w-4" />
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDelete(dialog.id)}
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+                </Link>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };
