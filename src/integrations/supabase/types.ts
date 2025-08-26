@@ -14,95 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      deepgram_api_keys: {
-        Row: {
-          api_key: string
-          consecutive_failures: number
-          created_at: string
-          deactivated_at: string | null
-          failure_count: number
-          id: string
-          is_active: boolean
-          key_name: string
-          last_failure_at: string | null
-          last_used_at: string | null
-          success_count: number
-          updated_at: string
-        }
-        Insert: {
-          api_key: string
-          consecutive_failures?: number
-          created_at?: string
-          deactivated_at?: string | null
-          failure_count?: number
-          id?: string
-          is_active?: boolean
-          key_name: string
-          last_failure_at?: string | null
-          last_used_at?: string | null
-          success_count?: number
-          updated_at?: string
-        }
-        Update: {
-          api_key?: string
-          consecutive_failures?: number
-          created_at?: string
-          deactivated_at?: string | null
-          failure_count?: number
-          id?: string
-          is_active?: boolean
-          key_name?: string
-          last_failure_at?: string | null
-          last_used_at?: string | null
-          success_count?: number
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      deepgram_usage_log: {
-        Row: {
-          api_key_id: string
-          audio_duration_seconds: number | null
-          created_at: string
-          error_message: string | null
-          file_size_bytes: number | null
-          id: string
-          request_type: string
-          response_time_ms: number | null
-          success: boolean
-        }
-        Insert: {
-          api_key_id: string
-          audio_duration_seconds?: number | null
-          created_at?: string
-          error_message?: string | null
-          file_size_bytes?: number | null
-          id?: string
-          request_type?: string
-          response_time_ms?: number | null
-          success: boolean
-        }
-        Update: {
-          api_key_id?: string
-          audio_duration_seconds?: number | null
-          created_at?: string
-          error_message?: string | null
-          file_size_bytes?: number | null
-          id?: string
-          request_type?: string
-          response_time_ms?: number | null
-          success?: boolean
-        }
-        Relationships: [
-          {
-            foreignKeyName: "deepgram_usage_log_api_key_id_fkey"
-            columns: ["api_key_id"]
-            isOneToOne: false
-            referencedRelation: "deepgram_api_keys"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       dialog_analysis: {
         Row: {
           analysis_type: string
@@ -396,24 +307,6 @@ export type Database = {
       get_current_user_role: {
         Args: Record<PropertyKey, never>
         Returns: string
-      }
-      get_next_deepgram_key: {
-        Args: Record<PropertyKey, never>
-        Returns: {
-          api_key: string
-          id: string
-        }[]
-      }
-      update_deepgram_key_status: {
-        Args: {
-          duration?: number
-          error_msg?: string
-          file_size?: number
-          is_success: boolean
-          key_id: string
-          response_time?: number
-        }
-        Returns: undefined
       }
       update_dialog_expiration_dates: {
         Args: Record<PropertyKey, never>
