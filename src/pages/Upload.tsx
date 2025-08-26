@@ -2,12 +2,14 @@
 import React, { useState, useCallback } from 'react';
 import { useDropzone, Accept } from 'react-dropzone';
 import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
 import { Progress } from '../components/ui/progress';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { useDeepgramTranscription } from '../hooks/useDeepgramTranscription';
 import { useDatabaseDialogs } from '../hooks/useDatabaseDialogs';
 import { useAuthStore } from '../store/authStore';
-import { Mic } from 'lucide-react';
+import { Mic, User } from 'lucide-react';
 import { DeepgramOptions } from '../types/deepgram';
 import { SpeakerUtterance } from '../types';
 import { toast } from 'sonner';
@@ -17,6 +19,7 @@ interface UploadProps {}
 
 const Upload: React.FC<UploadProps> = () => {
   const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [agentName, setAgentName] = useState<string>('');
   const navigate = useNavigate();
 
   // Deepgram options - always enabled speaker diarization and language detection
@@ -62,6 +65,11 @@ const Upload: React.FC<UploadProps> = () => {
       return;
     }
 
+    if (!agentName.trim()) {
+      toast.error('Please enter the agent name.');
+      return;
+    }
+
     if (!user) {
       toast.error('You must be logged in to transcribe files.');
       return;
@@ -76,7 +84,7 @@ const Upload: React.FC<UploadProps> = () => {
       dialogId = await addDialog({
         fileName: audioFile.name,
         status: 'processing',
-        assignedAgent: user.email || 'Unknown',
+        assignedAgent: agentName.trim(),
         assignedSupervisor: user.email || 'Unknown',
         uploadDate: new Date().toISOString(),
         tokenEstimation: {
@@ -120,9 +128,48 @@ const Upload: React.FC<UploadProps> = () => {
   };
 
   return (
-    <div className="container mx-auto p-6">
+    <div className="container mx-auto p-6 space-y-6">
+      {/* Agent Information */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <User className="h-5 w-5" />
+            Agent Information
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="agent-name">Agent Name *</Label>
+              <Input
+                id="agent-name"
+                type="text"
+                value={agentName}
+                onChange={(e) => setAgentName(e.target.value)}
+                placeholder="Enter the agent's name"
+                className="max-w-md"
+              />
+              <p className="text-sm text-muted-foreground mt-1">
+                Name of the agent being evaluated in this recording
+              </p>
+            </div>
+            <div>
+              <Label>Supervisor</Label>
+              <Input
+                value={user?.email || 'Not logged in'}
+                disabled
+                className="max-w-md bg-muted"
+              />
+              <p className="text-sm text-muted-foreground mt-1">
+                Supervisor assigned to this evaluation (automatically set to logged-in user)
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* File Upload */}
-      <Card className="mb-4">
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Mic className="h-5 w-5" />
@@ -155,15 +202,19 @@ const Upload: React.FC<UploadProps> = () => {
       </Card>
 
       {/* Action Button */}
-      <div className="flex justify-center mb-4">
-        <Button onClick={handleTranscribe} disabled={!audioFile || isDeepgramLoading} size="lg">
+      <div className="flex justify-center">
+        <Button 
+          onClick={handleTranscribe} 
+          disabled={!audioFile || !agentName.trim() || isDeepgramLoading} 
+          size="lg"
+        >
           {isDeepgramLoading ? 'Transcribing...' : 'Start Transcription'}
         </Button>
       </div>
 
       {/* Progress */}
       {deepgramProgress && (
-        <Card className="mb-4">
+        <Card>
           <CardHeader>
             <CardTitle>Transcription Progress</CardTitle>
           </CardHeader>
@@ -176,7 +227,7 @@ const Upload: React.FC<UploadProps> = () => {
 
       {/* Error Display */}
       {deepgramError && (
-        <Card className="mb-4">
+        <Card>
           <CardHeader>
             <CardTitle>Transcription Error</CardTitle>
           </CardHeader>

@@ -4,38 +4,37 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { 
   Search, 
   Filter, 
-  Download, 
   Upload, 
   BarChart3, 
   Clock, 
   CheckCircle, 
   AlertCircle,
-  Users,
   FileText,
-  TrendingUp
+  TrendingUp,
+  Trash2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useDatabaseDialogs } from '../hooks/useDatabaseDialogs';
 import { useUserRole } from '../hooks/useUserRole';
 import { Dialog } from '../types';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { toast } from 'sonner';
 
 type SortOption = 'newest' | 'oldest' | 'name' | 'status';
 type StatusFilter = 'all' | 'pending' | 'processing' | 'completed' | 'failed';
 
 const UnifiedDashboard = () => {
   const navigate = useNavigate();
-  const { dialogs, isLoading } = useDatabaseDialogs();
+  const { dialogs, isLoading, deleteDialog } = useDatabaseDialogs();
   const { isAdmin, isSupervisor } = useUserRole();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [selectedDialogs, setSelectedDialogs] = useState<string[]>([]);
 
   const stats = useMemo(() => {
     const total = dialogs.length;
@@ -94,9 +93,14 @@ const UnifiedDashboard = () => {
     }
   };
 
-  const handleBulkAction = (action: string) => {
-    console.log(`Performing ${action} on dialogs:`, selectedDialogs);
-    // Implement bulk actions here
+  const handleDeleteDialog = async (dialogId: string) => {
+    try {
+      await deleteDialog(dialogId);
+      toast.success('Dialog deleted successfully');
+    } catch (error) {
+      console.error('Error deleting dialog:', error);
+      toast.error('Failed to delete dialog');
+    }
   };
 
   if (isLoading) {
@@ -243,32 +247,6 @@ const UnifiedDashboard = () => {
         </CardContent>
       </Card>
 
-      {/* Bulk Actions */}
-      {selectedDialogs.length > 0 && (
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                {selectedDialogs.length} dialog(s) selected
-              </p>
-              <div className="flex gap-2">
-                <Button size="sm" variant="outline" onClick={() => handleBulkAction('export')}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Export Selected
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => handleBulkAction('reassign')}>
-                  <Users className="h-4 w-4 mr-2" />
-                  Reassign
-                </Button>
-                <Button size="sm" variant="destructive" onClick={() => handleBulkAction('delete')}>
-                  Delete Selected
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Dialogs Table */}
       <Card>
         <CardHeader>
@@ -285,42 +263,27 @@ const UnifiedDashboard = () => {
               {filteredAndSortedDialogs.map((dialog) => (
                 <div
                   key={dialog.id}
-                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
-                  onClick={() => navigate(`/dialog/${dialog.id}`)}
+                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
                 >
-                  <div className="flex items-center gap-4 flex-1">
-                    <input
-                      type="checkbox"
-                      checked={selectedDialogs.includes(dialog.id)}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        if (e.target.checked) {
-                          setSelectedDialogs([...selectedDialogs, dialog.id]);
-                        } else {
-                          setSelectedDialogs(selectedDialogs.filter(id => id !== dialog.id));
-                        }
-                      }}
-                      className="rounded"
-                    />
-                    
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-medium">{dialog.fileName}</h3>
+                  <div className="flex items-center gap-4 flex-1 min-w-0">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-2">
+                        <h3 className="font-medium truncate">{dialog.fileName}</h3>
                         <Badge className={getStatusColor(dialog.status)}>
                           {getStatusIcon(dialog.status)}
                           <span className="ml-1 capitalize">{dialog.status}</span>
                         </Badge>
                       </div>
                       
-                      <div className="text-sm text-muted-foreground">
+                      <div className="text-sm text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span>Agent: {dialog.assignedAgent}</span>
-                        <span className="mx-2">•</span>
+                        <span className="hidden sm:inline">•</span>
                         <span>Supervisor: {dialog.assignedSupervisor}</span>
-                        <span className="mx-2">•</span>
+                        <span className="hidden sm:inline">•</span>
                         <span>Uploaded: {new Date(dialog.uploadDate).toLocaleDateString()}</span>
                         {dialog.qualityScore && (
                           <>
-                            <span className="mx-2">•</span>
+                            <span className="hidden sm:inline">•</span>
                             <span>Quality: {dialog.qualityScore}/100</span>
                           </>
                         )}
@@ -328,15 +291,43 @@ const UnifiedDashboard = () => {
                     </div>
                   </div>
                   
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 ml-4">
                     {dialog.tokenEstimation && (
                       <Badge variant="outline">
                         ${dialog.tokenEstimation.estimatedCost.toFixed(4)}
                       </Badge>
                     )}
-                    <Button variant="ghost" size="sm">
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => navigate(`/dialog/${dialog.id}`)}
+                    >
                       View Details
                     </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete Dialog</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to delete "{dialog.fileName}"? This action cannot be undone and will remove all associated transcriptions and analyses.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction 
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            onClick={() => handleDeleteDialog(dialog.id)}
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </div>
               ))}

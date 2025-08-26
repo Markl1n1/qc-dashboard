@@ -1,8 +1,10 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
@@ -15,7 +17,8 @@ import {
   Database,
   HelpCircle,
   Cpu,
-  FileText
+  FileText,
+  Shield
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '../store/authStore';
@@ -34,6 +37,10 @@ const Settings = () => {
     maxFileSizeMb,
     maxConcurrentTranscriptions,
     autoDeleteEnabled,
+    aiConfidenceThreshold,
+    aiTemperature,
+    aiReasoningEffort,
+    signupPasscode,
     isLoading: storeLoading,
     error: storeError,
     loadSettings,
@@ -42,6 +49,10 @@ const Settings = () => {
     updateMaxFileSizeMb,
     updateMaxConcurrentTranscriptions,
     updateAutoDeleteEnabled,
+    updateAiConfidenceThreshold,
+    updateAiTemperature,
+    updateAiReasoningEffort,
+    updateSignupPasscode,
     cleanupExpiredDialogs,
     updateDialogExpirationDates
   } = useEnhancedSettingsStore();
@@ -52,6 +63,10 @@ const Settings = () => {
   const [localMaxFileSizeMb, setLocalMaxFileSizeMb] = useState<number>(maxFileSizeMb);
   const [localMaxConcurrentTranscriptions, setLocalMaxConcurrentTranscriptions] = useState<number>(maxConcurrentTranscriptions);
   const [localAutoDeleteEnabled, setLocalAutoDeleteEnabled] = useState<boolean>(autoDeleteEnabled);
+  const [localAiConfidenceThreshold, setLocalAiConfidenceThreshold] = useState<number>(aiConfidenceThreshold);
+  const [localAiTemperature, setLocalAiTemperature] = useState<number>(aiTemperature);
+  const [localAiReasoningEffort, setLocalAiReasoningEffort] = useState<string>(aiReasoningEffort);
+  const [localSignupPasscode, setLocalSignupPasscode] = useState<string>(signupPasscode);
   
   const [isUpdating, setIsUpdating] = useState(false);
   const [isCleaning, setIsCleaning] = useState(false);
@@ -69,7 +84,11 @@ const Settings = () => {
     setLocalMaxFileSizeMb(maxFileSizeMb);
     setLocalMaxConcurrentTranscriptions(maxConcurrentTranscriptions);
     setLocalAutoDeleteEnabled(autoDeleteEnabled);
-  }, [maxTokens, dataRetentionDays, maxFileSizeMb, maxConcurrentTranscriptions, autoDeleteEnabled]);
+    setLocalAiConfidenceThreshold(aiConfidenceThreshold);
+    setLocalAiTemperature(aiTemperature);
+    setLocalAiReasoningEffort(aiReasoningEffort);
+    setLocalSignupPasscode(signupPasscode);
+  }, [maxTokens, dataRetentionDays, maxFileSizeMb, maxConcurrentTranscriptions, autoDeleteEnabled, aiConfidenceThreshold, aiTemperature, aiReasoningEffort, signupPasscode]);
 
   const handleUpdateAllSettings = async () => {
     setIsUpdating(true);
@@ -79,7 +98,11 @@ const Settings = () => {
         updateDataRetentionDays(localDataRetentionDays),
         updateMaxFileSizeMb(localMaxFileSizeMb),
         updateMaxConcurrentTranscriptions(localMaxConcurrentTranscriptions),
-        updateAutoDeleteEnabled(localAutoDeleteEnabled)
+        updateAutoDeleteEnabled(localAutoDeleteEnabled),
+        updateAiConfidenceThreshold(localAiConfidenceThreshold),
+        updateAiTemperature(localAiTemperature),
+        updateAiReasoningEffort(localAiReasoningEffort),
+        updateSignupPasscode(localSignupPasscode)
       ]);
       
       toast.success('All settings updated successfully');
@@ -195,6 +218,57 @@ const Settings = () => {
             </div>
 
             <div>
+              <Label htmlFor="ai-confidence">AI Confidence Threshold</Label>
+              <Input
+                id="ai-confidence"
+                type="number"
+                min="0"
+                max="1"
+                step="0.1"
+                value={localAiConfidenceThreshold}
+                onChange={(e) => setLocalAiConfidenceThreshold(parseFloat(e.target.value) || 0.8)}
+                placeholder="0.8"
+              />
+              <p className="text-sm text-muted-foreground mt-1">
+                Minimum confidence threshold for AI analysis (0-1)
+              </p>
+            </div>
+
+            <div>
+              <Label htmlFor="ai-temperature">AI Temperature (Legacy Models)</Label>
+              <Input
+                id="ai-temperature"
+                type="number"
+                min="0"
+                max="2"
+                step="0.1"
+                value={localAiTemperature}
+                onChange={(e) => setLocalAiTemperature(parseFloat(e.target.value) || 0.7)}
+                placeholder="0.7"
+              />
+              <p className="text-sm text-muted-foreground mt-1">
+                Controls randomness in AI responses (0-2, for legacy models only)
+              </p>
+            </div>
+
+            <div>
+              <Label htmlFor="ai-reasoning">AI Reasoning Effort</Label>
+              <Select value={localAiReasoningEffort} onValueChange={setLocalAiReasoningEffort}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select reasoning effort" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-sm text-muted-foreground mt-1">
+                Controls the depth of AI reasoning for analysis
+              </p>
+            </div>
+
+            <div>
               <Label htmlFor="max-file-size">Max File Size (MB)</Label>
               <Input
                 id="max-file-size"
@@ -223,6 +297,29 @@ const Settings = () => {
               />
               <p className="text-sm text-muted-foreground mt-1">
                 Maximum number of transcriptions that can run simultaneously (1-20)
+              </p>
+            </div>
+          </div>
+        </SettingsSection>
+
+        {/* Security Configuration */}
+        <SettingsSection
+          title="Security Configuration"
+          description="Manage authentication and access control settings"
+          icon={Shield}
+        >
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="signup-passcode">Signup Passcode</Label>
+              <Input
+                id="signup-passcode"
+                type="password"
+                value={localSignupPasscode}
+                onChange={(e) => setLocalSignupPasscode(e.target.value)}
+                placeholder="Enter signup passcode"
+              />
+              <p className="text-sm text-muted-foreground mt-1">
+                Required passcode for new user registration
               </p>
             </div>
           </div>

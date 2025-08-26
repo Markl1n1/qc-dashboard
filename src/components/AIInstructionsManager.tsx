@@ -1,231 +1,307 @@
 
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
-import { Input } from './ui/input';
+import { Textarea } from './ui/textarea';
 import { Label } from './ui/label';
-import { useToast } from '../hooks/use-toast';
-import { supabase } from '../integrations/supabase/client';
-import { Upload, FileText, Trash2, RefreshCw, Info } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Alert, AlertDescription } from './ui/alert';
+import { 
+  Save, 
+  RefreshCw, 
+  AlertCircle, 
+  CheckCircle, 
+  FileText,
+  Cpu,
+  Target
+} from 'lucide-react';
+import { toast } from 'sonner';
+import { supabase } from '../integrations/supabase/client';
 
-interface AIInstructionFile {
-  name: string;
+interface AIInstruction {
+  id: string;
+  type: 'system' | 'evaluation' | 'analysis';
+  content: string;
+  description: string;
   created_at: string;
-  size: number;
+  updated_at: string;
 }
 
-const AIInstructionsManager: React.FC = () => {
-  const [files, setFiles] = useState<AIInstructionFile[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
+const AIInstructionsManager = () => {
+  const [instructions, setInstructions] = useState<AIInstruction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const { toast } = useToast();
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Local state for editing
+  const [systemInstructions, setSystemInstructions] = useState('');
+  const [evaluationInstructions, setEvaluationInstructions] = useState('');
+  const [analysisInstructions, setAnalysisInstructions] = useState('');
 
   useEffect(() => {
-    loadFiles();
+    loadInstructions();
   }, []);
 
-  const loadFiles = async () => {
+  const loadInstructions = async () => {
     try {
       setIsLoading(true);
-      const { data, error } = await supabase.storage
+      setError(null);
+
+      // List files from the ai-instructions bucket
+      const { data: files, error: listError } = await supabase.storage
         .from('ai-instructions')
         .list('', {
           limit: 100,
-          sortBy: { column: 'created_at', order: 'desc' }
+          offset: 0
         });
 
-      if (error) throw error;
+      if (listError) throw listError;
 
-      if (data) {
-        const instructionFiles = data
-          .filter(file => file.name.endsWith('.txt'))
-          .map(file => ({
-            name: file.name,
-            created_at: file.created_at || '',
-            size: file.metadata?.size || 0
-          }));
-        setFiles(instructionFiles);
+      // Load content from each file
+      const loadedInstructions: AIInstruction[] = [];
+      
+      for (const file of files || []) {
+        try {
+          const { data: content, error: downloadError } = await supabase.storage
+            .from('ai-instructions')
+            .download(file.name);
+
+          if (downloadError) {
+            console.warn(`Failed to load ${file.name}:`, downloadError);
+            continue;
+          }
+
+          const text = await content.text();
+          
+          // Determine type from filename
+          let type: 'system' | 'evaluation' | 'analysis' = 'system';
+          if (file.name.includes('evaluation')) type = 'evaluation';
+          else if (file.name.includes('analysis')) type = 'analysis';
+
+          loadedInstructions.push({
+            id: file.name,
+            type,
+            content: text,
+            description: getDescriptionForType(type),
+            created_at: file.created_at || new Date().toISOString(),
+            updated_at: file.updated_at || new Date().toISOString()
+          });
+        } catch (err) {
+          console.warn(`Error processing ${file.name}:`, err);
+        }
       }
-    } catch (error) {
-      console.error('Error loading files:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load AI instruction files",
-        variant: "destructive"
-      });
+
+      setInstructions(loadedInstructions);
+
+      // Set local state for editing
+      const systemInst = loadedInstructions.find(i => i.type === 'system');
+      const evalInst = loadedInstructions.find(i => i.type === 'evaluation');
+      const analysisInst = loadedInstructions.find(i => i.type === 'analysis');
+
+      setSystemInstructions(systemInst?.content || '');
+      setEvaluationInstructions(evalInst?.content || '');
+      setAnalysisInstructions(analysisInst?.content || '');
+
+    } catch (err) {
+      console.error('Error loading AI instructions:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load AI instructions');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (!file.name.endsWith('.txt')) {
-      toast({
-        title: "Error",
-        description: "Only .txt files are allowed",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    setIsUploading(true);
-    try {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const fileName = `instruction_${timestamp}.txt`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('ai-instructions')
-        .upload(fileName, file);
-
-      if (uploadError) throw uploadError;
-
-      toast({
-        title: "Success",
-        description: "AI instruction file uploaded successfully"
-      });
-
-      await loadFiles();
-      await implementRotation();
-    } catch (error) {
-      console.error('Error uploading file:', error);
-      toast({
-        title: "Error",
-        description: "Failed to upload AI instruction file",
-        variant: "destructive"
-      });
-    } finally {
-      setIsUploading(false);
-      event.target.value = '';
+  const getDescriptionForType = (type: string): string => {
+    switch (type) {
+      case 'system':
+        return 'Core system instructions for AI behavior and response format';
+      case 'evaluation':
+        return 'Instructions for evaluating agent performance and call quality';
+      case 'analysis':
+        return 'Instructions for analyzing conversation patterns and generating insights';
+      default:
+        return 'AI instruction set';
     }
   };
 
-  const implementRotation = async () => {
+  const saveInstructions = async () => {
     try {
-      if (files.length >= 10) {
-        const filesToDelete = files.slice(10);
-        for (const file of filesToDelete) {
-          await supabase.storage.from('ai-instructions').remove([file.name]);
-        }
-        if (filesToDelete.length > 0) {
-          console.log(`Deleted ${filesToDelete.length} old instruction files`);
-          await loadFiles();
+      setIsSaving(true);
+      setError(null);
+
+      const instructionsToSave = [
+        { type: 'system', content: systemInstructions, filename: 'system-instructions.txt' },
+        { type: 'evaluation', content: evaluationInstructions, filename: 'evaluation-instructions.txt' },
+        { type: 'analysis', content: analysisInstructions, filename: 'analysis-instructions.txt' }
+      ];
+
+      for (const instruction of instructionsToSave) {
+        if (instruction.content.trim()) {
+          const blob = new Blob([instruction.content], { type: 'text/plain' });
+          
+          const { error: uploadError } = await supabase.storage
+            .from('ai-instructions')
+            .upload(instruction.filename, blob, {
+              upsert: true,
+              contentType: 'text/plain'
+            });
+
+          if (uploadError) throw uploadError;
         }
       }
-    } catch (error) {
-      console.error('Error implementing file rotation:', error);
+
+      toast.success('AI instructions saved successfully');
+      await loadInstructions(); // Reload to get updated timestamps
+    } catch (err) {
+      console.error('Error saving AI instructions:', err);
+      setError(err instanceof Error ? err.message : 'Failed to save AI instructions');
+      toast.error('Failed to save AI instructions');
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleDeleteFile = async (fileName: string) => {
-    try {
-      const { error } = await supabase.storage
-        .from('ai-instructions')
-        .remove([fileName]);
-      
-      if (error) throw error;
-      
-      toast({
-        title: "Success",
-        description: "File deleted successfully"
-      });
-      await loadFiles();
-    } catch (error) {
-      console.error('Error deleting file:', error);
-      toast({
-        title: "Error",
-        description: "Failed to delete file",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
-  const formatDate = (dateString: string): string => {
-    return new Date(dateString).toLocaleString();
-  };
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <RefreshCw className="h-6 w-6 animate-spin mr-2" />
+        <span>Loading AI instructions...</span>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-4">
-      <Alert>
-        <Info className="h-4 w-4" />
-        <AlertDescription>
-          Upload AI instruction files to customize system behavior. Only the most recent file will be active. Maximum 10 files are retained.
-        </AlertDescription>
-      </Alert>
+    <div className="space-y-6">
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
-      <div>
-        <Label htmlFor="instruction-file">Upload AI Instruction File (.txt)</Label>
-        <Input
-          id="instruction-file"
-          type="file"
-          accept=".txt"
-          onChange={handleFileUpload}
-          disabled={isUploading}
-          className="mt-1"
-        />
-        {isUploading && (
-          <p className="text-sm text-muted-foreground mt-1 flex items-center gap-2">
-            <RefreshCw className="h-4 w-4 animate-spin" />
-            Uploading...
-          </p>
-        )}
-      </div>
+      <Tabs defaultValue="system" className="space-y-4">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="system" className="flex items-center gap-2">
+            <Cpu className="h-4 w-4" />
+            System
+          </TabsTrigger>
+          <TabsTrigger value="evaluation" className="flex items-center gap-2">
+            <Target className="h-4 w-4" />
+            Evaluation
+          </TabsTrigger>
+          <TabsTrigger value="analysis" className="flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            Analysis
+          </TabsTrigger>
+        </TabsList>
 
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <Label>Uploaded Files ({files.length}/10)</Label>
-          <Button variant="ghost" size="sm" onClick={loadFiles} disabled={isLoading}>
-            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-          </Button>
-        </div>
-        
-        {isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading files...</p>
-        ) : files.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No instruction files uploaded yet.</p>
-        ) : (
-          <div className="space-y-2 max-h-48 overflow-y-auto">
-            {files.map((file, index) => (
-              <div key={file.name} className="flex items-center justify-between p-3 border rounded-lg">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-4 w-4" />
-                    <span className="text-sm font-medium">
-                      {file.name}
-                      {index === 0 && (
-                        <span className="ml-2 px-2 py-1 text-xs bg-green-100 text-green-800 rounded">
-                          Active
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    {formatDate(file.created_at)} • {formatFileSize(file.size)}
-                  </div>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleDeleteFile(file.name)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+        <TabsContent value="system">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Cpu className="h-5 w-5" />
+                System Instructions
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Core system instructions that define how the AI should behave and format responses.
+              </p>
+              <div>
+                <Label htmlFor="system-instructions">Instructions</Label>
+                <Textarea
+                  id="system-instructions"
+                  value={systemInstructions}
+                  onChange={(e) => setSystemInstructions(e.target.value)}
+                  placeholder="Enter system instructions..."
+                  className="min-h-[200px] font-mono text-sm"
+                />
               </div>
-            ))}
-          </div>
-        )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="evaluation">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Target className="h-5 w-5" />
+                Evaluation Instructions
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Instructions for evaluating agent performance, call quality, and customer service metrics.
+              </p>
+              <div>
+                <Label htmlFor="evaluation-instructions">Instructions</Label>
+                <Textarea
+                  id="evaluation-instructions"
+                  value={evaluationInstructions}
+                  onChange={(e) => setEvaluationInstructions(e.target.value)}
+                  placeholder="Enter evaluation instructions..."
+                  className="min-h-[200px] font-mono text-sm"
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="analysis">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Analysis Instructions
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Instructions for analyzing conversation patterns, sentiment, and generating insights.
+              </p>
+              <div>
+                <Label htmlFor="analysis-instructions">Instructions</Label>
+                <Textarea
+                  id="analysis-instructions"
+                  value={analysisInstructions}
+                  onChange={(e) => setAnalysisInstructions(e.target.value)}
+                  placeholder="Enter analysis instructions..."
+                  className="min-h-[200px] font-mono text-sm"
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      <div className="flex justify-between items-center">
+        <Button variant="outline" onClick={loadInstructions} disabled={isLoading}>
+          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+          Reload
+        </Button>
+
+        <Button onClick={saveInstructions} disabled={isSaving}>
+          {isSaving ? (
+            <>
+              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              Saving...
+            </>
+          ) : (
+            <>
+              <Save className="h-4 w-4 mr-2" />
+              Save Instructions
+            </>
+          )}
+        </Button>
       </div>
+
+      {instructions.length > 0 && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground p-4 border rounded-lg bg-muted/20">
+          <CheckCircle className="h-4 w-4 text-green-500" />
+          <span>
+            Last updated: {new Date(Math.max(...instructions.map(i => new Date(i.updated_at).getTime()))).toLocaleString()}
+          </span>
+        </div>
+      )}
     </div>
   );
 };
