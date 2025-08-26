@@ -1,64 +1,51 @@
 
-export interface EvaluationMistake {
-  id?: string;
-  category: string;
-  description: string;
-  severity: 'minor' | 'major' | 'critical';
+export interface OpenAIEvaluationMistake {
+  id: string;
   level: 'minor' | 'major' | 'critical';
-  example: string;
+  category: string;
+  subcategory?: string;
   mistakeName?: string;
-  text?: string;
-  position?: number;
-  suggestion?: string;
-  speaker?: string;
-  confidence?: number;
+  description: string;
+  text: string;
+  position: number;
+  speaker: 'Agent' | 'Customer';
+  suggestion: string;
+  impact: 'low' | 'medium' | 'high';
+  confidence: number;
+  timestamp?: number;
 }
 
 export interface OpenAIEvaluationResult {
-  overallScore: number;
+  overallScore: number; // 0-100
   categoryScores: Record<string, number>;
-  mistakes: EvaluationMistake[];
+  mistakes: OpenAIEvaluationMistake[];
   recommendations: string[];
   summary: string;
   confidence: number;
+  processingTime: number;
   tokenUsage: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-    input?: number;
-    output?: number;
+    input: number;
+    output: number;
     cost?: number;
   };
-  processingTime: number;
   modelUsed: string;
   analysisId: string;
 }
 
-export type EvaluationStatus = 
-  | 'initializing' 
-  | 'preparing'
-  | 'prompt_ready'
-  | 'analyzing' 
-  | 'response_received'
-  | 'parsing_complete'
-  | 'validation_complete'
-  | 'processing_response' 
-  | 'complete' 
-  | 'error';
-
 export interface OpenAIEvaluationProgress {
-  stage: EvaluationStatus;
+  stage: 'initializing' | 'analyzing' | 'processing_response' | 'complete' | 'error';
   progress: number;
   message: string;
   currentStep?: string;
+  estimatedTimeRemaining?: number;
 }
 
 export interface OpenAIModel {
   id: string;
   name: string;
-  category: 'flagship' | 'fast' | 'reasoning' | 'economic';
   description: string;
   costPer1kTokens: number;
+  category: 'flagship' | 'fast' | 'reasoning' | 'economic';
   recommended?: boolean;
 }
 
@@ -66,44 +53,74 @@ export const OPENAI_MODELS: OpenAIModel[] = [
   {
     id: 'gpt-5-2025-08-07',
     name: 'GPT-5',
+    description: 'Flagship model with best performance',
+    costPer1kTokens: 0.03,
     category: 'flagship',
-    description: 'Most capable model for complex tasks',
-    costPer1kTokens: 0.01,
     recommended: true
   },
   {
     id: 'gpt-5-mini-2025-08-07',
     name: 'GPT-5 Mini',
+    description: 'Faster, more cost-efficient GPT-5',
+    costPer1kTokens: 0.015,
     category: 'fast',
-    description: 'Fast and efficient for well-defined tasks',
-    costPer1kTokens: 0.005
+    recommended: true
   },
   {
     id: 'gpt-5-nano-2025-08-07',
     name: 'GPT-5 Nano',
-    category: 'economic',
-    description: 'Fastest and cheapest option',
-    costPer1kTokens: 0.001
+    description: 'Fastest, cheapest for classification',
+    costPer1kTokens: 0.005,
+    category: 'fast'
   },
   {
     id: 'gpt-4.1-2025-04-14',
     name: 'GPT-4.1',
-    category: 'flagship',
-    description: 'Reliable flagship GPT-4 model',
-    costPer1kTokens: 0.008
+    description: 'Reliable GPT-4 flagship model',
+    costPer1kTokens: 0.02,
+    category: 'flagship'
   },
   {
     id: 'o3-2025-04-16',
     name: 'O3',
-    category: 'reasoning',
-    description: 'Powerful reasoning for complex analysis',
-    costPer1kTokens: 0.015
+    description: 'Powerful reasoning model',
+    costPer1kTokens: 0.04,
+    category: 'reasoning'
   },
   {
     id: 'o4-mini-2025-04-16',
     name: 'O4 Mini',
-    category: 'reasoning',
     description: 'Fast reasoning model',
-    costPer1kTokens: 0.008
+    costPer1kTokens: 0.01,
+    category: 'reasoning',
+    recommended: true
+  },
+  {
+    id: 'gpt-4.1-mini-2025-04-14',
+    name: 'GPT-4.1 Mini',
+    description: 'Economic version of GPT-4.1',
+    costPer1kTokens: 0.008,
+    category: 'economic'
+  },
+  {
+    id: 'gpt-4o-mini',
+    name: 'GPT-4o Mini (Legacy)',
+    description: 'Fast and cheap legacy model',
+    costPer1kTokens: 0.006,
+    category: 'economic'
+  },
+  {
+    id: 'gpt-4o',
+    name: 'GPT-4o (Legacy)',
+    description: 'Powerful legacy model',
+    costPer1kTokens: 0.025,
+    category: 'flagship'
+  },
+  {
+    id: 'gpt-3.5-turbo',
+    name: 'GPT-3.5 Turbo',
+    description: 'Most economical option',
+    costPer1kTokens: 0.002,
+    category: 'economic'
   }
 ];
