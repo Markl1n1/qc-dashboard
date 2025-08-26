@@ -24,7 +24,7 @@ import {
   useSidebar,
 } from './ui/sidebar';
 import { useAuthStore } from '../store/authStore';
-import { VoiceQCLogo } from './VoiceQCLogo';
+import VoiceQCLogo from './VoiceQCLogo';
 
 const navigationItems = [
   { title: 'Dashboard', url: '/unified-dashboard', icon: Home },
@@ -34,11 +34,12 @@ const navigationItems = [
 ];
 
 export function AppSidebar() {
-  const { collapsed } = useSidebar();
+  const { state } = useSidebar();
   const location = useLocation();
   const { signOut } = useAuthStore();
   
   const currentPath = location.pathname;
+  const collapsed = state === 'collapsed';
   
   const isActive = (path: string) => currentPath === path;
   const isExpanded = navigationItems.some((i) => isActive(i.url));
@@ -57,7 +58,7 @@ export function AppSidebar() {
   return (
     <Sidebar
       className={collapsed ? "w-14" : "w-60"}
-      collapsible
+      collapsible="icon"
     >
       {/* Header with logo and trigger */}
       <div className="p-4 border-b">
@@ -69,10 +70,7 @@ export function AppSidebar() {
       </div>
 
       <SidebarContent>
-        <SidebarGroup
-          open={isExpanded}
-          onOpenChange={() => {}}
-        >
+        <SidebarGroup>
           <SidebarGroupLabel>Main Navigation</SidebarGroupLabel>
           
           <SidebarGroupContent>
