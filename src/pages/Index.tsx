@@ -1,41 +1,48 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, Clock, FileAudio, Download, Play, Trash2, Eye } from 'lucide-react';
+import { Calendar, Clock, FileAudio, Download, Eye, Trash2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { useDatabaseDialogs } from '@/hooks/useDatabaseDialogs';
 import { formatDistanceToNow } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { toast } from "sonner";
-import { DialogFilters } from '@/components/DialogFilters';
-import { Dialog } from '@/integrations/supabase/types';
+import DialogFilters from '@/components/DialogFilters';
+
+interface Dialog {
+  id: string;
+  filename: string;
+  status: string;
+  created_at: string;
+  duration?: number;
+  audio_url?: string;
+}
 
 const Index = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dialogs, setDialogs] = useState<Dialog[]>([]);
   const [filters, setFilters] = useState({
-    status: '',
-    dateRange: null as [Date | null, Date | null],
-    searchTerm: ''
+    searchTerm: '',
+    statusFilter: 'all',
+    sortBy: 'date'
   });
 
   const navigate = useNavigate();
+  const { dialogs: hookDialogs, isLoading, error: hookError, loadDialogs } = useDatabaseDialogs();
 
   useEffect(() => {
-    loadDialogs();
+    handleLoadDialogs();
   }, []);
 
-  const loadDialogs = async () => {
+  const handleLoadDialogs = async () => {
     setLoading(true);
     setError(null);
     try {
-      const { data, error } = await useDatabaseDialogs();
-      if (error) {
-        setError(error.message);
-      } else {
-        setDialogs(data || []);
-      }
+      await loadDialogs();
+      setDialogs(hookDialogs);
+      setError(hookError);
     } catch (err) {
       setError('Failed to load dialogs');
       console.error(err);
@@ -45,18 +52,15 @@ const Index = () => {
   };
 
   const filteredDialogs = dialogs.filter((dialog) => {
-    const statusFilter = !filters.status || dialog.status.toLowerCase() === filters.status.toLowerCase();
-    const dateFilter = !filters.dateRange ||
-      (new Date(dialog.created_at) >= filters.dateRange[0]! &&
-        new Date(dialog.created_at) <= filters.dateRange[1]!);
+    const statusFilter = filters.statusFilter === 'all' || dialog.status.toLowerCase() === filters.statusFilter.toLowerCase();
     const searchFilter = !filters.searchTerm ||
       dialog.filename.toLowerCase().includes(filters.searchTerm.toLowerCase());
 
-    return statusFilter && dateFilter && searchFilter;
+    return statusFilter && searchFilter;
   });
 
   const handleRefresh = () => {
-    loadDialogs();
+    handleLoadDialogs();
   };
 
   const handleView = (dialog: Dialog) => {
@@ -92,7 +96,7 @@ const Index = () => {
 
         if (!response.ok) {
           // If the deletion failed, revert the UI update
-          loadDialogs();
+          handleLoadDialogs();
           const errorData = await response.json();
           toast.error(`Failed to delete dialog: ${errorData.message || response.statusText}`);
         } else {
@@ -100,7 +104,7 @@ const Index = () => {
         }
       } catch (error: any) {
         // If the deletion failed, revert the UI update
-        loadDialogs();
+        handleLoadDialogs();
         toast.error(`Failed to delete dialog: ${error.message || 'Unknown error'}`);
       }
     }
@@ -123,7 +127,7 @@ const Index = () => {
     return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
   };
 
-  if (loading) {
+  if (loading || isLoading) {
     return (
       <div className="container mx-auto p-6">
         <div className="text-center">Loading dialogs...</div>
@@ -149,9 +153,12 @@ const Index = () => {
       </div>
 
       <DialogFilters
-        onFilterChange={setFilters}
-        totalCount={dialogs.length}
-        filteredCount={filteredDialogs.length}
+        searchTerm={filters.searchTerm}
+        onSearchChange={(value) => setFilters({ ...filters, searchTerm: value })}
+        statusFilter={filters.statusFilter}
+        onStatusChange={(value) => setFilters({ ...filters, statusFilter: value })}
+        sortBy={filters.sortBy}
+        onSortChange={(value) => setFilters({ ...filters, sortBy: value })}
       />
 
       {filteredDialogs.length === 0 ? (
@@ -173,9 +180,9 @@ const Index = () => {
             <Card key={dialog.id} className="hover:shadow-md transition-shadow">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between gap-4">
-                  {/* Left side - File info with better vertical centering */}
+                  {/* Left side - File info with proper vertical centering */}
                   <div className="flex items-center gap-4 min-w-0 flex-1">
-                    <div className="flex-shrink-0">
+                    <div className="flex-shrink-0 flex items-center">
                       <FileAudio className="h-8 w-8 text-primary" />
                     </div>
 
@@ -203,7 +210,7 @@ const Index = () => {
                     </div>
                   </div>
 
-                  {/* Right side - Actions */}
+                  {/* Right side - Actions with proper vertical centering */}
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <Button
                       variant="outline"

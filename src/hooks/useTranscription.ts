@@ -1,6 +1,6 @@
 
 import { useState, useCallback } from 'react';
-import { assemblyAIService } from '../services/assemblyAIService';
+import { deepgramService } from '../services/deepgramService';
 import { UnifiedTranscriptionProgress, SpeakerUtterance } from '../types';
 
 export interface TranscriptionOptions {
@@ -27,7 +27,7 @@ export const useTranscription = () => {
       console.warn('🎯 [useTranscription] Setting up progress callback');
       
       // Set up progress tracking with enhanced logging
-      assemblyAIService.setProgressCallback((progressData) => {
+      deepgramService.setProgressCallback((progressData) => {
         console.warn('🎯 [useTranscription] Progress callback received:', progressData);
         try {
           setProgress(progressData);
@@ -37,18 +37,19 @@ export const useTranscription = () => {
         }
       });
 
-      // Convert transcription options to AssemblyAI format
-      const assemblyOptions = {
+      // Convert transcription options to Deepgram format
+      const deepgramOptions = {
+        model: options.model || 'nova-2',
         speaker_labels: options.speakerLabels || false,
         language_detection: true,
-        language_code: options.language,
-        speech_model: 'universal' as const,
-        disfluencies: true,
+        language: options.language,
+        smart_formatting: true,
+        profanity_filter: false
       };
-      console.warn('🎯 [useTranscription] AssemblyAI options prepared:', assemblyOptions);
+      console.warn('🎯 [useTranscription] Deepgram options prepared:', deepgramOptions);
 
-      console.warn('🎯 [useTranscription] Calling assemblyAIService.transcribe...');
-      const result = await assemblyAIService.transcribe(audioFile, assemblyOptions);
+      console.warn('🎯 [useTranscription] Calling deepgramService.transcribe...');
+      const result = await deepgramService.transcribe(audioFile, deepgramOptions);
       
       console.warn('🎯 [useTranscription] Transcription completed successfully');
       console.warn('🎯 [useTranscription] Result text length:', result.text.length);
@@ -75,7 +76,7 @@ export const useTranscription = () => {
   }, []);
 
   const loadModel = useCallback(async (options: TranscriptionOptions): Promise<void> => {
-    console.warn('🎯 [useTranscription] loadModel called - not required for AssemblyAI');
+    console.warn('🎯 [useTranscription] loadModel called - not required for Deepgram');
   }, []);
 
   console.warn('🎯 [useTranscription] Hook returning functions and state');
@@ -92,7 +93,7 @@ export const useTranscription = () => {
     },
     getCurrentModel: () => {
       console.warn('🎯 [useTranscription] getCurrentModel called');
-      return 'assemblyai-universal';
+      return 'deepgram-nova-2';
     },
     getModelInfo: (modelName: string) => {
       console.warn('🎯 [useTranscription] getModelInfo called for:', modelName);
@@ -100,7 +101,7 @@ export const useTranscription = () => {
     },
     getAllModelInfo: () => {
       console.warn('🎯 [useTranscription] getAllModelInfo called');
-      return [{ name: 'assemblyai-universal', size: 'cloud' }];
+      return [{ name: 'deepgram-nova-2', size: 'cloud' }];
     }
   };
 };
