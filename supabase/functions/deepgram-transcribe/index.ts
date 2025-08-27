@@ -39,8 +39,7 @@ Deno.serve(async (req) => {
     console.log('🎙️ Processing Deepgram transcription request', {
       mimeType,
       options,
-      audioLength: audio.length,
-      model: options.model || 'nova-2'
+      audioLength: audio.length
     });
 
     // Convert base64 to binary
@@ -49,24 +48,32 @@ Deno.serve(async (req) => {
     // Prepare Deepgram request parameters
     const params = new URLSearchParams();
     
-    // Core parameters - Nova-2 model
-    const model = options.model || 'nova-2';
-    params.append('model', model);
-    params.append('punctuate', 'true');
-    params.append('smart_format', 'false'); // Always false as requested
-    params.append('filler_words', 'true');
+    // Language handling and model selection
+    let finalModel = 'nova-2'; // Default model
     
-    // Language handling
     if (options.language) {
       params.append('language', options.language);
       
       // For non-English languages, use enhanced model
       if (options.language !== 'en') {
+        finalModel = 'general';
         params.append('model', 'general');
         params.append('tier', 'enhanced');
         console.log('✅ Using enhanced model for non-English language:', options.language);
+      } else {
+        // For English, use Nova-2
+        params.append('model', 'nova-2');
+        console.log('✅ Using Nova-2 model for English language');
       }
+    } else {
+      // Default to Nova-2 if no language specified
+      params.append('model', 'nova-2');
     }
+
+    // Core parameters
+    params.append('punctuate', 'true');
+    params.append('smart_format', 'false'); // Always false as requested
+    params.append('filler_words', 'true');
 
     // Speaker diarization - CRITICAL: Ensure both parameters are set
     if (options.diarize) {
@@ -82,13 +89,15 @@ Deno.serve(async (req) => {
 
     const deepgramUrl = `https://api.deepgram.com/v1/listen?${params.toString()}`;
     
-    console.log('📡 Calling Deepgram API with model:', model, 'URL:', deepgramUrl);
+    console.log('📡 Calling Deepgram API with model:', finalModel);
+    console.log('📋 Full URL:', deepgramUrl);
+    console.log('📋 Parameters:', Object.fromEntries(params.entries()));
 
     const deepgramResponse = await fetch(deepgramUrl, {
       method: 'POST',
       headers: {
         'Authorization': `Token ${DEEPGRAM_API_KEY}`,
-        'Content-Type': mimeType || 'audio/wav'
+        // Remove Content-Type header to let Deepgram auto-detect format
       },
       body: audioBuffer
     });
@@ -99,7 +108,8 @@ Deno.serve(async (req) => {
         status: deepgramResponse.status,
         statusText: deepgramResponse.statusText,
         error: errorText,
-        model: model
+        model: finalModel,
+        url: deepgramUrl
       });
       
       throw new Error(`Deepgram API error: ${deepgramResponse.status} ${deepgramResponse.statusText}`);
@@ -110,7 +120,7 @@ Deno.serve(async (req) => {
       hasResults: !!deepgramResult.results,
       hasUtterances: !!deepgramResult.results?.utterances,
       utteranceCount: deepgramResult.results?.utterances?.length || 0,
-      model: model,
+      model: finalModel,
       detectedLanguage: deepgramResult.metadata?.model_info?.language
     });
 
@@ -162,7 +172,7 @@ Deno.serve(async (req) => {
       metadata: {
         duration: deepgramResult.metadata?.duration || 0,
         channels: deepgramResult.metadata?.channels || 1,
-        model: model
+        model: finalModel
       }
     };
 
@@ -170,7 +180,7 @@ Deno.serve(async (req) => {
       textLength: result.text.length,
       utteranceCount: result.speakerUtterances.length,
       hasLanguageDetection: !!result.detectedLanguage,
-      model: model
+      model: finalModel
     });
 
     return new Response(
