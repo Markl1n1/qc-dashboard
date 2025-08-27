@@ -35,13 +35,17 @@ serve(async (req) => {
       messages,
     };
 
-    // For GPT-5 models, use max_completion_tokens and reasoning_effort
-    if (model.includes('gpt-5')) {
+    // Determine model type for parameter selection
+    const isGPT5OrNewer = model.includes('gpt-5') || model.includes('gpt-4.1') || model.includes('o3') || model.includes('o4');
+    const isReasoningModel = model.includes('o3') || model.includes('o4');
+
+    // For GPT-5 and newer models, use max_completion_tokens
+    if (isGPT5OrNewer) {
       requestBody.max_completion_tokens = max_output_tokens;
-      if (reasoning_effort) {
+      if (reasoning_effort && isReasoningModel) {
         requestBody.reasoning_effort = reasoning_effort;
       }
-      // Note: temperature is not supported for GPT-5 models
+      // Note: temperature is not supported for GPT-5 and newer models
     } else {
       // For legacy models (gpt-4o family), use max_tokens and temperature
       requestBody.max_tokens = max_output_tokens;
@@ -49,6 +53,16 @@ serve(async (req) => {
         requestBody.temperature = temperature;
       }
     }
+
+    // Log token limits and model configuration
+    console.log('🎛️ Model configuration:', {
+      model,
+      isGPT5OrNewer,
+      isReasoningModel,
+      tokenLimit: max_output_tokens,
+      hasReasoningEffort: !!reasoning_effort,
+      temperature: temperature
+    });
 
     console.log('📤 Request body:', JSON.stringify(requestBody, null, 2));
 
@@ -66,7 +80,13 @@ serve(async (req) => {
 
     if (!openAIResponse.ok) {
       const errorText = await openAIResponse.text();
-      console.error('❌ OpenAI API error:', errorText);
+      console.error('❌ OpenAI API error:', {
+        status: openAIResponse.status,
+        statusText: openAIResponse.statusText,
+        errorText,
+        model,
+        tokenLimit: max_output_tokens
+      });
       return new Response(
         JSON.stringify({ 
           error: `OpenAI API error: ${openAIResponse.status} - ${errorText}` 
@@ -80,12 +100,38 @@ serve(async (req) => {
 
     const data = await openAIResponse.json();
     console.log('✅ OpenAI response successful');
+    
+    // Enhanced response analysis
+    const choice = data.choices?.[0];
+    const finishReason = choice?.finish_reason;
+    const content = choice?.message?.content;
+    
     console.log('📊 Token usage:', {
       actualInputTokens: data.usage?.prompt_tokens,
       outputTokens: data.usage?.completion_tokens,
-      totalTokens: data.usage?.total_tokens
+      totalTokens: data.usage?.total_tokens,
+      reasoningTokens: data.usage?.completion_tokens_details?.reasoning_tokens
     });
-    console.log('📝 Response content preview:', data.choices?.[0]?.message?.content?.substring(0, 200) + '...');
+    
+    console.log('🏁 Response details:', {
+      finishReason,
+      contentLength: content?.length || 0,
+      hasContent: !!content,
+      model: data.model
+    });
+    
+    console.log('📝 Response content preview:', content?.substring(0, 200) + '...');
+    
+    // Warn about truncated responses
+    if (finishReason === 'length') {
+      console.warn('⚠️ RESPONSE TRUNCATED - Consider increasing token limit');
+      console.warn('🔧 Suggested fixes:', {
+        increaseTokens: 'Use higher max_completion_tokens',
+        upgradeModel: 'Consider using a more capable model',
+        optimizePrompt: 'Reduce prompt length'
+      });
+    }
+    
     console.log('🔍 Full response structure:', JSON.stringify(data, null, 2));
     
     // Calculate token estimation for cost tracking

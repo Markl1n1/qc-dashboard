@@ -131,7 +131,7 @@ class OpenAIEvaluationService {
   private constructPrompt(text: string, speakerUtterances: SpeakerUtterance[], instructions: string): string {
     const speakerLines = speakerUtterances.map(u => `${u.speaker}: ${u.text}`).join('\n');
 
-    return `${instructions}
+    const basePrompt = `${instructions}
 
 You must respond in the following JSON format:
 {
@@ -159,12 +159,21 @@ You must respond in the following JSON format:
       Summary:
       ${text}
       `;
+
+    // Optimize prompt length if it's too long
+    return this.optimizePromptLength(basePrompt);
   }
 
-  private async callOpenAIEdgeFunction(prompt: string, model: string): Promise<any> {
+  private async callOpenAIEdgeFunction(prompt: string, model: string, retryCount = 0): Promise<any> {
     try {
+      // Calculate optimal token count based on prompt length
+      const promptTokens = Math.ceil(prompt.length / 4); // Rough estimation: 4 chars per token
+      const maxTokens = this.calculateOptimalTokens(promptTokens, model);
+      
       // Determine if this is a GPT-5 or newer model that requires different parameters
       const isGPT5OrNewer = model.includes('gpt-5') || model.includes('gpt-4.1') || model.includes('o3') || model.includes('o4');
+      
+      console.log(`📊 Token calculation - Prompt: ${promptTokens}, Max output: ${maxTokens}, Model: ${model}`);
       
       const requestBody: any = {
         model: model,
@@ -173,14 +182,14 @@ You must respond in the following JSON format:
 
       // For GPT-5 and newer models, use max_completion_tokens and reasoning_effort
       if (isGPT5OrNewer) {
-        requestBody.max_output_tokens = 1000;
+        requestBody.max_output_tokens = maxTokens;
         if (model.includes('o3') || model.includes('o4')) {
           requestBody.reasoning_effort = 'medium';
         }
         // Note: temperature is not supported for GPT-5 and newer models
       } else {
         // For legacy models (gpt-4o family), use max_tokens and temperature
-        requestBody.max_output_tokens = 1000;
+        requestBody.max_output_tokens = maxTokens;
         requestBody.temperature = 0.7;
       }
 
@@ -198,11 +207,87 @@ You must respond in the following JSON format:
         throw new Error(`OpenAI API error: ${data.error}`);
       }
 
+      // Check for truncated response and retry with higher token limit
+      if (data.choices?.[0]?.finish_reason === 'length' && retryCount < 2) {
+        console.log(`⚠️ Response truncated, retrying with higher token limit (attempt ${retryCount + 1})`);
+        const higherTokenModel = this.selectHigherCapacityModel(model);
+        if (higherTokenModel !== model) {
+          console.log(`🔄 Switching to higher capacity model: ${higherTokenModel}`);
+          return this.callOpenAIEdgeFunction(prompt, higherTokenModel, retryCount + 1);
+        } else {
+          // Same model, just increase tokens
+          return this.callOpenAIEdgeFunction(prompt, model, retryCount + 1);
+        }
+      }
+
       return data;
     } catch (error: any) {
       logger.error('Error calling OpenAI edge function', error);
       throw error;
     }
+  }
+
+  private calculateOptimalTokens(promptTokens: number, model: string): number {
+    // Base token limits
+    const baseTokens = model.includes('mini') ? 2000 : 4000;
+    
+    // Increase tokens for complex analysis (long conversations)
+    if (promptTokens > 8000) {
+      return Math.min(8000, baseTokens * 2);
+    } else if (promptTokens > 4000) {
+      return Math.min(6000, baseTokens * 1.5);
+    }
+    
+    return baseTokens;
+  }
+
+  private selectHigherCapacityModel(currentModel: string): string {
+    // Model upgrade path for better performance
+    const modelUpgrades: Record<string, string> = {
+      'gpt-5-mini-2025-08-07': 'gpt-5-2025-08-07',
+      'gpt-5-nano-2025-08-07': 'gpt-5-mini-2025-08-07',
+      'gpt-4.1-mini-2025-04-14': 'gpt-4.1-2025-04-14',
+      'o4-mini-2025-04-16': 'o3-2025-04-16'
+    };
+    
+    return modelUpgrades[currentModel] || currentModel;
+  }
+
+  private optimizePromptLength(prompt: string, maxLength = 50000): string {
+    if (prompt.length <= maxLength) return prompt;
+    
+    console.log(`📝 Optimizing prompt length from ${prompt.length} to ~${maxLength} characters`);
+    
+    // Extract key sections
+    const instructionsMatch = prompt.match(/(.*?)Transcription:/s);
+    const transcriptionMatch = prompt.match(/Transcription:\s*([\s\S]*?)\s*Summary:/);
+    const summaryMatch = prompt.match(/Summary:\s*([\s\S]*)$/);
+    
+    if (!instructionsMatch || !transcriptionMatch) return prompt;
+    
+    const instructions = instructionsMatch[1];
+    const transcription = transcriptionMatch[1];
+    const summary = summaryMatch?.[1] || '';
+    
+    // Truncate transcription if needed
+    const availableSpace = maxLength - instructions.length - summary.length - 200; // Buffer
+    let optimizedTranscription = transcription;
+    
+    if (transcription.length > availableSpace) {
+      const lines = transcription.split('\n');
+      const keepFirst = Math.floor(lines.length * 0.3);
+      const keepLast = Math.floor(lines.length * 0.3);
+      
+      optimizedTranscription = [
+        ...lines.slice(0, keepFirst),
+        '... [middle section truncated for analysis] ...',
+        ...lines.slice(-keepLast)
+      ].join('\n');
+      
+      console.log(`✂️ Truncated transcription from ${lines.length} to ${keepFirst + keepLast} lines`);
+    }
+    
+    return `${instructions}Transcription:\n${optimizedTranscription}\n\nSummary:\n${summary}`;
   }
 
   private parseOpenAIResponse(response: any): OpenAIEvaluationResult {
@@ -214,12 +299,27 @@ You must respond in the following JSON format:
         throw new Error('Invalid OpenAI response structure');
       }
 
-      const content = response.choices[0].message.content;
+      const choice = response.choices[0];
+      const content = choice.message.content;
+      const finishReason = choice.finish_reason;
+      
       console.log('📝 OpenAI Content:', content);
+      console.log('🏁 Finish Reason:', finishReason);
+      
+      // Handle truncated responses
+      if (finishReason === 'length') {
+        console.warn('⚠️ Response was truncated due to token limit');
+        if (!content) {
+          throw new Error('Response truncated with no content - increase token limit and retry');
+        }
+      }
       
       if (!content) {
-        logger.error('No content in OpenAI response');
-        throw new Error('No content in OpenAI response');
+        const errorMsg = finishReason === 'length' 
+          ? 'Response truncated - no content returned' 
+          : 'No content in OpenAI response';
+        logger.error(errorMsg);
+        throw new Error(errorMsg);
       }
 
       // Try to clean content if it has markdown formatting
@@ -231,6 +331,12 @@ You must respond in the following JSON format:
       }
       
       console.log('🧹 Cleaned Content:', cleanContent);
+
+      // Handle partial JSON for truncated responses
+      if (finishReason === 'length' && !this.isValidJSON(cleanContent)) {
+        console.log('🔧 Attempting to fix truncated JSON...');
+        cleanContent = this.attemptJSONRepair(cleanContent);
+      }
 
       const parsed = JSON.parse(cleanContent);
       console.log('✅ Parsed JSON:', JSON.stringify(parsed, null, 2));
@@ -259,7 +365,7 @@ You must respond in the following JSON format:
         categoryScores: {},
         recommendations: [],
         summary: `Analysis completed with score: ${parsed.score}/100`,
-        confidence: 0.9,
+        confidence: finishReason === 'length' ? 0.7 : 0.9, // Lower confidence for truncated responses
         tokenUsage: {
           input: response.usage?.prompt_tokens || response.tokenEstimation?.actualInputTokens || 0,
           output: response.usage?.completion_tokens || response.tokenEstimation?.outputTokens || 0,
@@ -274,11 +380,47 @@ You must respond in the following JSON format:
       console.error('❌ Error Details:', {
         message: error.message,
         response: response,
-        content: response?.choices?.[0]?.message?.content
+        content: response?.choices?.[0]?.message?.content,
+        finishReason: response?.choices?.[0]?.finish_reason
       });
       logger.error('Failed to parse OpenAI response', error);
       throw new Error(`Failed to parse OpenAI response: ${error.message}. Content: ${response?.choices?.[0]?.message?.content || 'No content'}`);
     }
+  }
+
+  private isValidJSON(str: string): boolean {
+    try {
+      JSON.parse(str);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private attemptJSONRepair(truncatedJSON: string): string {
+    // Basic JSON repair for truncated responses
+    let repaired = truncatedJSON.trim();
+    
+    // If it doesn't end with a closing brace, try to complete it
+    if (!repaired.endsWith('}')) {
+      // Close any open arrays
+      const openArrays = (repaired.match(/\[/g) || []).length - (repaired.match(/\]/g) || []).length;
+      for (let i = 0; i < openArrays; i++) {
+        repaired += ']';
+      }
+      
+      // Close any open objects
+      const openObjects = (repaired.match(/\{/g) || []).length - (repaired.match(/\}/g) || []).length;
+      for (let i = 0; i < openObjects; i++) {
+        repaired += '}';
+      }
+    }
+    
+    // Remove trailing commas before closing brackets
+    repaired = repaired.replace(/,(\s*[\}\]])/g, '$1');
+    
+    console.log('🔧 Attempted JSON repair result:', repaired);
+    return repaired;
   }
 
   private validateResult(result: OpenAIEvaluationResult, confidenceThreshold: number): OpenAIEvaluationResult {
