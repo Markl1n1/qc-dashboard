@@ -49,18 +49,23 @@ Deno.serve(async (req) => {
     // Prepare Deepgram request parameters
     const params = new URLSearchParams();
     
-    // Core parameters - support both Nova-2 and Nova-3
+    // Core parameters - Nova-2 model
     const model = options.model || 'nova-2';
     params.append('model', model);
     params.append('punctuate', 'true');
-    params.append('smart_format', options.smart_format !== false ? 'true' : 'false');
+    params.append('smart_format', 'false'); // Always false as requested
     params.append('filler_words', 'true');
     
-    // Language detection
-    if (options.detect_language) {
-      params.append('detect_language', 'true');
-    } else if (options.language) {
+    // Language handling
+    if (options.language) {
       params.append('language', options.language);
+      
+      // For non-English languages, use enhanced model
+      if (options.language !== 'en') {
+        params.append('model', 'general');
+        params.append('tier', 'enhanced');
+        console.log('✅ Using enhanced model for non-English language:', options.language);
+      }
     }
 
     // Speaker diarization - CRITICAL: Ensure both parameters are set
@@ -96,11 +101,6 @@ Deno.serve(async (req) => {
         error: errorText,
         model: model
       });
-      
-      // Check for specific Nova-3 errors
-      if (deepgramResponse.status === 400 && errorText.includes('model')) {
-        throw new Error(`Model ${model} is not available. Please check your Deepgram plan supports this model.`);
-      }
       
       throw new Error(`Deepgram API error: ${deepgramResponse.status} ${deepgramResponse.statusText}`);
     }

@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { useDeepgramTranscription } from '../hooks/useDeepgramTranscription';
 import { useDatabaseDialogs } from '../hooks/useDatabaseDialogs';
 import { useAuthStore } from '../store/authStore';
-import { Mic, User, FileAudio, AlertCircle } from 'lucide-react';
+import { Mic, User, FileAudio, AlertCircle, Languages } from 'lucide-react';
 import { DeepgramOptions } from '../types/deepgram';
 import { SpeakerUtterance } from '../types';
 import { toast } from 'sonner';
@@ -17,26 +17,19 @@ import { useNavigate } from 'react-router-dom';
 import AgentSelector from '../components/AgentSelector';
 import DraggableFileList from '../components/DraggableFileList';
 import MultiFileTranscriptionProgress from '../components/MultiFileTranscriptionProgress';
+import LanguageSelector from '../components/LanguageSelector';
 import { audioMergingService, MergingProgress } from '../services/audioMergingService';
+import { generateFileName } from '../utils/hashGenerator';
 
 interface UploadProps {}
 
 const Upload: React.FC<UploadProps> = () => {
   const [audioFiles, setAudioFiles] = useState<File[]>([]);
   const [agentName, setAgentName] = useState<string>('');
+  const [selectedLanguage, setSelectedLanguage] = useState<string>('en');
   const [isMerging, setIsMerging] = useState(false);
   const [mergingProgress, setMergingProgress] = useState<MergingProgress | null>(null);
   const navigate = useNavigate();
-
-  // Deepgram options - always enabled speaker diarization and language detection
-  const deepgramOptions: DeepgramOptions = {
-    model: 'nova-2',
-    language_detection: true,
-    speaker_labels: true,
-    smart_formatting: true,
-    profanity_filter: false,
-    punctuation: true
-  };
 
   const { user } = useAuthStore();
   const { addDialog, updateDialog, saveTranscription, saveSpeakerTranscription } = useDatabaseDialogs();
@@ -93,13 +86,16 @@ const Upload: React.FC<UploadProps> = () => {
     let dialogId: string | null = null;
     
     try {
-      // Create dialog record first with "processing" status
-      const fileName = audioFiles.length === 1 
+      // Generate new filename using agent name, date, and hash
+      const originalFileName = audioFiles.length === 1 
         ? audioFiles[0].name 
         : `merged_${audioFiles.length}_files.mp3`;
+      
+      const newFileName = generateFileName(agentName.trim(), originalFileName);
 
+      // Create dialog record first with "processing" status
       dialogId = await addDialog({
-        fileName,
+        fileName: newFileName,
         status: 'processing',
         assignedAgent: agentName.trim(),
         assignedSupervisor: user.email || 'Unknown',
@@ -138,6 +134,16 @@ const Upload: React.FC<UploadProps> = () => {
       } else {
         fileToTranscribe = audioFiles[0];
       }
+
+      // Prepare Deepgram options with language selection
+      const deepgramOptions: DeepgramOptions = {
+        model: 'nova-2',
+        language: selectedLanguage,
+        speaker_labels: true,
+        smart_formatting: false,
+        profanity_filter: false,
+        punctuation: true
+      };
 
       const result = await transcribeDeepgram(fileToTranscribe, deepgramOptions);
       
@@ -208,6 +214,12 @@ const Upload: React.FC<UploadProps> = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Language Selection */}
+      <LanguageSelector
+        selectedLanguage={selectedLanguage}
+        onLanguageChange={setSelectedLanguage}
+      />
 
       {/* File Upload */}
       <Card>

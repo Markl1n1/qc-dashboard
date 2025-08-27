@@ -15,13 +15,10 @@ interface LanguageSelectorProps {
 }
 
 const TRANSCRIPTION_LANGUAGES: Language[] = [
-  { code: 'en_us', name: 'English' },
-  { code: 'es', name: 'Spanish' },
-  { code: 'fr', name: 'French' },
+  { code: 'en', name: 'English' },
   { code: 'de', name: 'German' },
   { code: 'pl', name: 'Polish' },
   { code: 'ru', name: 'Russian' },
-  { code: 'uk', name: 'Ukrainian' },
 ];
 
 const LanguageSelector: React.FC<LanguageSelectorProps> = ({
@@ -35,7 +32,7 @@ const LanguageSelector: React.FC<LanguageSelectorProps> = ({
       </CardHeader>
       <CardContent>
         <RadioGroup value={selectedLanguage} onValueChange={onLanguageChange}>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             {TRANSCRIPTION_LANGUAGES.map((language) => (
               <div key={language.code} className="flex items-center space-x-2">
                 <RadioGroupItem value={language.code} id={language.code} />

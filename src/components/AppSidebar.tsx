@@ -78,8 +78,8 @@ export function AppSidebar() {
               
               {/* Theme toggle button with consistent styling */}
               <SidebarMenuItem>
-                <SidebarMenuButton className="hover:bg-muted/50 font-bold">
-                  <button onClick={toggleTheme} className="flex items-center w-full">
+                <SidebarMenuButton asChild>
+                  <button onClick={toggleTheme} className={getNavCls({ isActive: false })}>
                     {theme === 'light' ? (
                       <Moon className="mr-2 h-4 w-4" />
                     ) : (
@@ -92,8 +92,8 @@ export function AppSidebar() {
               
               {/* Sign out button with consistent styling */}
               <SidebarMenuItem>
-                <SidebarMenuButton className="hover:bg-muted/50 font-bold">
-                  <button onClick={handleSignOut} className="flex items-center w-full">
+                <SidebarMenuButton asChild>
+                  <button onClick={handleSignOut} className={getNavCls({ isActive: false })}>
                     <LogOut className="mr-2 h-4 w-4" />
                     {!collapsed && <span>Sign Out</span>}
                   </button>
