@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '../lib/utils';
@@ -12,15 +13,12 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from './ui/sidebar';
-import { useTheme } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
 import { LayoutDashboard, LogOut, Moon, Settings, Sun, Upload, Users } from 'lucide-react';
-import { VoiceQCLogo } from './icons';
 
 const AppSidebar = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { theme, toggleTheme } = useTheme();
   const { logout } = useAuthStore();
 
   const handleLogout = async () => {
@@ -45,7 +43,7 @@ const AppSidebar = () => {
             <SidebarMenuButton size="lg" asChild>
               <Link to="/">
                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                  <VoiceQCLogo className="size-4" />
+                  <LayoutDashboard className="size-4" />
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-semibold">VoiceQC</span>
@@ -94,14 +92,8 @@ const AppSidebar = () => {
             </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton asChild>
-                <button
-                  onClick={toggleTheme}
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-bold transition-all hover:text-primary w-full text-left",
-                    "text-muted-foreground hover:text-primary"
-                  )}
-                >
-                  {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                <button className={getNavCls(false)}>
+                  <Moon className="h-4 w-4" />
                   Theme
                 </button>
               </SidebarMenuButton>
@@ -110,10 +102,7 @@ const AppSidebar = () => {
               <SidebarMenuButton asChild>
                 <button
                   onClick={handleLogout}
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-bold transition-all hover:text-primary w-full text-left",
-                    "text-muted-foreground hover:text-primary"
-                  )}
+                  className={getNavCls(false)}
                 >
                   <LogOut className="h-4 w-4" />
                   Sign Out

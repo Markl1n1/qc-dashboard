@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Label } from '../components/ui/label';
@@ -67,7 +68,7 @@ const Upload: React.FC = () => {
 
           const dialog = await databaseService.createDialog({
             user_id: user!.id,
-            file_name: newFileName, // Use the generated filename
+            file_name: newFileName,
             status: 'pending' as const,
             assigned_agent: selectedAgent,
             assigned_supervisor: selectedSupervisor,
@@ -155,14 +156,12 @@ const Upload: React.FC = () => {
         </CardHeader>
         <CardContent className="space-y-4">
           <AgentSelector
-            selectedAgent={selectedAgent}
-            onAgentSelect={setSelectedAgent}
+            value={selectedAgent}
+            onChange={setSelectedAgent}
           />
           <AgentSelector
-            selectedAgent={selectedSupervisor}
-            onAgentSelect={setSelectedSupervisor}
-            label="Supervisor"
-            placeholder="Select supervisor"
+            value={selectedSupervisor}
+            onChange={setSelectedSupervisor}
           />
           <LanguageSelector
             value={selectedLanguage}
