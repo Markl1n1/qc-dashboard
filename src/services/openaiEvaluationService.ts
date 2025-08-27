@@ -1,3 +1,4 @@
+
 import { supabase } from '../integrations/supabase/client';
 import { logger } from './loggingService';
 import { aiInstructionsService } from './aiInstructionsService';
@@ -7,7 +8,6 @@ import { OpenAIEvaluationResult, OpenAIEvaluationProgress } from '../types/opena
 interface Settings {
   aiConfidenceThreshold: number;
   aiEvaluationModel: string;
-  openaiApiKey: string;
 }
 
 interface EvaluationParams {
@@ -19,7 +19,6 @@ interface EvaluationParams {
 }
 
 class OpenAIEvaluationService {
-  private apiKey: string | null = null;
   private model: string | null = null;
   private confidenceThreshold: number = 0.75;
   private progressCallback: ((progress: OpenAIEvaluationProgress) => void) | null = null;
@@ -27,13 +26,8 @@ class OpenAIEvaluationService {
   async initialize(): Promise<void> {
     try {
       const config = await this.fetchSettings();
-      this.apiKey = config.openaiApiKey;
       this.model = config.aiEvaluationModel;
       this.confidenceThreshold = config.aiConfidenceThreshold;
-
-      if (!this.apiKey) {
-        logger.warn('OpenAI API key is not set. OpenAI evaluations will be disabled.');
-      }
     } catch (error) {
       logger.error('Failed to initialize OpenAI Evaluation Service', error);
       throw new Error('Failed to initialize OpenAI Evaluation Service');
@@ -45,10 +39,6 @@ class OpenAIEvaluationService {
   }
 
   async evaluateConversation(utterances: SpeakerUtterance[], model: string): Promise<OpenAIEvaluationResult> {
-    if (!this.apiKey) {
-      await this.initialize();
-    }
-
     const startTime = Date.now();
     const text = utterances.map(u => `${u.speaker}: ${u.text}`).join('\n');
     
@@ -58,11 +48,11 @@ class OpenAIEvaluationService {
       const instructions = await aiInstructionsService.getLatestInstructions('evaluation') || 'Please evaluate this conversation.';
       const prompt = this.constructPrompt(text, utterances, instructions);
 
-      this.progressCallback?.({ stage: 'analyzing', message: 'Prompt ready, sending to OpenAI', progress: 0.1 });
+      this.progressCallback?.({ stage: 'analyzing', message: 'Sending to OpenAI for analysis', progress: 0.1 });
 
-      const evaluation = await this.getOpenAIResponse(prompt, model);
+      const evaluation = await this.callOpenAIEdgeFunction(prompt, model);
 
-      this.progressCallback?.({ stage: 'processing_response', message: 'Response received from OpenAI', progress: 0.6 });
+      this.progressCallback?.({ stage: 'processing_response', message: 'Processing OpenAI response', progress: 0.6 });
 
       const parsedResult = this.parseOpenAIResponse(evaluation);
 
@@ -83,6 +73,7 @@ class OpenAIEvaluationService {
 
       return finalResult;
     } catch (error: any) {
+      this.progressCallback?.({ stage: 'error', message: error.message, progress: 0 });
       await this.handleApiError(error, 'evaluate');
       throw error;
     }
@@ -91,20 +82,14 @@ class OpenAIEvaluationService {
   private async fetchSettings(): Promise<Settings> {
     const aiConfidenceThreshold = await supabase.from('system_config').select('value').eq('key', 'ai_confidence_threshold').single();
     const aiEvaluationModel = await supabase.from('system_config').select('value').eq('key', 'ai_evaluation_model').single();
-    const openaiApiKey = await supabase.from('system_config').select('value').eq('key', 'openai_api_key').single();
 
     return {
       aiConfidenceThreshold: aiConfidenceThreshold.data?.value ? parseFloat(aiConfidenceThreshold.data.value) : 0.75,
-      aiEvaluationModel: aiEvaluationModel.data?.value || 'gpt-3.5-turbo',
-      openaiApiKey: openaiApiKey.data?.value || '',
+      aiEvaluationModel: aiEvaluationModel.data?.value || 'gpt-5-2025-08-07',
     };
   }
 
   async evaluate(params: EvaluationParams): Promise<OpenAIEvaluationResult> {
-    if (!this.apiKey) {
-      throw new Error('OpenAI API key is not set. Cannot perform evaluation.');
-    }
-
     try {
       const { dialogId, text, speakerUtterances, settings, progressCallback } = params;
 
@@ -113,11 +98,11 @@ class OpenAIEvaluationService {
       const instructions = await aiInstructionsService.getLatestInstructions('evaluation') || 'Please evaluate this conversation.';
       const prompt = this.constructPrompt(text, speakerUtterances, instructions);
 
-      progressCallback({ stage: 'analyzing', message: 'Prompt ready, sending to OpenAI', progress: 0.1 });
+      progressCallback({ stage: 'analyzing', message: 'Sending to OpenAI for analysis', progress: 0.1 });
 
-      const evaluation = await this.getOpenAIResponse(prompt, settings.aiEvaluationModel);
+      const evaluation = await this.callOpenAIEdgeFunction(prompt, settings.aiEvaluationModel);
 
-      progressCallback({ stage: 'processing_response', message: 'Response received from OpenAI', progress: 0.6 });
+      progressCallback({ stage: 'processing_response', message: 'Processing OpenAI response', progress: 0.6 });
 
       const parsedResult = this.parseOpenAIResponse(evaluation);
 
@@ -150,37 +135,46 @@ class OpenAIEvaluationService {
       `;
   }
 
-  private async getOpenAIResponse(prompt: string, model: string): Promise<any> {
-    const url = 'https://api.openai.com/v1/chat/completions';
-    const headers = {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${this.apiKey}`,
-    };
-
-    const body = JSON.stringify({
-      model: model,
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.7,
-      max_tokens: 1000,
-      top_p: 1,
-      frequency_penalty: 0,
-      presence_penalty: 0,
-    });
-
+  private async callOpenAIEdgeFunction(prompt: string, model: string): Promise<any> {
     try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: headers,
-        body: body,
-      });
+      // Determine if this is a GPT-5 or newer model that requires different parameters
+      const isGPT5OrNewer = model.includes('gpt-5') || model.includes('gpt-4.1') || model.includes('o3') || model.includes('o4');
+      
+      const requestBody: any = {
+        model: model,
+        messages: [{ role: "user", content: prompt }],
+      };
 
-      if (!response.ok) {
-        throw new Error(`OpenAI API responded with status: ${response.status} - ${response.statusText}`);
+      // For GPT-5 and newer models, use max_completion_tokens and reasoning_effort
+      if (isGPT5OrNewer) {
+        requestBody.max_output_tokens = 1000;
+        if (model.includes('o3') || model.includes('o4')) {
+          requestBody.reasoning_effort = 'medium';
+        }
+        // Note: temperature is not supported for GPT-5 and newer models
+      } else {
+        // For legacy models (gpt-4o family), use max_tokens and temperature
+        requestBody.max_output_tokens = 1000;
+        requestBody.temperature = 0.7;
       }
 
-      return await response.json();
+      const { data, error } = await supabase.functions.invoke('openai-evaluate', {
+        body: requestBody,
+      });
+
+      if (error) {
+        logger.error('OpenAI Edge Function error', error);
+        throw new Error(`OpenAI evaluation failed: ${error.message}`);
+      }
+
+      if (data.error) {
+        logger.error('OpenAI API error from edge function', data.error);
+        throw new Error(`OpenAI API error: ${data.error}`);
+      }
+
+      return data;
     } catch (error: any) {
-      logger.error('Error during OpenAI API request', error);
+      logger.error('Error calling OpenAI edge function', error);
       throw error;
     }
   }
@@ -198,8 +192,8 @@ class OpenAIEvaluationService {
         summary: parsed.summary,
         confidence: parsed.confidence,
         tokenUsage: {
-          input: response.usage.prompt_tokens,
-          output: response.usage.completion_tokens,
+          input: response.usage?.prompt_tokens || response.tokenEstimation?.actualInputTokens || 0,
+          output: response.usage?.completion_tokens || response.tokenEstimation?.outputTokens || 0,
           cost: 0
         },
         processingTime: 0,
@@ -223,15 +217,15 @@ class OpenAIEvaluationService {
   private async handleApiError(error: any, context: string): Promise<never> {
     logger.error(`OpenAI API error in ${context}`, error);
     
-    if (error.response?.status === 401) {
-      throw new Error('Invalid OpenAI API key. Please check your settings.');
+    if (error.message?.includes('401')) {
+      throw new Error('OpenAI API key is invalid or not configured. Please check your settings.');
     }
     
-    if (error.response?.status === 429) {
+    if (error.message?.includes('429')) {
       throw new Error('OpenAI API rate limit exceeded. Please try again later.');
     }
     
-    if (error.response?.status >= 500) {
+    if (error.message?.includes('500') || error.message?.includes('502') || error.message?.includes('503')) {
       throw new Error('OpenAI service is temporarily unavailable. Please try again later.');
     }
     

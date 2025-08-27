@@ -13,6 +13,7 @@ import { Badge } from '../components/ui/badge';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../components/ui/table';
 import { FileAudio, Plus, Star, User, Copy, Check } from 'lucide-react';
 import DialogActions from '../components/DialogActions';
+import GenerateReportDialog from '../components/GenerateReportDialog';
 import { Dialog } from '../types';
 
 interface DialogFiltersProps {
@@ -267,10 +268,13 @@ const Dashboard = () => {
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold">Dialog History</h1>
         </div>
-        <Button onClick={() => navigate('/upload')} className="w-full sm:w-auto">
-          <Plus className="h-4 w-4 mr-2" />
-          Upload New Dialog
-        </Button>
+        <div className="flex gap-2">
+          <GenerateReportDialog />
+          <Button onClick={() => navigate('/upload')} className="w-full sm:w-auto">
+            <Plus className="h-4 w-4 mr-2" />
+            Upload New Dialog
+          </Button>
+        </div>
       </div>
 
       <DialogFilters 

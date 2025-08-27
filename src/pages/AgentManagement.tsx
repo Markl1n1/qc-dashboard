@@ -6,6 +6,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import AgentForm from '../components/AgentForm';
 import AgentList from '../components/AgentList';
+import AgentCsvImport from '../components/AgentCsvImport';
 import { Agent, CreateAgentRequest, UpdateAgentRequest } from '../types/agent';
 import { agentService } from '../services/agentService';
 import { useAuthStore } from '../store/authStore';
@@ -65,6 +66,30 @@ const AgentManagement: React.FC = () => {
       throw error;
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleBulkCreateAgents = async (agentNames: string[]) => {
+    const errors: string[] = [];
+    
+    for (const name of agentNames) {
+      try {
+        await agentService.createAgent({ name });
+      } catch (error: any) {
+        if (error.message?.includes('duplicate key')) {
+          errors.push(`Agent "${name}" already exists`);
+        } else {
+          errors.push(`Failed to create agent "${name}": ${error.message}`);
+        }
+      }
+    }
+    
+    if (errors.length > 0 && errors.length === agentNames.length) {
+      throw new Error(errors.join(', '));
+    }
+    
+    if (errors.length > 0) {
+      console.warn('Some agents failed to create:', errors);
     }
   };
 
@@ -136,10 +161,17 @@ const AgentManagement: React.FC = () => {
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Agent Management</h1>
         {!showForm && (
-          <Button onClick={() => setShowForm(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Agent
-          </Button>
+          <div className="flex gap-2">
+            <AgentCsvImport 
+              onImportComplete={loadAgents}
+              onBulkCreate={handleBulkCreateAgents}
+              isLoading={isLoading}
+            />
+            <Button onClick={() => setShowForm(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Agent
+            </Button>
+          </div>
         )}
       </div>
 
