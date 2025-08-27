@@ -165,7 +165,6 @@ const AgentManagement: React.FC = () => {
             <AgentCsvImport 
               onImportComplete={loadAgents}
               onBulkCreate={handleBulkCreateAgents}
-              isLoading={isLoading}
             />
             <Button onClick={() => setShowForm(true)}>
               <Plus className="h-4 w-4 mr-2" />

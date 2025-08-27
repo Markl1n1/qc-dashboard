@@ -93,7 +93,7 @@ export const OpenAIEvaluationView: React.FC<OpenAIEvaluationViewProps> = ({
 
       toast({
         title: "Evaluation completed",
-        description: `OpenAI analysis finished with overall score: ${evaluationResult.overallScore}/100`,
+        description: `OpenAI analysis finished with overall score: ${evaluationResult.score || evaluationResult.overallScore}/100`,
       });
 
     } catch (error) {
@@ -202,7 +202,7 @@ export const OpenAIEvaluationView: React.FC<OpenAIEvaluationViewProps> = ({
               <CardTitle className="flex items-center justify-between">
                 Overall Performance
                 <Badge variant="outline" className="text-lg px-3 py-1">
-                  {result.overallScore}/100
+                  {result.score || result.overallScore}/100
                 </Badge>
               </CardTitle>
             </CardHeader>
@@ -250,38 +250,64 @@ export const OpenAIEvaluationView: React.FC<OpenAIEvaluationViewProps> = ({
             </Card>
           )}
 
+          {/* Speakers Information */}
+          {result.speakers && result.speakers.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Speaker Information</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {result.speakers.map((speaker, index) => (
+                    <div key={index} className="p-3 border rounded">
+                      {speaker.speaker_0 && (
+                        <div className="mb-2">
+                          <span className="font-medium">Speaker 0:</span> {speaker.speaker_0}
+                          {speaker.role_0 && <span className="text-muted-foreground ml-2">({speaker.role_0})</span>}
+                        </div>
+                      )}
+                      {speaker.speaker_1 && (
+                        <div>
+                          <span className="font-medium">Speaker 1:</span> {speaker.speaker_1}
+                          {speaker.role_1 && <span className="text-muted-foreground ml-2">({speaker.role_1})</span>}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Mistakes/Issues */}
           {result.mistakes.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle>Issues Identified ({result.mistakes.length})</CardTitle>
+                <CardTitle>Analysis Results ({result.mistakes.length} items)</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {result.mistakes.map((mistake) => (
-                    <div key={mistake.id} className="border-l-4 border-orange-500 pl-4">
+                  {result.mistakes.map((mistake, index) => (
+                    <div key={index} className="border-l-4 border-orange-500 pl-4">
                       <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-medium">{mistake.mistakeName || mistake.description}</h4>
+                        <h4 className="font-medium">{mistake.comment}</h4>
                         <Badge variant={
-                          mistake.level === 'critical' ? 'destructive' : 
-                          mistake.level === 'major' ? 'default' : 
-                          'secondary'
+                          mistake.rule_category === 'Banned' ? 'destructive' : 
+                          mistake.rule_category === 'Mistake' ? 'default' : 
+                          mistake.rule_category === 'Not Recommended' ? 'secondary' :
+                          'outline'
                         }>
-                          {mistake.level.toUpperCase()}
+                          {mistake.rule_category.toUpperCase()}
                         </Badge>
                       </div>
-                      <p className="text-sm text-muted-foreground mb-2">{mistake.description}</p>
-                      {mistake.text && onMistakeClick && (
+                      {mistake.utterance && onMistakeClick && (
                         <button
-                          onClick={() => onMistakeClick(mistake.text, mistake.position)}
+                          onClick={() => onMistakeClick(mistake.utterance, 0)}
                           className="text-sm italic border-l-2 border-muted pl-2 mb-2 block hover:bg-muted rounded p-1 cursor-pointer transition-colors"
                         >
-                          "{mistake.text}" <span className="text-xs text-blue-600 ml-1">→ View in transcript</span>
+                          "{mistake.utterance}" <span className="text-xs text-blue-600 ml-1">→ View in transcript</span>
                         </button>
                       )}
-                      <p className="text-sm font-medium text-green-700">
-                        💡 {mistake.suggestion}
-                      </p>
                     </div>
                   ))}
                 </div>

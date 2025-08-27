@@ -126,6 +126,26 @@ class OpenAIEvaluationService {
     const speakerLines = speakerUtterances.map(u => `${u.speaker}: ${u.text}`).join('\n');
 
     return `${instructions}
+
+You must respond in the following JSON format:
+{
+  "score": <int>,                 // итоговая оценка (1-100)
+  "mistakes": [
+    {
+      "rule_category": "Correct|Acceptable|Not Recommended|Mistake|Banned",
+      "comment": "<string>", // comment from analysis
+      "utterance": "<string>" // agent utterance where mistake found
+    }
+  ],
+  "speakers": [
+    {
+      "speaker_0": "<string>", // name of speaker if defined
+      "role_0": "<string>", // role of speaker 0 (Agent or Customer)
+      "speaker_1": "<string>", // name of speaker if defined
+      "role_1": "<string>", // role of speaker 1 (Agent or Customer)
+    }
+  ]
+}
       
       Transcription:
       ${speakerLines}
@@ -184,13 +204,28 @@ class OpenAIEvaluationService {
       const content = response.choices[0].message.content;
       const parsed = JSON.parse(content);
 
+      // Validate the new JSON format
+      if (typeof parsed.score !== 'number') {
+        throw new Error('Invalid response format: score is required');
+      }
+
+      if (!Array.isArray(parsed.mistakes)) {
+        throw new Error('Invalid response format: mistakes must be an array');
+      }
+
+      if (!Array.isArray(parsed.speakers)) {
+        throw new Error('Invalid response format: speakers must be an array');
+      }
+
       return {
-        overallScore: parsed.overallScore,
-        categoryScores: parsed.categoryScores,
+        score: parsed.score,
         mistakes: parsed.mistakes,
-        recommendations: parsed.recommendations,
-        summary: parsed.summary,
-        confidence: parsed.confidence,
+        speakers: parsed.speakers,
+        overallScore: parsed.score,
+        categoryScores: {},
+        recommendations: [],
+        summary: `Analysis completed with score: ${parsed.score}/100`,
+        confidence: 0.9,
         tokenUsage: {
           input: response.usage?.prompt_tokens || response.tokenEstimation?.actualInputTokens || 0,
           output: response.usage?.completion_tokens || response.tokenEstimation?.outputTokens || 0,

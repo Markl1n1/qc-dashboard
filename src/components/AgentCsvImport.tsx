@@ -13,7 +13,6 @@ import Papa from 'papaparse';
 interface AgentCsvImportProps {
   onImportComplete: () => void;
   onBulkCreate: (agentNames: string[]) => Promise<void>;
-  isLoading?: boolean;
 }
 
 interface ImportResult {
@@ -23,8 +22,7 @@ interface ImportResult {
 
 const AgentCsvImport: React.FC<AgentCsvImportProps> = ({ 
   onImportComplete, 
-  onBulkCreate, 
-  isLoading 
+  onBulkCreate
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -261,7 +259,7 @@ const AgentCsvImport: React.FC<AgentCsvImportProps> = ({
             </Button>
             <Button 
               onClick={handleImport} 
-              disabled={!file || isProcessing || isLoading}
+              disabled={!file || isProcessing}
             >
               {isProcessing ? 'Importing...' : 'Import Agents'}
             </Button>

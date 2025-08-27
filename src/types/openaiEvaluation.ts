@@ -1,35 +1,35 @@
 
 export interface OpenAIEvaluationMistake {
-  id: string;
-  level: 'minor' | 'major' | 'critical';
-  category: string;
-  subcategory?: string;
-  mistakeName?: string;
-  description: string;
-  text: string;
-  position: number;
-  speaker: 'Agent' | 'Customer';
-  suggestion: string;
-  impact: 'low' | 'medium' | 'high';
-  confidence: number;
-  timestamp?: number;
+  rule_category: 'Correct' | 'Acceptable' | 'Not Recommended' | 'Mistake' | 'Banned';
+  comment: string;
+  utterance: string;
+}
+
+export interface OpenAIEvaluationSpeaker {
+  speaker_0?: string;
+  role_0?: string;
+  speaker_1?: string;
+  role_1?: string;
 }
 
 export interface OpenAIEvaluationResult {
-  overallScore: number;
-  categoryScores: Record<string, number>;
+  score: number;
   mistakes: OpenAIEvaluationMistake[];
-  recommendations: string[];
-  summary: string;
-  confidence: number;
-  processingTime: number;
-  tokenUsage: {
+  speakers: OpenAIEvaluationSpeaker[];
+  // Additional fields for internal use
+  overallScore?: number;
+  categoryScores?: Record<string, number>;
+  recommendations?: string[];
+  summary?: string;
+  confidence?: number;
+  processingTime?: number;
+  tokenUsage?: {
     input: number;
     output: number;
     cost?: number;
   };
-  modelUsed: string;
-  analysisId: string;
+  modelUsed?: string;
+  analysisId?: string;
 }
 
 export interface OpenAIEvaluationProgress {
