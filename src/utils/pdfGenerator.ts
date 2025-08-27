@@ -35,6 +35,45 @@ export class PDFGenerator {
     });
   }
 
+  private cleanSpeakerLabel(speaker: string): string {
+    // Clean "Speaker Speaker 0" -> "Speaker 0"
+    return speaker
+      .replace(/^Speaker\s+Speaker\s*/, 'Speaker ') // Remove duplicate "Speaker"
+      .replace(/^Speaker\s+/, 'Speaker '); // Ensure consistent "Speaker " prefix
+  }
+
+  private mergeConsecutiveUtterances(utterances: SpeakerUtterance[]): SpeakerUtterance[] {
+    if (!utterances || utterances.length === 0) return [];
+
+    const merged: SpeakerUtterance[] = [];
+    let current = { 
+      ...utterances[0], 
+      speaker: this.cleanSpeakerLabel(utterances[0].speaker)
+    };
+
+    for (let i = 1; i < utterances.length; i++) {
+      const next = { 
+        ...utterances[i], 
+        speaker: this.cleanSpeakerLabel(utterances[i].speaker)
+      };
+      
+      if (current.speaker === next.speaker) {
+        // Merge with current utterance
+        current.text = `${current.text} ${next.text}`;
+        current.end = next.end; // Update end time to the latest
+        current.confidence = Math.min(current.confidence, next.confidence); // Use lower confidence
+      } else {
+        // Different speaker, add current to merged and start new one
+        merged.push(current);
+        current = { ...next };
+      }
+    }
+    
+    // Add the last utterance
+    merged.push(current);
+    return merged;
+  }
+
   private addSpeakerUtterance(utterance: SpeakerUtterance, index: number): void {
     this.checkPageBreak(this.lineHeight * 3); // Reserve space for speaker + text
     
@@ -211,7 +250,10 @@ export class PDFGenerator {
     if (dialog.speakerTranscription && dialog.speakerTranscription.length > 0) {
       this.addSectionTitle('Speaker Dialog');
       
-      dialog.speakerTranscription.forEach((utterance, index) => {
+      // Merge consecutive utterances and clean speaker labels before adding to PDF
+      const mergedUtterances = this.mergeConsecutiveUtterances(dialog.speakerTranscription);
+      
+      mergedUtterances.forEach((utterance, index) => {
         this.addSpeakerUtterance(utterance, index);
       });
     }
@@ -276,7 +318,10 @@ export class PDFGenerator {
     this.addText('Conversation:', 14, 'bold');
     this.yPosition += 5;
     
-    utterances.forEach((utterance, index) => {
+    // Merge consecutive utterances and clean speaker labels before adding to PDF
+    const mergedUtterances = this.mergeConsecutiveUtterances(utterances);
+    
+    mergedUtterances.forEach((utterance, index) => {
       this.addSpeakerUtterance(utterance, index);
     });
     

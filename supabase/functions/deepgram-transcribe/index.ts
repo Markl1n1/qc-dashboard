@@ -54,6 +54,7 @@ Deno.serve(async (req) => {
     params.append('model', model);
     params.append('punctuate', 'true');
     params.append('smart_format', options.smart_format !== false ? 'true' : 'false');
+    params.append('filler_words', 'true');
     
     // Language detection
     if (options.detect_language) {

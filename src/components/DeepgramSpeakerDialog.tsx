@@ -152,7 +152,7 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
               <div className="flex items-center gap-2">
                 <Badge variant="secondary">Language</Badge>
                 <span>{detectedLanguage.language}</span>
-                <span className="text-muted-foreground">
+                <span className="text-foreground/70">
                   ({Math.round(detectedLanguage.confidence * 100)}% confidence)
                 </span>
               </div>
@@ -187,10 +187,10 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
                 >
                   <User className="h-4 w-4" />
                   <span className="font-medium">{speaker}</span>
-                  <Badge variant="outline" className="text-xs">
+                  <Badge variant="outline" className="text-xs font-bold" style={{ color: style.textColor, borderColor: style.borderColor }}>
                     {stats.count} segments
                   </Badge>
-                  <span className="text-xs">
+                  <span className="text-xs font-medium">
                     {formatTime(stats.totalDuration)} talk time
                   </span>
                 </div>
@@ -234,10 +234,10 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
                         >
                           {utterance.speaker}
                         </span>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-foreground/70">
                           {formatTime(utterance.start)} - {formatTime(utterance.end)}
                         </span>
-                        <Badge variant="outline" className="text-xs">
+                        <Badge variant="outline" className="text-xs font-bold" style={{ color: style.textColor, borderColor: style.borderColor }}>
                           {Math.round(utterance.confidence * 100)}%
                         </Badge>
                       </div>

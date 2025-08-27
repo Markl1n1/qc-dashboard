@@ -35,7 +35,7 @@ export function AppSidebar() {
   const isActive = (path: string) => currentPath === path;
 
   const getNavCls = ({ isActive }: { isActive: boolean }) => 
-    isActive ? "bg-muted text-primary font-medium" : "hover:bg-muted/50";
+    isActive ? "bg-muted text-primary font-bold" : "hover:bg-muted/50 font-bold";
 
   const handleSignOut = async () => {
     try {
@@ -52,16 +52,16 @@ export function AppSidebar() {
   return (
     <Sidebar className={collapsed ? "w-14" : "w-60"} collapsible="icon">
       {/* Header with logo and trigger */}
-      <div className="p-4 border-b">
+      <div className="p-4 border-b bg-sidebar">
         <div className="flex items-center gap-2">
           <VoiceQCLogo size="md" />
           {!collapsed}
         </div>
       </div>
 
-      <SidebarContent>
+      <SidebarContent className="bg-sidebar">
         <SidebarGroup>
-          <SidebarGroupLabel>Main Navigation</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-sidebar-foreground/70 font-bold">Main Navigation</SidebarGroupLabel>
           
           <SidebarGroupContent>
             <SidebarMenu>
@@ -78,7 +78,7 @@ export function AppSidebar() {
               
               {/* Theme toggle button with consistent styling */}
               <SidebarMenuItem>
-                <SidebarMenuButton className="hover:bg-muted/50">
+                <SidebarMenuButton className="hover:bg-muted/50 font-bold">
                   <button onClick={toggleTheme} className="flex items-center w-full">
                     {theme === 'light' ? (
                       <Moon className="mr-2 h-4 w-4" />
@@ -92,7 +92,7 @@ export function AppSidebar() {
               
               {/* Sign out button with consistent styling */}
               <SidebarMenuItem>
-                <SidebarMenuButton className="hover:bg-muted/50">
+                <SidebarMenuButton className="hover:bg-muted/50 font-bold">
                   <button onClick={handleSignOut} className="flex items-center w-full">
                     <LogOut className="mr-2 h-4 w-4" />
                     {!collapsed && <span>Sign Out</span>}
