@@ -1,56 +1,42 @@
 
 import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { RadioGroup, RadioGroupItem } from './ui/radio-group';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Label } from './ui/label';
 
-interface Language {
-  code: string;
-  name: string;
-}
+export type SupportedLanguage = 'en' | 'de' | 'pl' | 'ru';
 
 interface LanguageSelectorProps {
-  selectedLanguage: string;
-  onLanguageChange: (languageCode: string) => void;
+  value: SupportedLanguage;
+  onValueChange: (value: SupportedLanguage) => void;
 }
 
-const TRANSCRIPTION_LANGUAGES: Language[] = [
-  { code: 'en_us', name: 'English' },
-  { code: 'es', name: 'Spanish' },
-  { code: 'fr', name: 'French' },
-  { code: 'de', name: 'German' },
-  { code: 'pl', name: 'Polish' },
-  { code: 'ru', name: 'Russian' },
-  { code: 'uk', name: 'Ukrainian' },
+const SUPPORTED_LANGUAGES = [
+  { code: 'en' as const, name: 'English', flag: '🇺🇸' },
+  { code: 'de' as const, name: 'German', flag: '🇩🇪' },
+  { code: 'pl' as const, name: 'Polish', flag: '🇵🇱' },
+  { code: 'ru' as const, name: 'Russian', flag: '🇷🇺' },
 ];
 
-const LanguageSelector: React.FC<LanguageSelectorProps> = ({
-  selectedLanguage,
-  onLanguageChange,
-}) => {
+const LanguageSelector: React.FC<LanguageSelectorProps> = ({ value, onValueChange }) => {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Audio Language</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <RadioGroup value={selectedLanguage} onValueChange={onLanguageChange}>
-          <div className="grid grid-cols-3 gap-4">
-            {TRANSCRIPTION_LANGUAGES.map((language) => (
-              <div key={language.code} className="flex items-center space-x-2">
-                <RadioGroupItem value={language.code} id={language.code} />
-                <Label 
-                  htmlFor={language.code} 
-                  className="cursor-pointer font-medium"
-                >
-                  {language.name}
-                </Label>
-              </div>
-            ))}
-          </div>
-        </RadioGroup>
-      </CardContent>
-    </Card>
+    <div className="space-y-2">
+      <Label htmlFor="language-select">Transcription Language</Label>
+      <Select value={value} onValueChange={onValueChange}>
+        <SelectTrigger id="language-select">
+          <SelectValue placeholder="Select language" />
+        </SelectTrigger>
+        <SelectContent>
+          {SUPPORTED_LANGUAGES.map((language) => (
+            <SelectItem key={language.code} value={language.code}>
+              <span className="flex items-center gap-2">
+                <span>{language.flag}</span>
+                <span>{language.name}</span>
+              </span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 };
 
