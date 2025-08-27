@@ -43,14 +43,20 @@ class OpenAIEvaluationService {
     const text = utterances.map(u => `${u.speaker}: ${u.text}`).join('\n');
     
     try {
+      console.log('🚀 Starting OpenAI evaluation with model:', model);
+      console.log('📊 Input utterances count:', utterances.length);
+      
       this.progressCallback?.({ stage: 'initializing', message: 'Preparing evaluation', progress: 0 });
 
       const instructions = await aiInstructionsService.getLatestInstructions('evaluation') || 'Please evaluate this conversation.';
       const prompt = this.constructPrompt(text, utterances, instructions);
+      console.log('📝 Generated prompt length:', prompt.length);
 
       this.progressCallback?.({ stage: 'analyzing', message: 'Sending to OpenAI for analysis', progress: 0.1 });
 
+      console.log('📤 Calling OpenAI edge function...');
       const evaluation = await this.callOpenAIEdgeFunction(prompt, model);
+      console.log('📥 Received evaluation response:', evaluation);
 
       this.progressCallback?.({ stage: 'processing_response', message: 'Processing OpenAI response', progress: 0.6 });
 
@@ -201,19 +207,47 @@ You must respond in the following JSON format:
 
   private parseOpenAIResponse(response: any): OpenAIEvaluationResult {
     try {
+      console.log('🔍 OpenAI Raw Response:', JSON.stringify(response, null, 2));
+      
+      if (!response || !response.choices || !response.choices[0] || !response.choices[0].message) {
+        logger.error('Invalid OpenAI response structure');
+        throw new Error('Invalid OpenAI response structure');
+      }
+
       const content = response.choices[0].message.content;
-      const parsed = JSON.parse(content);
+      console.log('📝 OpenAI Content:', content);
+      
+      if (!content) {
+        logger.error('No content in OpenAI response');
+        throw new Error('No content in OpenAI response');
+      }
+
+      // Try to clean content if it has markdown formatting
+      let cleanContent = content.trim();
+      if (cleanContent.startsWith('```json')) {
+        cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      } else if (cleanContent.startsWith('```')) {
+        cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      }
+      
+      console.log('🧹 Cleaned Content:', cleanContent);
+
+      const parsed = JSON.parse(cleanContent);
+      console.log('✅ Parsed JSON:', JSON.stringify(parsed, null, 2));
 
       // Validate the new JSON format
       if (typeof parsed.score !== 'number') {
+        logger.error('Invalid response format: score is required');
         throw new Error('Invalid response format: score is required');
       }
 
       if (!Array.isArray(parsed.mistakes)) {
+        logger.error('Invalid response format: mistakes must be an array');
         throw new Error('Invalid response format: mistakes must be an array');
       }
 
       if (!Array.isArray(parsed.speakers)) {
+        logger.error('Invalid response format: speakers must be an array');
         throw new Error('Invalid response format: speakers must be an array');
       }
 
@@ -236,8 +270,14 @@ You must respond in the following JSON format:
         analysisId: ''
       };
     } catch (error: any) {
-      logger.error('Failed to parse OpenAI response', error, { response });
-      throw new Error('Failed to parse OpenAI response. Please ensure the response is a valid JSON.');
+      console.error('❌ OpenAI Parsing Error:', error);
+      console.error('❌ Error Details:', {
+        message: error.message,
+        response: response,
+        content: response?.choices?.[0]?.message?.content
+      });
+      logger.error('Failed to parse OpenAI response', error);
+      throw new Error(`Failed to parse OpenAI response: ${error.message}. Content: ${response?.choices?.[0]?.message?.content || 'No content'}`);
     }
   }
 

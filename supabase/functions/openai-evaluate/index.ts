@@ -50,10 +50,9 @@ serve(async (req) => {
       }
     }
 
-    console.log('Making OpenAI request with model:', model);
-    console.log('Request body:', JSON.stringify(requestBody, null, 2));
+    console.log('📤 Request body:', JSON.stringify(requestBody, null, 2));
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${openAIApiKey}`,
@@ -62,21 +61,32 @@ serve(async (req) => {
       body: JSON.stringify(requestBody),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('OpenAI API error:', response.status, errorText);
+    console.log('📥 OpenAI response status:', openAIResponse.status);
+    console.log('📥 OpenAI response headers:', Object.fromEntries(openAIResponse.headers.entries()));
+
+    if (!openAIResponse.ok) {
+      const errorText = await openAIResponse.text();
+      console.error('❌ OpenAI API error:', errorText);
       return new Response(
         JSON.stringify({ 
-          error: `OpenAI API error: ${response.status} - ${errorText}` 
+          error: `OpenAI API error: ${openAIResponse.status} - ${errorText}` 
         }),
         { 
-          status: response.status, 
+          status: openAIResponse.status, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
     }
 
-    const data = await response.json();
+    const data = await openAIResponse.json();
+    console.log('✅ OpenAI response successful');
+    console.log('📊 Token usage:', {
+      actualInputTokens: data.usage?.prompt_tokens,
+      outputTokens: data.usage?.completion_tokens,
+      totalTokens: data.usage?.total_tokens
+    });
+    console.log('📝 Response content preview:', data.choices?.[0]?.message?.content?.substring(0, 200) + '...');
+    console.log('🔍 Full response structure:', JSON.stringify(data, null, 2));
     
     // Calculate token estimation for cost tracking
     const usage = data.usage || {};
@@ -92,19 +102,24 @@ serve(async (req) => {
       tokenEstimation
     };
 
-    console.log('OpenAI response successful, tokens used:', tokenEstimation);
+    console.log('✅ OpenAI response successful, tokens used:', tokenEstimation);
 
     return new Response(JSON.stringify(responseData), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
-    console.error('Error in openai-evaluate function:', error);
+    console.error('❌ Error in openai-evaluate function:', error);
+    console.error('❌ Error stack:', error.stack);
     return new Response(
-      JSON.stringify({ error: `Server error: ${error.message}` }),
+      JSON.stringify({ 
+        error: error.message,
+        details: error.stack,
+        timestamp: new Date().toISOString()
+      }),
       { 
         status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
   }
