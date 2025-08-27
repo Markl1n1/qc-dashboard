@@ -1,3 +1,4 @@
+
 export interface DeepgramConfig {
   model?: 'nova-2' | 'nova' | 'enhanced' | 'base' | 'nova-3';
   language?: string;
@@ -112,15 +113,4 @@ export interface DeepgramProgress {
   stage: 'uploading' | 'processing' | 'diarizing' | 'complete' | 'error';
   progress: number;
   message: string;
-}
-
-export interface DeepgramTranscriptionRequest {
-  audioUrl: string;
-  language?: string;
-  punctuate?: boolean;
-  smart_format?: boolean;
-  diarize?: boolean;
-  filler_words?: boolean;
-  model?: string;
-  tier?: string;
 }

@@ -1,103 +1,195 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { corsHeaders } from '../_shared/cors.ts';
-import { SupabaseClient, createClient } from '@supabase/supabase-js';
-import { load } from "https://deno.land/std@0.182.0/dotenv/mod.ts";
 
-const env = await load();
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const supabaseUrl = env["SUPABASE_URL"];
-const supabaseKey = env["SUPABASE_ANON_KEY"];
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
 
-const deepgramApiKey = env["DEEPGRAM_API_KEY"];
+interface DeepgramRequest {
+  audio: string; // base64 encoded
+  mimeType: string;
+  options: {
+    model?: string;
+    language?: string;
+    detect_language?: boolean;
+    diarize?: boolean;
+    punctuate?: boolean;
+    utterances?: boolean;
+    smart_format?: boolean;
+    profanity_filter?: boolean;
+  };
+}
 
-serve(async (req) => {
-  // Handle CORS preflight request
+Deno.serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { audioUrl, language = 'en', punctuate = true, smart_format = false, diarize = true, filler_words = true, model, tier } = await req.json();
-
-    if (!audioUrl) {
-      return new Response(JSON.stringify({ error: 'audioUrl is required' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    const DEEPGRAM_API_KEY = 'fad53278adc2597e39856ec7ac1bf4a4d9adbe16';
+    
+    if (!DEEPGRAM_API_KEY) {
+      throw new Error('Deepgram API key not configured');
     }
 
-    const supabaseClient = createClient(supabaseUrl, supabaseKey, {
-      auth: {
-        persistSession: false
-      }
+    const { audio, mimeType, options }: DeepgramRequest = await req.json();
+    
+    console.log('🎙️ Processing Deepgram transcription request', {
+      mimeType,
+      options,
+      audioLength: audio.length,
+      model: options.model || 'nova-2'
     });
 
-    if (!deepgramApiKey) {
-      console.error("Deepgram API key not found in environment variables.");
-      return new Response(JSON.stringify({ error: 'Deepgram API key not found' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    // Convert base64 to binary
+    const audioBuffer = Uint8Array.from(atob(audio), c => c.charCodeAt(0));
+
+    // Prepare Deepgram request parameters
+    const params = new URLSearchParams();
+    
+    // Core parameters - support both Nova-2 and Nova-3
+    const model = options.model || 'nova-2';
+    params.append('model', model);
+    params.append('punctuate', 'true');
+    params.append('smart_format', options.smart_format !== false ? 'true' : 'false');
+    params.append('filler_words', 'true');
+    
+    // Language detection
+    if (options.detect_language) {
+      params.append('detect_language', 'true');
+    } else if (options.language) {
+      params.append('language', options.language);
     }
 
-    // Build Deepgram request parameters
-    const deepgramParams: any = {
-      model: 'nova-2',
-      punctuate,
-      smart_format,
-      diarize,
-      filler_words,
-      language
-    };
-
-    // Add enhanced parameters for non-English languages
-    if (language !== 'en') {
-      deepgramParams.model = model || 'general';
-      deepgramParams.tier = tier || 'enhanced';
+    // Speaker diarization - CRITICAL: Ensure both parameters are set
+    if (options.diarize) {
+      params.append('diarize', 'true');
+      params.append('utterances', 'true');
+      console.log('✅ Diarization enabled: diarize=true, utterances=true');
     }
 
-    // Fetch the audio file
-    const audioResponse = await fetch(audioUrl);
-    if (!audioResponse.ok) {
-      console.error(`Failed to fetch audio: ${audioResponse.status} ${audioResponse.statusText}`);
-      return new Response(JSON.stringify({ error: 'Failed to fetch audio' }), {
-        status: audioResponse.status,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    // Additional options
+    if (options.profanity_filter) {
+      params.append('profanity_filter', 'true');
     }
-    const audioBuffer = await audioResponse.arrayBuffer();
 
-    const deepgramResponse = await fetch(
-      `https://api.deepgram.com/v1/listen?${new URLSearchParams(deepgramParams)}`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Token ${deepgramApiKey}`,
-          'Content-Type': 'audio/wav'
-        },
-        body: audioBuffer
-      }
-    );
+    const deepgramUrl = `https://api.deepgram.com/v1/listen?${params.toString()}`;
+    
+    console.log('📡 Calling Deepgram API with model:', model, 'URL:', deepgramUrl);
 
-    const deepgramResult = await deepgramResponse.json();
+    const deepgramResponse = await fetch(deepgramUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${DEEPGRAM_API_KEY}`,
+        'Content-Type': mimeType || 'audio/wav'
+      },
+      body: audioBuffer
+    });
 
     if (!deepgramResponse.ok) {
-      console.error('Deepgram API error:', deepgramResult);
-      return new Response(JSON.stringify({ error: 'Deepgram API error', details: deepgramResult }), {
+      const errorText = await deepgramResponse.text();
+      console.error('❌ Deepgram API error:', {
         status: deepgramResponse.status,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        statusText: deepgramResponse.statusText,
+        error: errorText,
+        model: model
       });
+      
+      // Check for specific Nova-3 errors
+      if (deepgramResponse.status === 400 && errorText.includes('model')) {
+        throw new Error(`Model ${model} is not available. Please check your Deepgram plan supports this model.`);
+      }
+      
+      throw new Error(`Deepgram API error: ${deepgramResponse.status} ${deepgramResponse.statusText}`);
     }
 
+    const deepgramResult = await deepgramResponse.json();
+    console.log('✅ Deepgram response received', {
+      hasResults: !!deepgramResult.results,
+      hasUtterances: !!deepgramResult.results?.utterances,
+      utteranceCount: deepgramResult.results?.utterances?.length || 0,
+      model: model,
+      detectedLanguage: deepgramResult.metadata?.model_info?.language
+    });
+
+    // Process the result
+    const transcript = deepgramResult.results?.channels?.[0]?.alternatives?.[0]?.transcript || '';
+    
+    // Process speaker utterances if available
+    let speakerUtterances: any[] = [];
+    if (deepgramResult.results?.utterances) {
+      console.log('📊 Processing utterances, count:', deepgramResult.results.utterances.length);
+      
+      speakerUtterances = deepgramResult.results.utterances.map((utterance: any, index: number) => {
+        // Use actual speaker numbers from Deepgram
+        const speakerNumber = utterance.speaker !== undefined ? utterance.speaker : 0;
+        const speakerLabel = `Speaker ${speakerNumber}`;
+        
+        console.log(`🎤 Utterance ${index}: speaker=${speakerNumber}, confidence=${utterance.confidence}, text="${utterance.transcript.substring(0, 50)}..."`);
+        
+        return {
+          speaker: speakerLabel,
+          text: utterance.transcript,
+          confidence: utterance.confidence,
+          start: utterance.start,
+          end: utterance.end
+        };
+      });
+
+      // Log speaker distribution for debugging
+      const speakerDistribution = speakerUtterances.reduce((acc: any, utterance: any) => {
+        acc[utterance.speaker] = (acc[utterance.speaker] || 0) + 1;
+        return acc;
+      }, {});
+      console.log('📈 Speaker distribution:', speakerDistribution);
+    }
+
+    // Detect language if available
+    let detectedLanguage = null;
+    if (deepgramResult.metadata?.model_info?.language) {
+      detectedLanguage = {
+        language: deepgramResult.metadata.model_info.language,
+        confidence: deepgramResult.metadata.model_info.language_confidence || 0.95
+      };
+    }
+
+    const result = {
+      text: transcript,
+      speakerUtterances,
+      detectedLanguage,
+      metadata: {
+        duration: deepgramResult.metadata?.duration || 0,
+        channels: deepgramResult.metadata?.channels || 1,
+        model: model
+      }
+    };
+
+    console.log('✅ Processed transcription result', {
+      textLength: result.text.length,
+      utteranceCount: result.speakerUtterances.length,
+      hasLanguageDetection: !!result.detectedLanguage,
+      model: model
+    });
+
     return new Response(
-      JSON.stringify({ data: deepgramResult }),
+      JSON.stringify({ success: true, result }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
+
   } catch (error) {
-    console.error('Function error:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    console.error('❌ Deepgram transcription error:', error);
+    
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown error occurred' 
+      }),
+      { 
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
   }
 });

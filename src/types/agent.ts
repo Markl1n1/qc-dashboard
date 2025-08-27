@@ -2,14 +2,14 @@
 export interface Agent {
   id: string;
   user_id: string;
-  name: string; // This serves as both name and stage (e.g., "sales", "support", etc.)
+  name: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
 }
 
 export interface CreateAgentRequest {
-  name: string; // Agent stage/name
+  name: string;
 }
 
 export interface UpdateAgentRequest {
