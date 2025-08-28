@@ -213,7 +213,7 @@ export const OpenAIEvaluationView: React.FC<OpenAIEvaluationViewProps> = ({
                   <span className="font-medium">Model Used:</span> {result.modelUsed}
                 </div>
                 <div>
-                  <span className="font-medium">Confidence:</span> {result.confidence}%
+                  <span className="font-medium">Confidence:</span> {Math.round((result.confidence * 100))}%
                 </div>
                 <div>
                   <span className="font-medium">Processing Time:</span> {(result.processingTime / 1000).toFixed(1)}s
@@ -279,33 +279,39 @@ export const OpenAIEvaluationView: React.FC<OpenAIEvaluationViewProps> = ({
             </Card>
           )}
 
-          {/* Mistakes/Issues */}
+          {/* Detected Issues */}
           {result.mistakes.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle>Analysis Results ({result.mistakes.length} items)</CardTitle>
+                <CardTitle>Detected Issues ({result.mistakes.length} items)</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
                   {result.mistakes.map((mistake, index) => (
-                    <div key={index} className="border-l-4 border-orange-500 pl-4">
+                    <div key={index} className={`border-l-4 pl-4 ${
+                      mistake.rule_category === 'Banned' ? 'border-red-500' :
+                      mistake.rule_category === 'Mistake' ? 'border-orange-500' :
+                      mistake.rule_category === 'Not Recommended' ? 'border-yellow-500' :
+                      'border-green-500'
+                    }`}>
                       <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-medium">{mistake.comment}</h4>
+                        <h4 className="font-medium text-sm">{mistake.comment}</h4>
                         <Badge variant={
                           mistake.rule_category === 'Banned' ? 'destructive' : 
                           mistake.rule_category === 'Mistake' ? 'default' : 
                           mistake.rule_category === 'Not Recommended' ? 'secondary' :
                           'outline'
-                        }>
-                          {mistake.rule_category.toUpperCase()}
+                        } className="text-xs">
+                          {mistake.rule_category}
                         </Badge>
                       </div>
                       {mistake.utterance && onMistakeClick && (
                         <button
                           onClick={() => onMistakeClick(mistake.utterance, 0)}
-                          className="text-sm italic border-l-2 border-muted pl-2 mb-2 block hover:bg-muted rounded p-1 cursor-pointer transition-colors"
+                          className="text-sm italic border-l-2 border-muted pl-2 mb-2 block hover:bg-muted rounded p-1 cursor-pointer transition-colors w-full text-left"
                         >
-                          "{mistake.utterance}" <span className="text-xs text-blue-600 ml-1">→ View in transcript</span>
+                          <span className="text-muted-foreground">Quote:</span> "{mistake.utterance}" 
+                          <span className="text-xs text-blue-600 ml-2">→ View in transcript</span>
                         </button>
                       )}
                     </div>

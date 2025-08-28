@@ -178,31 +178,34 @@ export class PDFGenerator {
       this.yPosition += 10;
     }
 
-    // Detected Issues
+    // Detected Issues - Updated for new JSON format
     if (evaluation.mistakes && evaluation.mistakes.length > 0) {
       this.addText(`Detected Issues (${evaluation.mistakes.length})`, 12, 'bold');
       this.yPosition += 5;
       
-      evaluation.mistakes.forEach((mistake, index) => {
+      evaluation.mistakes.forEach((mistake: any, index: number) => {
         this.checkPageBreak(30); // Reserve space for mistake details
         
-        // Mistake header with severity color
+        // Mistake header with category-based color
         this.doc.setFont('helvetica', 'bold');
         this.doc.setFontSize(11);
         
-        // Color coding based on severity level
-        switch (mistake.level) {
-          case 'critical':
+        // Color coding based on rule category
+        switch (mistake.rule_category) {
+          case 'Banned':
             this.doc.setTextColor(220, 38, 38); // Red
             break;
-          case 'major':
+          case 'Mistake':
             this.doc.setTextColor(249, 115, 22); // Orange
             break;
+          case 'Not Recommended':
+            this.doc.setTextColor(234, 179, 8); // Yellow
+            break;
           default:
-            this.doc.setTextColor(101, 163, 13); // Green for minor
+            this.doc.setTextColor(34, 197, 94); // Green for Correct/Acceptable
         }
         
-        this.doc.text(`${index + 1}. ${mistake.mistakeName} [${mistake.level.toUpperCase()}]`, this.margin, this.yPosition);
+        this.doc.text(`${index + 1}. ${mistake.rule_category || 'Issue'} [${(mistake.rule_category || 'GENERAL').toUpperCase()}]`, this.margin, this.yPosition);
         this.yPosition += this.lineHeight + 2;
         
         // Reset color for description
@@ -210,19 +213,34 @@ export class PDFGenerator {
         this.doc.setFont('helvetica', 'normal');
         this.doc.setFontSize(10);
         
-        this.addText(`Category: ${mistake.category} | Speaker: ${mistake.speaker} | Confidence: ${mistake.confidence}%`, 9, 'normal');
-        this.addText(`Description: ${mistake.description}`, 10, 'normal');
-        
-        if (mistake.text) {
-          this.addText(`Quote: "${mistake.text}"`, 10, 'normal');
+        // Add comment/description
+        if (mistake.comment) {
+          this.addText(`Description: ${mistake.comment}`, 10, 'normal');
         }
         
-        if (mistake.suggestion) {
-          this.addText(`Suggestion: ${mistake.suggestion}`, 10, 'normal');
+        // Add utterance quote
+        if (mistake.utterance) {
+          this.addText(`Quote: "${mistake.utterance}"`, 10, 'normal');
         }
         
         this.yPosition += 8;
       });
+    }
+
+    // Speaker Information - Added section
+    if (evaluation.speakers && evaluation.speakers.length > 0) {
+      this.addText('Speaker Information', 12, 'bold');
+      this.yPosition += 3;
+      
+      evaluation.speakers.forEach((speakerInfo: any, index: number) => {
+        if (speakerInfo.speaker_0) {
+          this.addText(`Speaker 0: ${speakerInfo.speaker_0}${speakerInfo.role_0 ? ` (${speakerInfo.role_0})` : ''}`, 10, 'normal');
+        }
+        if (speakerInfo.speaker_1) {
+          this.addText(`Speaker 1: ${speakerInfo.speaker_1}${speakerInfo.role_1 ? ` (${speakerInfo.role_1})` : ''}`, 10, 'normal');
+        }
+      });
+      this.yPosition += 10;
     }
   }
 
