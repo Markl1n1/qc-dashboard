@@ -7,26 +7,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Badge } from '../components/ui/badge';
 import { Alert, AlertDescription } from '../components/ui/alert';
-import { 
-  Settings as SettingsIcon, 
-  Save, 
-  Brain,
-  Shield,
-  FileText,
-  AlertCircle,
-  CheckCircle,
-  Loader2
-} from 'lucide-react';
+import { Settings as SettingsIcon, Save, Brain, Shield, FileText, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useEnhancedSettingsStore } from '../store/enhancedSettingsStore';
 import { useUserRole } from '../hooks/useUserRole';
 import AIInstructionsFileManager from '../components/AIInstructionsFileManager';
 import { logger } from '../services/loggingService';
-
 interface SettingsProps {}
-
 const Settings = () => {
-  const { isAdmin, isSupervisor } = useUserRole();
+  const {
+    isAdmin,
+    isSupervisor
+  } = useUserRole();
   const {
     systemConfig,
     isLoading,
@@ -34,27 +26,27 @@ const Settings = () => {
     updateSystemConfig,
     resetToDefaults
   } = useEnhancedSettingsStore();
-
   const [localConfig, setLocalConfig] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-
   useEffect(() => {
     loadSystemConfig();
   }, [loadSystemConfig]);
-
   useEffect(() => {
     if (systemConfig) {
-      setLocalConfig({ ...systemConfig });
+      setLocalConfig({
+        ...systemConfig
+      });
       setHasUnsavedChanges(false);
     }
   }, [systemConfig]);
-
   const handleConfigChange = (key: string, value: string): void => {
-    setLocalConfig(prev => ({ ...prev, [key]: value }));
+    setLocalConfig(prev => ({
+      ...prev,
+      [key]: value
+    }));
     setHasUnsavedChanges(true);
   };
-
   const handleSaveConfig = async (): Promise<void> => {
     setIsSaving(true);
     try {
@@ -63,13 +55,14 @@ const Settings = () => {
       toast.success('Settings saved successfully');
       logger.info('System settings updated successfully');
     } catch (error) {
-      logger.error('Failed to save settings', error as Error, { configKeys: Object.keys(localConfig) });
+      logger.error('Failed to save settings', error as Error, {
+        configKeys: Object.keys(localConfig)
+      });
       toast.error('Failed to save settings');
     } finally {
       setIsSaving(false);
     }
   };
-
   const handleResetDefaults = async (): Promise<void> => {
     try {
       await resetToDefaults();
@@ -80,35 +73,27 @@ const Settings = () => {
       toast.error('Failed to reset settings');
     }
   };
-
   if (!isAdmin && !isSupervisor) {
-    return (
-      <div className="container mx-auto px-4 py-8">
+    return <div className="container mx-auto px-4 py-8">
         <Alert>
           <Shield className="h-4 w-4" />
           <AlertDescription>
             You don't have permission to access settings. Only administrators and supervisors can modify system settings.
           </AlertDescription>
         </Alert>
-      </div>
-    );
+      </div>;
   }
-
   if (isLoading) {
-    return (
-      <div className="container mx-auto px-4 py-8">
+    return <div className="container mx-auto px-4 py-8">
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
             <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
             <p className="text-muted-foreground">Loading settings...</p>
           </div>
         </div>
-      </div>
-    );
+      </div>;
   }
-
-  return (
-    <div className="container mx-auto px-6 py-8">
+  return <div className="container mx-auto px-6 py-8">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
@@ -117,27 +102,21 @@ const Settings = () => {
           </h1>
         </div>
         
-        {hasUnsavedChanges && (
-          <div className="flex items-center gap-2">
+        {hasUnsavedChanges && <div className="flex items-center gap-2">
             <Badge variant="outline" className="text-orange-600 border-orange-600">
               <AlertCircle className="h-3 w-3 mr-1" />
               Unsaved Changes
             </Badge>
             <Button onClick={handleSaveConfig} disabled={isSaving}>
-              {isSaving ? (
-                <>
+              {isSaving ? <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   Saving...
-                </>
-              ) : (
-                <>
+                </> : <>
                   <Save className="h-4 w-4 mr-2" />
                   Save Changes
-                </>
-              )}
+                </>}
             </Button>
-          </div>
-        )}
+          </div>}
       </div>
 
       <Tabs defaultValue="ai-analysis" className="space-y-6">
@@ -168,16 +147,7 @@ const Settings = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label htmlFor="ai_confidence_threshold">Confidence Threshold</Label>
-                  <Input
-                    id="ai_confidence_threshold"
-                    type="number"
-                    min="0"
-                    max="1"
-                    step="0.1"
-                    value={localConfig.ai_confidence_threshold || '0.8'}
-                    onChange={(e) => handleConfigChange('ai_confidence_threshold', e.target.value)}
-                    placeholder="0.8"
-                  />
+                  <Input id="ai_confidence_threshold" type="number" min="0" max="1" step="0.1" value={localConfig.ai_confidence_threshold || '0.8'} onChange={e => handleConfigChange('ai_confidence_threshold', e.target.value)} placeholder="0.8" />
                   <p className="text-sm text-muted-foreground">
                     Minimum confidence threshold (0-1). Below this, system will retry with GPT-5 flagship.
                   </p>
@@ -185,10 +155,7 @@ const Settings = () => {
 
                 <div className="space-y-2">
                   <Label htmlFor="ai_reasoning_effort">Reasoning Effort</Label>
-                  <Select
-                    value={localConfig.ai_reasoning_effort || 'medium'}
-                    onValueChange={(value) => handleConfigChange('ai_reasoning_effort', value)}
-                  >
+                  <Select value={localConfig.ai_reasoning_effort || 'medium'} onValueChange={value => handleConfigChange('ai_reasoning_effort', value)}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select reasoning effort" />
                     </SelectTrigger>
@@ -204,29 +171,13 @@ const Settings = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="ai_max_tokens_gpt5_mini">Max Tokens (GPT-5 Mini)</Label>
-                  <Input
-                    id="ai_max_tokens_gpt5_mini"
-                    type="number"
-                    min="100"
-                    max="4000"
-                    value={localConfig.ai_max_tokens_gpt5_mini || '1000'}
-                    onChange={(e) => handleConfigChange('ai_max_tokens_gpt5_mini', e.target.value)}
-                    placeholder="1000"
-                  />
+                  <Label htmlFor="ai_max_tokens_gpt5_mini">Max Tokens (cost-effective)</Label>
+                  <Input id="ai_max_tokens_gpt5_mini" type="number" min="100" max="4000" value={localConfig.ai_max_tokens_gpt5_mini || '1000'} onChange={e => handleConfigChange('ai_max_tokens_gpt5_mini', e.target.value)} placeholder="1000" />
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="ai_max_tokens_gpt5">Max Tokens (GPT-5)</Label>
-                  <Input
-                    id="ai_max_tokens_gpt5"
-                    type="number"
-                    min="100"
-                    max="8000"
-                    value={localConfig.ai_max_tokens_gpt5 || '2000'}
-                    onChange={(e) => handleConfigChange('ai_max_tokens_gpt5', e.target.value)}
-                    placeholder="2000"
-                  />
+                  <Input id="ai_max_tokens_gpt5" type="number" min="100" max="8000" value={localConfig.ai_max_tokens_gpt5 || '2000'} onChange={e => handleConfigChange('ai_max_tokens_gpt5', e.target.value)} placeholder="2000" />
                 </div>
               </div>
             </CardContent>
@@ -244,13 +195,7 @@ const Settings = () => {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="signup_passcode">Signup Passcode</Label>
-                <Input
-                  id="signup_passcode"
-                  type="password"
-                  value={localConfig.signup_passcode || ''}
-                  onChange={(e) => handleConfigChange('signup_passcode', e.target.value)}
-                  placeholder="Enter signup passcode"
-                />
+                <Input id="signup_passcode" type="password" value={localConfig.signup_passcode || ''} onChange={e => handleConfigChange('signup_passcode', e.target.value)} placeholder="Enter signup passcode" />
                 <p className="text-sm text-muted-foreground">
                   Required passcode for new user registration.
                 </p>
@@ -265,17 +210,13 @@ const Settings = () => {
             <CardContent className="space-y-4">
               <div className="flex flex-col sm:flex-row gap-2">
                 <Button onClick={handleSaveConfig} disabled={isSaving || !hasUnsavedChanges}>
-                  {isSaving ? (
-                    <>
+                  {isSaving ? <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       Saving...
-                    </>
-                  ) : (
-                    <>
+                    </> : <>
                       <Save className="h-4 w-4 mr-2" />
                       Save All Settings
-                    </>
-                  )}
+                    </>}
                 </Button>
                 
                 <Button variant="outline" onClick={handleResetDefaults}>
@@ -283,12 +224,10 @@ const Settings = () => {
                 </Button>
               </div>
               
-              {!hasUnsavedChanges && (
-                <div className="flex items-center gap-2 text-sm text-green-600">
+              {!hasUnsavedChanges && <div className="flex items-center gap-2 text-sm text-green-600">
                   <CheckCircle className="h-4 w-4" />
                   All settings saved
-                </div>
-              )}
+                </div>}
             </CardContent>
           </Card>
         </TabsContent>
@@ -297,8 +236,6 @@ const Settings = () => {
           <AIInstructionsFileManager />
         </TabsContent>
       </Tabs>
-    </div>
-  );
+    </div>;
 };
-
 export default Settings;
