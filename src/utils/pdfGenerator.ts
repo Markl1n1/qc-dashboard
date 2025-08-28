@@ -368,7 +368,7 @@ export class PDFGenerator {
 export const generateDialogPDF = (dialog: Dialog): void => {
   const generator = new PDFGenerator();
   const doc = generator.generateComprehensivePDF(dialog);
-  const filename = `${dialog.fileName.replace(/\.[^/.]+$/, '')}_Report_${new Date().toISOString().split('T')[0]}.pdf`;
+  const filename = `${dialog.fileName.replace(/\.[^/.]+$/, '')}_Report.pdf`;
   generator.save(filename);
 };
 
