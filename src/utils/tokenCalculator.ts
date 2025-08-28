@@ -28,14 +28,7 @@ class TokenCalculatorService {
   private readonly OPENAI_MODELS = {
     'gpt-5-2025-08-07': 0.03,
     'gpt-5-mini-2025-08-07': 0.015,
-    'gpt-5-nano-2025-08-07': 0.005,
-    'gpt-4.1-2025-04-14': 0.02,
-    'o3-2025-04-16': 0.04,
-    'o4-mini-2025-04-16': 0.01,
-    'gpt-4.1-mini-2025-04-14': 0.008,
-    'gpt-4o-mini': 0.006,
-    'gpt-4o': 0.025,
-    'gpt-3.5-turbo': 0.002
+    'gpt-5-nano-2025-08-07': 0.005
   };
 
   // Lemur pricing (per token)
@@ -143,14 +136,7 @@ class TokenCalculatorService {
     const nameMap: Record<string, string> = {
       'gpt-5-2025-08-07': 'GPT-5',
       'gpt-5-mini-2025-08-07': 'GPT-5 Mini',
-      'gpt-5-nano-2025-08-07': 'GPT-5 Nano',
-      'gpt-4.1-2025-04-14': 'GPT-4.1',
-      'o3-2025-04-16': 'O3',
-      'o4-mini-2025-04-16': 'O4 Mini',
-      'gpt-4.1-mini-2025-04-14': 'GPT-4.1 Mini',
-      'gpt-4o-mini': 'GPT-4o Mini',
-      'gpt-4o': 'GPT-4o',
-      'gpt-3.5-turbo': 'GPT-3.5 Turbo'
+      'gpt-5-nano-2025-08-07': 'GPT-5 Nano'
     };
     
     return nameMap[modelId] || modelId;
