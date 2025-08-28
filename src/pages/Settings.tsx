@@ -144,42 +144,7 @@ const Settings = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label htmlFor="ai_confidence_threshold">Confidence Threshold</Label>
-                  <Input id="ai_confidence_threshold" type="number" min="0" max="1" step="0.1" value={localConfig.ai_confidence_threshold || '0.8'} onChange={e => handleConfigChange('ai_confidence_threshold', e.target.value)} placeholder="0.8" />
-                  <p className="text-sm text-muted-foreground">
-                    Minimum confidence threshold (0-1). Below this, system will retry with GPT-5 flagship.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="ai_reasoning_effort">Reasoning Effort</Label>
-                  <Select value={localConfig.ai_reasoning_effort || 'medium'} onValueChange={value => handleConfigChange('ai_reasoning_effort', value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select reasoning effort" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-sm text-muted-foreground">
-                    Reasoning effort level for GPT-5 models.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="ai_max_tokens_gpt5_mini">Max Tokens (cost-effective)</Label>
-                  <Input id="ai_max_tokens_gpt5_mini" type="number" min="100" max="4000" value={localConfig.ai_max_tokens_gpt5_mini || '1000'} onChange={e => handleConfigChange('ai_max_tokens_gpt5_mini', e.target.value)} placeholder="1000" />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="ai_max_tokens_gpt5">Max Tokens (GPT-5)</Label>
-                  <Input id="ai_max_tokens_gpt5" type="number" min="100" max="8000" value={localConfig.ai_max_tokens_gpt5 || '2000'} onChange={e => handleConfigChange('ai_max_tokens_gpt5', e.target.value)} placeholder="2000" />
-                </div>
-              </div>
+              
             </CardContent>
           </Card>
         </TabsContent>
