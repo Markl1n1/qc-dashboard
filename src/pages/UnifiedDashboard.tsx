@@ -22,7 +22,6 @@ import { useUserRole } from '../hooks/useUserRole';
 import { Dialog } from '../types';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import GenerateReportDialog from '@/components/GenerateReportDialog';
 
 type SortOption = 'newest' | 'oldest' | 'name' | 'status';
 type StatusFilter = 'all' | 'pending' | 'processing' | 'completed' | 'failed';
@@ -124,12 +123,32 @@ const UnifiedDashboard = () => {
           <h1 className="text-3xl font-bold">Voice Quality Control</h1>
         </div>
         <div className="flex gap-2">
-          <GenerateReportDialog />
+          <Button onClick={() => navigate('/upload')} className="flex items-center gap-2">
+            <Upload className="h-4 w-4" />
+            Upload Recording
+          </Button>
+          {(isAdmin || isSupervisor) && (
+            <Button variant="outline" onClick={() => navigate('/settings')}>
+              Settings
+            </Button>
+          )}
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 max-w-4xl mx-auto">        
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Total</p>
+                <p className="text-2xl font-bold">{stats.total}</p>
+              </div>
+              <FileText className="h-8 w-8 text-muted-foreground" />
+            </div>
+          </CardContent>
+        </Card>
+        
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
@@ -256,11 +275,13 @@ const UnifiedDashboard = () => {
                       </div>
                       
                       <div className="text-sm text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span>Agent: {dialog.assignedAgent}</span>
+                        <span className="hidden sm:inline">•</span>
                         <span>Supervisor: {dialog.assignedSupervisor}</span>
                         {dialog.qualityScore && (
                           <>
                             <span className="hidden sm:inline">•</span>
-                            <span>{dialog.qualityScore}/100</span>
+                            <span>Quality: {dialog.qualityScore}/100</span>
                           </>
                         )}
                       </div>

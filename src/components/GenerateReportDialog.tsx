@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
@@ -5,10 +6,10 @@ import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Calendar } from './ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
-import { CalendarIcon, BarChart3 } from 'lucide-react';
+import { CalendarIcon, FileText } from 'lucide-react';
 import { format } from 'date-fns';
-import { toast } from 'sonner';
 import { cn } from '../lib/utils';
+import { toast } from 'sonner';
 
 interface GenerateReportDialogProps {
   trigger?: React.ReactNode;
@@ -16,14 +17,16 @@ interface GenerateReportDialogProps {
 
 const GenerateReportDialog: React.FC<GenerateReportDialogProps> = ({ trigger }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
-  const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
+  const [dateFrom, setDateFrom] = useState<Date>();
+  const [dateTo, setDateTo] = useState<Date>();
   const [reportType, setReportType] = useState<string>('');
 
   const reportTypes = [
-    { value: 'average-quality-by-agent', label: 'Average Quality Score by Agent' },
-    { value: 'type-b', label: 'Type B Report (Coming Soon)' },
-    { value: 'type-c', label: 'Type C Report (Coming Soon)' }
+    { value: 'quality-summary', label: 'Quality Summary Report' },
+    { value: 'agent-performance', label: 'Agent Performance Report' },
+    { value: 'dialog-statistics', label: 'Dialog Statistics Report' },
+    { value: 'error-analysis', label: 'Error Analysis Report' },
+    { value: 'monthly-overview', label: 'Monthly Overview Report' },
   ];
 
   const handleGenerate = () => {
@@ -42,15 +45,13 @@ const GenerateReportDialog: React.FC<GenerateReportDialogProps> = ({ trigger }) 
       return;
     }
 
-    // TODO: Implement actual report generation logic
-    console.log('Generating report:', {
-      type: reportType,
+    // Future: Report generation logic will be implemented here
+    toast.info('Report generation functionality will be implemented soon');
+    console.log('Generate report:', {
       dateFrom: format(dateFrom, 'yyyy-MM-dd'),
-      dateTo: format(dateTo, 'yyyy-MM-dd')
+      dateTo: format(dateTo, 'yyyy-MM-dd'),
+      reportType
     });
-
-    toast.success('Report generation started');
-    setIsOpen(false);
   };
 
   const handleClose = () => {
@@ -61,8 +62,8 @@ const GenerateReportDialog: React.FC<GenerateReportDialogProps> = ({ trigger }) 
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         {trigger || (
-          <Button className="flex items-center gap-2">
-            <BarChart3 className="h-4 w-4" />
+          <Button variant="default">
+            <FileText className="h-4 w-4 mr-2" />
             Generate Report
           </Button>
         )}
@@ -86,7 +87,7 @@ const GenerateReportDialog: React.FC<GenerateReportDialogProps> = ({ trigger }) 
                     )}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {dateFrom ? format(dateFrom, "PPP") : "Select date"}
+                    {dateFrom ? format(dateFrom, "MMM dd, yyyy") : "Select date"}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
@@ -94,6 +95,7 @@ const GenerateReportDialog: React.FC<GenerateReportDialogProps> = ({ trigger }) 
                     mode="single"
                     selected={dateFrom}
                     onSelect={setDateFrom}
+                    disabled={(date) => date > new Date()}
                     initialFocus
                   />
                 </PopoverContent>
@@ -112,7 +114,7 @@ const GenerateReportDialog: React.FC<GenerateReportDialogProps> = ({ trigger }) 
                     )}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {dateTo ? format(dateTo, "PPP") : "Select date"}
+                    {dateTo ? format(dateTo, "MMM dd, yyyy") : "Select date"}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
@@ -120,6 +122,7 @@ const GenerateReportDialog: React.FC<GenerateReportDialogProps> = ({ trigger }) 
                     mode="single"
                     selected={dateTo}
                     onSelect={setDateTo}
+                    disabled={(date) => date > new Date() || (dateFrom && date < dateFrom)}
                     initialFocus
                   />
                 </PopoverContent>
@@ -135,11 +138,7 @@ const GenerateReportDialog: React.FC<GenerateReportDialogProps> = ({ trigger }) 
               </SelectTrigger>
               <SelectContent>
                 {reportTypes.map((type) => (
-                  <SelectItem 
-                    key={type.value} 
-                    value={type.value}
-                    disabled={type.value !== 'average-quality-by-agent'}
-                  >
+                  <SelectItem key={type.value} value={type.value}>
                     {type.label}
                   </SelectItem>
                 ))}
@@ -147,7 +146,7 @@ const GenerateReportDialog: React.FC<GenerateReportDialogProps> = ({ trigger }) 
             </Select>
           </div>
 
-          <div className="flex justify-end space-x-2 pt-4">
+          <div className="flex justify-end space-x-2">
             <Button variant="outline" onClick={handleClose}>
               Cancel
             </Button>

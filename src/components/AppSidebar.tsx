@@ -35,7 +35,7 @@ export function AppSidebar() {
   const isActive = (path: string) => currentPath === path;
 
   const getNavCls = ({ isActive }: { isActive: boolean }) => 
-    isActive ? "bg-sidebar-accent text-sidebar-accent-foreground font-bold" : "hover:bg-sidebar-accent/50 font-bold text-[#3C83F6] dark:text-[#3C83F6]";
+    isActive ? "bg-muted font-bold text-[#3C83F6]" : "hover:bg-muted/50 font-bold text-[#3C83F6]";
 
   const handleSignOut = async () => {
     try {
@@ -61,7 +61,7 @@ export function AppSidebar() {
 
       <SidebarContent className="bg-sidebar">
         <SidebarGroup>
-          <SidebarGroupLabel className="text-[#3C83F6] dark:text-[#3C83F6] font-bold">Main Navigation</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-[#3C83F6] font-bold">Main Navigation</SidebarGroupLabel>
           
           <SidebarGroupContent>
             <SidebarMenu>

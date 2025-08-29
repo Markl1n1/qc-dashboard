@@ -172,13 +172,9 @@ const AgentCsvImport: React.FC<AgentCsvImportProps> = ({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogTrigger asChild>
-        <Button 
-          variant="outline" 
-          onClick={() => setIsOpen(true)}
-          className="hover:bg-accent"
-        >
+        <Button variant="outline" onClick={() => setIsOpen(true)}>
           <Upload className="h-4 w-4 mr-2" />
           Import CSV
         </Button>
