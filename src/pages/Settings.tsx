@@ -165,15 +165,8 @@ const Settings = () => {
                   Required passcode for new user registration.
                 </p>
               </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Actions</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex flex-col sm:flex-row gap-2">
+              
+              <div className="pt-4 border-t">
                 <Button onClick={handleSaveConfig} disabled={isSaving || !hasUnsavedChanges}>
                   {isSaving ? <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -183,22 +176,31 @@ const Settings = () => {
                       Save All Settings
                     </>}
                 </Button>
-                
-                <Button variant="outline" onClick={handleResetDefaults}>
-                  Reset to Defaults
-                </Button>
               </div>
-              
-              {!hasUnsavedChanges && <div className="flex items-center gap-2 text-sm text-green-600">
-                  <CheckCircle className="h-4 w-4" />
-                  All settings saved
-                </div>}
             </CardContent>
           </Card>
+
         </TabsContent>
 
         <TabsContent value="instructions" className="space-y-6">
-          <AIInstructionsFileManager />
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                AI Instructions Management
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Alert className="mb-4">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  Only instructions uploaded in the "System" tab are used for AI evaluation and analysis. 
+                  Other tabs like "Evaluation" and "Analysis" are for reference only.
+                </AlertDescription>
+              </Alert>
+              <AIInstructionsFileManager />
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>;
