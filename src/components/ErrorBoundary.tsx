@@ -72,7 +72,6 @@ export class ErrorBoundary extends Component<Props, State> {
                       An unexpected error occurred. Please try refreshing the page.
                     </p>
                   </div>
-                  
                   {import.meta.env.DEV && this.state.error && (
                     <details className="text-xs">
                       <summary className="cursor-pointer font-medium">Error Details</summary>
