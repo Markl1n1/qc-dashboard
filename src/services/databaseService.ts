@@ -50,7 +50,7 @@ export interface DatabaseUtterance {
 export interface DatabaseAnalysis {
   id: string;
   dialog_id: string;
-  analysis_type: 'lemur' | 'openai';
+  analysis_type: 'openai';
   overall_score?: number;
   category_scores: Record<string, number>;
   mistakes: any[];
@@ -312,7 +312,7 @@ class DatabaseService {
     return data as DatabaseAnalysis;
   }
 
-  async getAnalysis(dialogId: string, analysisType?: 'lemur' | 'openai'): Promise<DatabaseAnalysis[]> {
+  async getAnalysis(dialogId: string, analysisType?: 'openai'): Promise<DatabaseAnalysis[]> {
     let query = supabase
       .from('dialog_analysis')
       .select('*')
@@ -425,19 +425,6 @@ class DatabaseService {
 
     // Add analyses if provided
     if (analyses) {
-      const lemurAnalysis = analyses.find(a => a.analysis_type === 'lemur');
-      if (lemurAnalysis) {
-        dialog.lemurEvaluation = {
-          overallScore: lemurAnalysis.overall_score || 0,
-          categoryScores: lemurAnalysis.category_scores,
-          mistakes: lemurAnalysis.mistakes,
-          recommendations: lemurAnalysis.recommendations,
-          summary: lemurAnalysis.summary || '',
-          confidence: lemurAnalysis.confidence || 0,
-          tokenUsage: lemurAnalysis.token_usage
-        };
-      }
-
       const openaiAnalysis = analyses.find(a => a.analysis_type === 'openai');
       if (openaiAnalysis) {
         dialog.openaiEvaluation = {

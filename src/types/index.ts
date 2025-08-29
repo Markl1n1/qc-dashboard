@@ -1,11 +1,5 @@
-export type TranscriptionProvider = 'assemblyai' | 'deepgram';
+export type TranscriptionProvider = 'deepgram';
 
-export interface AssemblyAIConfig {
-  speaker_labels?: boolean;
-  speakers_expected?: number;
-  language_detection?: boolean;
-  zeroDataRetention?: boolean;
-}
 
 export interface UnifiedTranscriptionProgress {
   stage: 'uploading' | 'queued' | 'processing' | 'complete' | 'error';
@@ -39,12 +33,6 @@ export interface SpeakerUtterance {
 export interface TokenEstimation {
   audioLengthMinutes: number;
   estimatedCost: number;
-  lemur?: {
-    inputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-    cost: number;
-  };
   openAI?: {
     estimatedInputTokens: number;
     actualInputTokens: number;
@@ -88,7 +76,6 @@ export interface Dialog {
   
   // Analysis properties
   analysis?: AIAnalysis;
-  lemurEvaluation?: any;
   openaiEvaluation?: any;
   qualityScore?: number;
 }

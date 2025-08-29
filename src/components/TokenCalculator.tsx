@@ -6,13 +6,12 @@ import { Calculator, DollarSign, Hash, FileText } from 'lucide-react';
 import { SpeakerUtterance } from '../types';
 import { 
   tokenCalculatorService, 
-  OpenAITokenCalculation, 
-  LemurTokenCalculation 
+  OpenAITokenCalculation
 } from '../utils/tokenCalculator';
 
 interface TokenCalculatorProps {
   utterances: SpeakerUtterance[];
-  evaluationType: 'openai' | 'lemur';
+  evaluationType: 'openai';
   selectedModel?: string;
 }
 
@@ -21,9 +20,11 @@ const TokenCalculator: React.FC<TokenCalculatorProps> = ({
   evaluationType, 
   selectedModel = 'gpt-5-mini-2025-08-07' 
 }) => {
-  const calculation = evaluationType === 'openai' 
-    ? tokenCalculatorService.calculateOpenAITokens(utterances, selectedModel)
-    : tokenCalculatorService.calculateLemurTokens(utterances);
+const calculation = tokenCalculatorService.calculateOpenAITokens(
+  utterances,
+  selectedModel
+);
+
 
   const formatCost = (cost: number) => {
     if (cost < 0.01) {
@@ -47,7 +48,7 @@ const TokenCalculator: React.FC<TokenCalculatorProps> = ({
           Token Calculator
         </CardTitle>
         <CardDescription className="text-xs">
-          Estimated usage for {evaluationType === 'openai' ? 'OpenAI' : 'LeMUR'} evaluation
+          Estimated usage for OpenAI evaluation
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -108,13 +109,6 @@ const TokenCalculator: React.FC<TokenCalculatorProps> = ({
         {evaluationType === 'openai' && 'model' in calculation && (
           <div className="text-xs text-muted-foreground pt-1">
             Using {calculation.model} (${calculation.costPer1kTokens}/1k tokens)
-          </div>
-        )}
-
-        {evaluationType === 'lemur' && (
-          <div className="text-xs text-muted-foreground pt-1">
-            Input: ${(calculation as LemurTokenCalculation).costPerInputToken}/token, 
-            Output: ${(calculation as LemurTokenCalculation).costPerOutputToken}/token
           </div>
         )}
       </CardContent>

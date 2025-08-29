@@ -22,7 +22,7 @@ interface EnhancedDialogStore {
   saveSpeakerTranscription: (dialogId: string, utterances: SpeakerUtterance[], type: 'speaker' | 'russian_speaker') => Promise<void>;
   
   // Analysis operations
-  saveAnalysis: (dialogId: string, analysis: AIAnalysis, type: 'lemur' | 'openai') => Promise<void>;
+  saveAnalysis: (dialogId: string, analysis: AIAnalysis, type: 'openai') => Promise<void>;
   
   // Local state management
   setLoading: (loading: boolean) => void;
@@ -269,7 +269,7 @@ export const useEnhancedDialogStore = create<EnhancedDialogStore>()(
         }
       },
 
-      saveAnalysis: async (dialogId: string, analysis: AIAnalysis, type: 'lemur' | 'openai') => {
+      saveAnalysis: async (dialogId: string, analysis: AIAnalysis, type: 'openai') => {
         try {
           set({ error: null });
           
@@ -294,11 +294,7 @@ export const useEnhancedDialogStore = create<EnhancedDialogStore>()(
             dialogs: state.dialogs.map(dialog => {
               if (dialog.id === dialogId) {
                 const updatedDialog = { ...dialog };
-                if (type === 'lemur') {
-                  updatedDialog.lemurEvaluation = analysis as any;
-                } else {
-                  updatedDialog.openaiEvaluation = analysis as any;
-                }
+                updatedDialog.openaiEvaluation = analysis as any;
                 return updatedDialog;
               }
               return dialog;

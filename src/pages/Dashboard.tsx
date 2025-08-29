@@ -363,31 +363,6 @@ const Dashboard = () => {
                       </TableCell>
                       
                       <TableCell>
-                        {dialog.lemurEvaluation ? (
-                          <div className="flex items-center space-x-1">
-                            <Star className={`h-4 w-4 ${
-                              dialog.lemurEvaluation.overallScore >= 80 ? 'text-green-500' :
-                              dialog.lemurEvaluation.overallScore >= 60 ? 'text-yellow-500' :
-                              dialog.lemurEvaluation.overallScore >= 40 ? 'text-orange-500' :
-                              'text-red-500'
-                            }`} />
-                            <span className={`text-sm font-medium ${
-                              dialog.lemurEvaluation.overallScore >= 80 ? 'text-green-600' :
-                              dialog.lemurEvaluation.overallScore >= 60 ? 'text-yellow-600' :
-                              dialog.lemurEvaluation.overallScore >= 40 ? 'text-orange-600' :
-                              'text-red-600'
-                            }`}>
-                              {dialog.lemurEvaluation.overallScore}/100
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">
-                            {dialog.status === 'processing' ? 'Processing...' : 'Not analyzed'}
-                          </span>
-                        )}
-                      </TableCell>
-                      
-                      <TableCell>
                         <DialogActions 
                           dialog={dialog} 
                           onView={(e) => {

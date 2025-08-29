@@ -83,19 +83,3 @@ export interface SalesAnalysisProgress {
   message: string;
   currentStep?: string;
 }
-
-export interface LeMURRequest {
-  transcript_ids: string[];
-  prompt: string;
-  final_model?: 'claude-3-5-sonnet' | 'claude-3-haiku' | 'claude-3-opus';
-  max_output_size?: number;
-  temperature?: number;
-}
-
-export interface LeMURResponse {
-  response: string;
-  usage: {
-    input_tokens: number;
-    output_tokens: number;
-  };
-}

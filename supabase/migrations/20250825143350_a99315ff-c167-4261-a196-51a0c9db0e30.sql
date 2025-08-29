@@ -51,7 +51,7 @@ CREATE TABLE public.dialog_speaker_utterances (
 CREATE TABLE public.dialog_analysis (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   dialog_id UUID REFERENCES public.dialogs(id) ON DELETE CASCADE NOT NULL,
-  analysis_type TEXT NOT NULL CHECK (analysis_type IN ('lemur', 'openai')),
+  analysis_type TEXT NOT NULL CHECK (analysis_type IN ('openai')),
   overall_score INTEGER,
   category_scores JSONB DEFAULT '{}',
   mistakes JSONB DEFAULT '[]',

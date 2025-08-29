@@ -115,7 +115,6 @@ export interface APIKeyConfig {
   libretranslate?: string;
   grok?: string;
   deepseek?: string;
-  assemblyai?: string;
   isValid: boolean;
   lastValidated?: string;
 }

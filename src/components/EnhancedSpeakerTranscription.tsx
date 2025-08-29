@@ -3,7 +3,6 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { AlertTriangle } from 'lucide-react';
 import { SpeakerUtterance } from '../types';
-import { EvaluationMistake } from '../types/lemurEvaluation';
 import { shouldExcludeFromHighlighting } from '../utils/textProcessing';
 import DialogCopyButton from './DialogCopyButton';
 
