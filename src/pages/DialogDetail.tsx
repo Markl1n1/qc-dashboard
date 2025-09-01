@@ -13,6 +13,7 @@ import { extractUsernameFromEmail, capitalizeStatus } from '../utils/userUtils';
 import DeepgramSpeakerDialog from '../components/DeepgramSpeakerDialog';
 import EnhancedSpeakerDialog from '../components/EnhancedSpeakerDialog';
 import EnhancedDialogDetail from '../components/EnhancedDialogDetail';
+import AnalysisSummaryCards from '../components/AnalysisSummaryCards';
 import { openaiEvaluationService } from '../services/openaiEvaluationService';
 import { OpenAIEvaluationProgress } from '../types/openaiEvaluation';
 import { supabase } from '../integrations/supabase/client';
@@ -281,6 +282,11 @@ const DialogDetail = () => {
           <div className="space-y-6">
             {/* OpenAI Analysis Results */}
             {dialog.openaiEvaluation ? <div className="space-y-4">
+                {/* Violation Summary Cards */}
+                {dialog.openaiEvaluation.mistakes && dialog.openaiEvaluation.mistakes.length > 0 && (
+                  <AnalysisSummaryCards mistakes={dialog.openaiEvaluation.mistakes} />
+                )}
+
                 <Card>
                   <CardHeader>
                     <CardTitle>Overall Analysis Results</CardTitle>
