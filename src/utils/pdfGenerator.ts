@@ -81,7 +81,6 @@ export class PDFGenerator {
     this.doc.setFontSize(12);
     this.doc.setFont('helvetica', 'bold');
     
-    // Use different colors for different speakers (matching web styling)
     if (utterance.speaker === 'Speaker 0') {
       this.doc.setTextColor(59, 130, 246); // Blue for Agent
     } else {
@@ -93,22 +92,27 @@ export class PDFGenerator {
     this.yPosition += this.lineHeight + 2;
     
     // Reset color and add utterance text
-    this.doc.setTextColor(0, 0, 0); // Black
+    this.doc.setTextColor(0, 0, 0); 
     this.doc.setFont('Roboto', 'normal');
     this.doc.setFontSize(10);
-    
-    // Handle text wrapping for utterance content
-    const maxWidth = this.doc.internal.pageSize.width - (this.margin * 2);
-    const textLines = this.doc.splitTextToSize(utterance.text, maxWidth);
-    
+
+    // ✅ Ensure proper wrapping and spacing
+    const maxWidth = this.doc.internal.pageSize.width - (this.margin * 2) - 10; // account for indent
+    const cleanedText = utterance.text.replace(/\s+/g, ' ').trim(); // remove weird spaces / breaks
+    const textLines = this.doc.splitTextToSize(cleanedText, maxWidth);
+
     textLines.forEach((line: string) => {
       this.checkPageBreak(this.lineHeight);
-      this.doc.text(line, this.margin + 10, this.yPosition); // Indent utterance text
+      this.doc.text(line, this.margin + 10, this.yPosition, {
+        align: 'left',
+        baseline: 'top' // ✅ ensures text doesn't float strangely
+      });
       this.yPosition += this.lineHeight;
     });
     
-    this.yPosition += 5; // Add space between utterances
+    this.yPosition += 5; // spacing between utterances
   }
+
 
   private addSectionTitle(title: string): void {
     this.checkPageBreak(15);
