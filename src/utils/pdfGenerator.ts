@@ -20,13 +20,25 @@ export class PDFGenerator {
     }
   }
 
+  private preprocessText(text: string): string {
+    // Ensure proper UTF-8 encoding for Polish characters
+    return text
+      .normalize('NFC') // Normalize Unicode characters
+      .replace(/\u00A0/g, ' ') // Replace non-breaking spaces
+      .replace(/\s+/g, ' ') // Normalize multiple spaces
+      .trim();
+  }
+
   private addText(text: string, fontSize: number = 10, fontWeight: 'normal' | 'bold' = 'normal'): void {
     this.doc.setFontSize(fontSize);
-    this.doc.setFont('Roboto', fontWeight);
+    this.doc.setFont('helvetica', fontWeight); // Use helvetica instead of Roboto
+    
+    // Preprocess text for proper character handling
+    const processedText = this.preprocessText(text);
     
     // Handle text encoding and line wrapping
     const maxWidth = this.doc.internal.pageSize.width - (this.margin * 2);
-    const lines = this.doc.splitTextToSize(text, maxWidth);
+    const lines = this.doc.splitTextToSize(processedText, maxWidth);
     
     lines.forEach((line: string) => {
       this.checkPageBreak(this.lineHeight);
@@ -93,24 +105,21 @@ export class PDFGenerator {
     
     // Reset color and add utterance text
     this.doc.setTextColor(0, 0, 0); 
-    this.doc.setFont('Roboto', 'normal');
+    this.doc.setFont('helvetica', 'normal'); // Use helvetica instead of Roboto
     this.doc.setFontSize(10);
 
-    // ✅ Handle line breaks for merged utterances and ensure proper wrapping
+    // Handle line breaks for merged utterances and ensure proper wrapping
     const maxWidth = this.doc.internal.pageSize.width - (this.margin * 2) - 10; // account for indent
     const lines = utterance.text.split('\n');
     
     lines.forEach((line, lineIndex) => {
       if (line.trim()) { // Only process non-empty lines
-        const cleanedText = line.replace(/\s+/g, ' ').trim(); // remove weird spaces / breaks
-        const textLines = this.doc.splitTextToSize(cleanedText, maxWidth);
+        const processedText = this.preprocessText(line); // Use preprocessing for Polish characters
+        const textLines = this.doc.splitTextToSize(processedText, maxWidth);
         
         textLines.forEach((textLine: string) => {
           this.checkPageBreak(this.lineHeight);
-          this.doc.text(textLine, this.margin + 10, this.yPosition, {
-            align: 'left',
-            baseline: 'top' // ✅ ensures text doesn't float strangely
-          });
+          this.doc.text(textLine, this.margin + 10, this.yPosition);
           this.yPosition += this.lineHeight;
         });
         
@@ -234,7 +243,7 @@ export class PDFGenerator {
         
         // Add utterance quote
         if (mistake.utterance) {
-          this.doc.setFont('Roboto', 'normal');
+          this.doc.setFont('helvetica', 'normal'); // Use helvetica instead of Roboto
           this.addText(`Quote: "${mistake.utterance}"`, 10, 'normal');
         }
         
