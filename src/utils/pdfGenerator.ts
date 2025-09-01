@@ -82,9 +82,9 @@ export class PDFGenerator {
     this.doc.setFont('helvetica', 'bold');
     
     if (utterance.speaker === 'Speaker 0') {
-      this.doc.setTextColor(59, 130, 246); // Blue for Agent
+      this.doc.setTextColor(0, 64, 128); // Blue for Agent
     } else {
-      this.doc.setTextColor(249, 115, 22); // Orange for Customer
+      this.doc.setTextColor(25, 102, 25); // Orange for Customer
     }
     
     const speakerText = `[${index + 1}] ${utterance.speaker}:`;
