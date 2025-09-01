@@ -22,7 +22,7 @@ export class PDFGenerator {
 
   private addText(text: string, fontSize: number = 10, fontWeight: 'normal' | 'bold' = 'normal'): void {
     this.doc.setFontSize(fontSize);
-    this.doc.setFont('helvetica', fontWeight);
+    this.doc.setFont('Roboto', fontWeight);
     
     // Handle text encoding and line wrapping
     const maxWidth = this.doc.internal.pageSize.width - (this.margin * 2);
@@ -82,7 +82,7 @@ export class PDFGenerator {
     this.doc.setFont('helvetica', 'bold');
     
     // Use different colors for different speakers (matching web styling)
-    if (utterance.speaker === 'Agent') {
+    if (utterance.speaker === 'Speaker 0') {
       this.doc.setTextColor(59, 130, 246); // Blue for Agent
     } else {
       this.doc.setTextColor(249, 115, 22); // Orange for Customer
@@ -94,7 +94,7 @@ export class PDFGenerator {
     
     // Reset color and add utterance text
     this.doc.setTextColor(0, 0, 0); // Black
-    this.doc.setFont('helvetica', 'normal');
+    this.doc.setFont('Roboto', 'normal');
     this.doc.setFontSize(10);
     
     // Handle text wrapping for utterance content
@@ -178,7 +178,6 @@ export class PDFGenerator {
       this.yPosition += 10;
     }
 
-    // Detected Issues - Updated for new JSON format
     if (evaluation.mistakes && evaluation.mistakes.length > 0) {
       this.addText(`Detected Issues (${evaluation.mistakes.length})`, 12, 'bold');
       this.yPosition += 5;
