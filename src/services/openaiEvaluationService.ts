@@ -350,7 +350,16 @@ You must respond in the following JSON format:
       // Validate and provide defaults for required fields
       const score = typeof parsed.score === 'number' ? parsed.score : 0;
       const mistakes = Array.isArray(parsed.mistakes) ? parsed.mistakes : [];
-      const speakers = Array.isArray(parsed.speakers) ? parsed.speakers : [];
+      
+      // Handle new flat speaker object format
+      let speakers = [];
+      if (parsed.speakers && typeof parsed.speakers === 'object' && !Array.isArray(parsed.speakers)) {
+        // New format: flat object with speaker_0, role_0, speaker_1, role_1
+        speakers = [parsed.speakers];
+      } else if (Array.isArray(parsed.speakers)) {
+        // Fallback: old array format
+        speakers = parsed.speakers;
+      }
 
       // Enhanced validation with detailed error messages
       if (mistakes.length === 0 && score === 0) {
@@ -398,6 +407,38 @@ You must respond in the following JSON format:
       cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
     }
     
+    // Enhanced quote escaping for contractions and embedded quotes
+    // First pass: Handle common contractions that appear in utterances
+    const contractionPatterns = [
+      { pattern: /(\s|^|")don't(\s|$|")/gi, replacement: "$1don\\'t$2" },
+      { pattern: /(\s|^|")can't(\s|$|")/gi, replacement: "$1can\\'t$2" },
+      { pattern: /(\s|^|")won't(\s|$|")/gi, replacement: "$1won\\'t$2" },
+      { pattern: /(\s|^|")it's(\s|$|")/gi, replacement: "$1it\\'s$2" },
+      { pattern: /(\s|^|")we're(\s|$|")/gi, replacement: "$1we\\'re$2" },
+      { pattern: /(\s|^|")they're(\s|$|")/gi, replacement: "$1they\\'re$2" },
+      { pattern: /(\s|^|")you're(\s|$|")/gi, replacement: "$1you\\'re$2" },
+      { pattern: /(\s|^|")there's(\s|$|")/gi, replacement: "$1there\\'s$2" },
+      { pattern: /(\s|^|")that's(\s|$|")/gi, replacement: "$1that\\'s$2" },
+      { pattern: /(\s|^|")what's(\s|$|")/gi, replacement: "$1what\\'s$2" },
+      { pattern: /(\s|^|")I'm(\s|$|")/gi, replacement: "$1I\\'m$2" },
+      { pattern: /(\s|^|")doesn't(\s|$|")/gi, replacement: "$1doesn\\'t$2" }
+    ];
+    
+    for (const { pattern, replacement } of contractionPatterns) {
+      cleanContent = cleanContent.replace(pattern, replacement);
+    }
+    
+    // Second pass: Context-aware quote escaping for content within JSON string values
+    // Match content within quotes that are JSON string values and escape internal quotes
+    cleanContent = cleanContent.replace(
+      /"(utterance|comment)"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/g,
+      (match, key, value) => {
+        // Escape any unescaped quotes within the value
+        const escapedValue = value.replace(/(?<!\\)"/g, '\\"');
+        return `"${key}": "${escapedValue}"`;
+      }
+    );
+    
     // Fix common quote escaping issues
     cleanContent = cleanContent
       .replace(/([^\\])"([^"]*[^\\])"([^:])/g, '$1\\"$2\\"$3') // Escape unescaped quotes not followed by colons
@@ -431,18 +472,33 @@ You must respond in the following JSON format:
 
   private attemptPartialRecovery(content: string): any | null {
     try {
-      // Try to extract at least the score and mistakes from malformed JSON
-      const scoreMatch = content.match(/"score":\s*(\d+)/);
-      const mistakesMatch = content.match(/"mistakes":\s*\[(.*?)\]/s);
-      const speakersMatch = content.match(/"speakers":\s*\[(.*?)\]/s);
+      // Try to extract basic structure even from malformed JSON
+      const scoreMatch = content.match(/"score"\s*:\s*(\d+)/);
+      const mistakesMatch = content.match(/"mistakes"\s*:\s*\[([^\]]*)\]/s);
+      
+      // Handle both flat object and array formats for speakers
+      const speakersObjectMatch = content.match(/"speakers"\s*:\s*\{([^}]*)\}/s);
+      const speakersArrayMatch = content.match(/"speakers"\s*:\s*\[([^\]]*)\]/s);
       
       if (scoreMatch) {
-        const score = parseInt(scoreMatch[1]);
         const mistakes = mistakesMatch ? this.extractMistakesFromText(mistakesMatch[1]) : [];
-        const speakers = speakersMatch ? this.extractSpeakersFromText(speakersMatch[1]) : [];
+        
+        let speakers = [];
+        if (speakersObjectMatch) {
+          // New flat object format
+          try {
+            const speakersObj = JSON.parse(`{${speakersObjectMatch[1]}}`);
+            speakers = [speakersObj];
+          } catch (error) {
+            console.warn('Failed to parse speakers object in partial recovery');
+          }
+        } else if (speakersArrayMatch) {
+          // Old array format
+          speakers = this.extractSpeakersFromText(speakersArrayMatch[1]);
+        }
         
         return {
-          score: score,
+          score: parseInt(scoreMatch[1], 10),
           mistakes: mistakes,
           speakers: speakers
         };
@@ -480,6 +536,18 @@ You must respond in the following JSON format:
 
   private extractSpeakersFromText(speakersText: string): any[] {
     try {
+      // Try to extract flat speaker object format first
+      const flatSpeakerMatch = speakersText.match(/"speakers"\s*:\s*\{([^}]+)\}/);
+      if (flatSpeakerMatch) {
+        try {
+          const speakersObj = JSON.parse(`{${flatSpeakerMatch[1]}}`);
+          return [speakersObj];
+        } catch (error) {
+          console.warn('Failed to parse flat speaker format');
+        }
+      }
+      
+      // Fallback to array format
       const speakers = [];
       const speakerMatches = speakersText.match(/\{[^}]+\}/g);
       
