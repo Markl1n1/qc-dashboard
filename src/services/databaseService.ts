@@ -451,6 +451,80 @@ class DatabaseService {
       end: utterance.end_time
     }));
   }
+
+  // New methods for speaker name updates
+  async updateSpeakerNames(dialogId: string, speakersData: any[]): Promise<void> {
+    try {
+      if (!speakersData || speakersData.length === 0) return;
+
+      // Get all transcriptions for this dialog
+      const transcriptions = await this.getTranscriptions(dialogId);
+      const speakerTranscriptions = transcriptions.filter(t => 
+        t.transcription_type === 'speaker' || t.transcription_type === 'russian_speaker'
+      );
+
+      for (const transcription of speakerTranscriptions) {
+        const utterances = await this.getUtterances(transcription.id);
+        
+        // Apply speaker name mapping
+        const updates = utterances.map(utterance => {
+          const newSpeakerName = this.mapSpeakerName(utterance.speaker, speakersData);
+          if (newSpeakerName !== utterance.speaker) {
+            return {
+              id: utterance.id,
+              speaker: newSpeakerName
+            };
+          }
+          return null;
+        }).filter(update => update !== null);
+
+        // Batch update utterances with new speaker names
+        if (updates.length > 0) {
+          for (const update of updates) {
+            await supabase
+              .from('dialog_speaker_utterances')
+              .update({ speaker: update!.speaker })
+              .eq('id', update!.id);
+          }
+        }
+      }
+
+      console.log(`✅ Updated speaker names for dialog ${dialogId}`);
+    } catch (error) {
+      console.error('Error updating speaker names:', error);
+      throw error;
+    }
+  }
+
+  private mapSpeakerName(currentSpeaker: string, speakersData: any[]): string {
+    // Handle the new speaker data format
+    for (const speakerInfo of speakersData) {
+      if (speakerInfo.speaker_0 && speakerInfo.role_0) {
+        if (currentSpeaker === 'Speaker 0' || 
+            (speakerInfo.role_0 === 'Agent' && currentSpeaker === 'Agent') ||
+            (speakerInfo.role_0 === 'Customer' && currentSpeaker === 'Customer')) {
+          return speakerInfo.speaker_0;
+        }
+      }
+      
+      if (speakerInfo.speaker_1 && speakerInfo.role_1) {
+        if (currentSpeaker === 'Speaker 1' || 
+            (speakerInfo.role_1 === 'Agent' && currentSpeaker === 'Agent') ||
+            (speakerInfo.role_1 === 'Customer' && currentSpeaker === 'Customer')) {
+          return speakerInfo.speaker_1;
+        }
+      }
+    }
+    
+    return currentSpeaker; // Return original if no mapping found
+  }
+
+  applySpeakerNames(utterances: SpeakerUtterance[], speakersData: any[]): SpeakerUtterance[] {
+    return utterances.map(utterance => ({
+      ...utterance,
+      speaker: this.mapSpeakerName(utterance.speaker, speakersData)
+    }));
+  }
 }
 
 export const databaseService = new DatabaseService();

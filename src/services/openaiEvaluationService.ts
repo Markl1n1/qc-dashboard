@@ -322,50 +322,50 @@ You must respond in the following JSON format:
         throw new Error(errorMsg);
       }
 
-      // Try to clean content if it has markdown formatting
-      let cleanContent = content.trim();
-      if (cleanContent.startsWith('```json')) {
-        cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-      } else if (cleanContent.startsWith('```')) {
-        cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
-      }
-      
+      // Enhanced JSON cleaning with improved quote escaping
+      let cleanContent = this.cleanAndRepairJSON(content);
       console.log('🧹 Cleaned Content:', cleanContent);
 
-      // Handle partial JSON for truncated responses
-      if (finishReason === 'length' && !this.isValidJSON(cleanContent)) {
-        console.log('🔧 Attempting to fix truncated JSON...');
-        cleanContent = this.attemptJSONRepair(cleanContent);
+      // Multiple parsing strategies for fallback
+      let parsed: any;
+      try {
+        parsed = JSON.parse(cleanContent);
+      } catch (firstError) {
+        console.log('🔧 First parse failed, attempting advanced repair...');
+        cleanContent = this.advancedJSONRepair(cleanContent);
+        try {
+          parsed = JSON.parse(cleanContent);
+          console.log('✅ Advanced repair successful');
+        } catch (secondError) {
+          console.log('🔧 Advanced repair failed, attempting partial recovery...');
+          parsed = this.attemptPartialRecovery(content);
+          if (!parsed) {
+            throw new Error(`JSON parsing failed after all repair attempts. Original error: ${firstError.message}. Content: ${content.slice(0, 200)}...`);
+          }
+        }
       }
 
-      const parsed = JSON.parse(cleanContent);
       console.log('✅ Parsed JSON:', JSON.stringify(parsed, null, 2));
 
-      // Validate the new JSON format
-      if (typeof parsed.score !== 'number') {
-        logger.error('Invalid response format: score is required');
-        throw new Error('Invalid response format: score is required');
-      }
+      // Validate and provide defaults for required fields
+      const score = typeof parsed.score === 'number' ? parsed.score : 0;
+      const mistakes = Array.isArray(parsed.mistakes) ? parsed.mistakes : [];
+      const speakers = Array.isArray(parsed.speakers) ? parsed.speakers : [];
 
-      if (!Array.isArray(parsed.mistakes)) {
-        logger.error('Invalid response format: mistakes must be an array');
-        throw new Error('Invalid response format: mistakes must be an array');
-      }
-
-      if (!Array.isArray(parsed.speakers)) {
-        logger.error('Invalid response format: speakers must be an array');
-        throw new Error('Invalid response format: speakers must be an array');
+      // Enhanced validation with detailed error messages
+      if (mistakes.length === 0 && score === 0) {
+        console.warn('⚠️ No mistakes found and score is 0 - this might indicate parsing issues');
       }
 
       return {
-        score: parsed.score,
-        mistakes: parsed.mistakes,
-        speakers: parsed.speakers,
-        overallScore: parsed.score,
+        score: score,
+        mistakes: mistakes,
+        speakers: speakers,
+        overallScore: score,
         categoryScores: {},
         recommendations: [],
-        summary: `Analysis completed with score: ${parsed.score}/100`,
-        confidence: finishReason === 'length' ? 0.7 : 0.9, // Lower confidence for truncated responses
+        summary: `Analysis completed with score: ${score}/100${speakers.length > 0 ? `, speakers identified: ${speakers.length}` : ''}`,
+        confidence: finishReason === 'length' ? 0.7 : 0.9,
         tokenUsage: {
           input: response.usage?.prompt_tokens || response.tokenEstimation?.actualInputTokens || 0,
           output: response.usage?.completion_tokens || response.tokenEstimation?.outputTokens || 0,
@@ -380,11 +380,124 @@ You must respond in the following JSON format:
       console.error('❌ Error Details:', {
         message: error.message,
         response: response,
-        content: response?.choices?.[0]?.message?.content,
+        content: response?.choices?.[0]?.message?.content?.slice(0, 500),
         finishReason: response?.choices?.[0]?.finish_reason
       });
       logger.error('Failed to parse OpenAI response', error);
-      throw new Error(`Failed to parse OpenAI response: ${error.message}. Content: ${response?.choices?.[0]?.message?.content || 'No content'}`);
+      throw new Error(`Failed to parse OpenAI response: ${error.message}. Content preview: ${response?.choices?.[0]?.message?.content?.slice(0, 200) || 'No content'}...`);
+    }
+  }
+
+  private cleanAndRepairJSON(content: string): string {
+    let cleanContent = content.trim();
+    
+    // Remove markdown formatting
+    if (cleanContent.startsWith('```json')) {
+      cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    } else if (cleanContent.startsWith('```')) {
+      cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
+    
+    // Fix common quote escaping issues
+    cleanContent = cleanContent
+      .replace(/([^\\])"([^"]*[^\\])"([^:])/g, '$1\\"$2\\"$3') // Escape unescaped quotes not followed by colons
+      .replace(/\\"([^"]*)\\":/g, '"$1":') // Fix over-escaped property names
+      .replace(/:\s*"([^"]*[^\\])"/g, (match, p1) => {
+        // Only escape quotes in values, not property names
+        return `: "${p1.replace(/"/g, '\\"')}"`;
+      });
+    
+    return cleanContent;
+  }
+
+  private advancedJSONRepair(content: string): string {
+    let repaired = content.trim();
+    
+    // More aggressive quote fixing
+    repaired = repaired
+      .replace(/([^\\])"([^":\[\],{}]*)"([^:])/g, '$1\\"$2\\"$3')
+      .replace(/([^\\])'([^':\[\],{}]*)'([^:])/g, '$1"$2"$3') // Replace single quotes with double quotes
+      .replace(/([^\\])"([^"]*don)'t/g, '$1"$2\\\t') // Fix contractions like "don't"
+      .replace(/([^\\])"([^"]*can)'t/g, '$1"$2\\\t')
+      .replace(/([^\\])"([^"]*won)'t/g, '$1"$2\\\t');
+    
+    // Ensure proper array and object closure
+    if (!this.isValidJSON(repaired)) {
+      repaired = this.attemptJSONRepair(repaired);
+    }
+    
+    return repaired;
+  }
+
+  private attemptPartialRecovery(content: string): any | null {
+    try {
+      // Try to extract at least the score and mistakes from malformed JSON
+      const scoreMatch = content.match(/"score":\s*(\d+)/);
+      const mistakesMatch = content.match(/"mistakes":\s*\[(.*?)\]/s);
+      const speakersMatch = content.match(/"speakers":\s*\[(.*?)\]/s);
+      
+      if (scoreMatch) {
+        const score = parseInt(scoreMatch[1]);
+        const mistakes = mistakesMatch ? this.extractMistakesFromText(mistakesMatch[1]) : [];
+        const speakers = speakersMatch ? this.extractSpeakersFromText(speakersMatch[1]) : [];
+        
+        return {
+          score: score,
+          mistakes: mistakes,
+          speakers: speakers
+        };
+      }
+    } catch (error) {
+      console.error('Partial recovery failed:', error);
+    }
+    
+    return null;
+  }
+
+  private extractMistakesFromText(mistakesText: string): any[] {
+    try {
+      // Try to parse individual mistake objects
+      const mistakes = [];
+      const mistakeMatches = mistakesText.match(/\{[^}]+\}/g);
+      
+      if (mistakeMatches) {
+        for (const match of mistakeMatches) {
+          try {
+            const cleanMatch = this.cleanAndRepairJSON(match);
+            const mistake = JSON.parse(cleanMatch);
+            mistakes.push(mistake);
+          } catch (error) {
+            console.warn('Failed to parse individual mistake:', match);
+          }
+        }
+      }
+      
+      return mistakes;
+    } catch (error) {
+      return [];
+    }
+  }
+
+  private extractSpeakersFromText(speakersText: string): any[] {
+    try {
+      const speakers = [];
+      const speakerMatches = speakersText.match(/\{[^}]+\}/g);
+      
+      if (speakerMatches) {
+        for (const match of speakerMatches) {
+          try {
+            const cleanMatch = this.cleanAndRepairJSON(match);
+            const speaker = JSON.parse(cleanMatch);
+            speakers.push(speaker);
+          } catch (error) {
+            console.warn('Failed to parse individual speaker:', match);
+          }
+        }
+      }
+      
+      return speakers;
+    } catch (error) {
+      return [];
     }
   }
 

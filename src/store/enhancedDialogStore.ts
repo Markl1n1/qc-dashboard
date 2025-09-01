@@ -289,12 +289,22 @@ export const useEnhancedDialogStore = create<EnhancedDialogStore>()(
         try {
           set({ error: null });
           
+          // Enhanced analysis data with speaker information
+          const enhancedMistakes = (analysis as any).mistakes || analysis.mistakes || [];
+          const speakersData = (analysis as any).speakers || [];
+          
+          // Create enhanced mistakes array with speaker information embedded
+          const mistakesWithSpeakers = enhancedMistakes.map((mistake: any) => ({
+            ...mistake,
+            _speakers: speakersData // Embed speaker data in each mistake for reference
+          }));
+          
           await databaseService.createAnalysis({
             dialog_id: dialogId,
             analysis_type: type,
             overall_score: analysis.overallScore,
             category_scores: analysis.categoryScores,
-            mistakes: analysis.mistakes,
+            mistakes: mistakesWithSpeakers, // Save enhanced mistakes with speaker data
             recommendations: analysis.recommendations,
             summary: analysis.summary,
             confidence: analysis.confidence,
@@ -305,12 +315,26 @@ export const useEnhancedDialogStore = create<EnhancedDialogStore>()(
             processing_time: (analysis as any).processingTime
           });
 
+          // Update speaker names in utterances if speaker data is available
+          if (speakersData && speakersData.length > 0) {
+            await databaseService.updateSpeakerNames(dialogId, speakersData);
+          }
+
           // Update local state
           set(state => ({
             dialogs: state.dialogs.map(dialog => {
               if (dialog.id === dialogId) {
                 const updatedDialog = { ...dialog };
                 updatedDialog.openaiEvaluation = analysis as any;
+                
+                // Update speaker names in local utterances if available
+                if (speakersData.length > 0 && updatedDialog.speakerTranscription) {
+                  updatedDialog.speakerTranscription = databaseService.applySpeakerNames(
+                    updatedDialog.speakerTranscription, 
+                    speakersData
+                  );
+                }
+                
                 return updatedDialog;
               }
               return dialog;
