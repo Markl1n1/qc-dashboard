@@ -219,6 +219,7 @@ export class PDFGenerator {
         
         // Add utterance quote
         if (mistake.utterance) {
+          this.doc.setFont('Roboto', 'normal');
           this.addText(`Quote: "${mistake.utterance}"`, 10, 'normal');
         }
         
