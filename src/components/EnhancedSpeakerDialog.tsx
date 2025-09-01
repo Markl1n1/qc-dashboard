@@ -113,9 +113,63 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
   };
 
   const getUtteranceMistakes = (utteranceText: string) => {
-    return mistakes.filter(mistake => 
-      mistake.utterance && utteranceText.includes(mistake.utterance)
-    );
+    return mistakes.filter(mistake => {
+      if (!mistake.utterance) return false;
+      
+      // Clean both texts for comparison
+      const cleanUtteranceText = utteranceText.toLowerCase().replace(/\s+/g, ' ').trim();
+      const cleanMistakeText = mistake.utterance.toLowerCase().replace(/\s+/g, ' ').trim();
+      
+      // Try multiple matching strategies
+      return (
+        // Exact match
+        cleanUtteranceText.includes(cleanMistakeText) ||
+        // Reverse match (mistake text contains utterance text)
+        cleanMistakeText.includes(cleanUtteranceText) ||
+        // Fuzzy match - check if substantial parts match (for merged utterances)
+        checkFuzzyMatch(cleanUtteranceText, cleanMistakeText) ||
+        // Word-based matching
+        checkWordMatch(cleanUtteranceText, cleanMistakeText)
+      );
+    });
+  };
+
+  const checkFuzzyMatch = (text1: string, text2: string): boolean => {
+    // For shorter mistake text, use more lenient matching
+    const minLength = Math.min(text1.length, text2.length);
+    if (minLength < 20) {
+      // For short texts, check if they share significant words
+      const words1 = text1.split(' ').filter(w => w.length > 3);
+      const words2 = text2.split(' ').filter(w => w.length > 3);
+      const commonWords = words1.filter(w => words2.includes(w));
+      return commonWords.length >= Math.min(2, Math.min(words1.length, words2.length));
+    }
+    
+    // For longer texts, use substring matching
+    const shorter = text1.length < text2.length ? text1 : text2;
+    const longer = text1.length < text2.length ? text2 : text1;
+    
+    // Check if 70% of the shorter text appears in the longer text
+    const threshold = Math.floor(shorter.length * 0.7);
+    for (let i = 0; i <= shorter.length - threshold; i++) {
+      const substring = shorter.substring(i, i + threshold);
+      if (longer.includes(substring)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const checkWordMatch = (text1: string, text2: string): boolean => {
+    const words1 = text1.split(' ').filter(w => w.length > 2);
+    const words2 = text2.split(' ').filter(w => w.length > 2);
+    
+    if (words1.length === 0 || words2.length === 0) return false;
+    
+    const commonWords = words1.filter(w => words2.includes(w));
+    // Require at least 50% word overlap for shorter texts
+    const minWords = Math.min(words1.length, words2.length);
+    return commonWords.length >= Math.max(1, Math.floor(minWords * 0.5));
   };
 
   const mergedUtterances = mergeConsecutiveUtterances(utterances);

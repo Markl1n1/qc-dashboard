@@ -8,7 +8,7 @@ interface AuthStore {
   session: Session | null;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  signUp: (email: string, password: string, name: string, passcode: string) => Promise<{ success: boolean; error?: string }>;
+  signUp: (email: string, password: string, name: string, passcode: string) => Promise<{ success: boolean; error?: string; emailConfirmationRequired?: boolean }>;
   logout: () => Promise<void>;
   verifyPasscode: (passcode: string) => Promise<boolean>;
   updatePasscode: (newPasscode: string) => Promise<{ success: boolean; error?: string }>;
@@ -97,7 +97,7 @@ export const useAuthStore = create<AuthStore>()(
             return { success: false, error: 'Invalid passcode. Please contact your administrator for the correct passcode.' };
           }
 
-          // Use the email-confirmed page as redirect URL
+          // Use email-confirmed page as redirect URL for email confirmation
           const redirectUrl = `${window.location.origin}/email-confirmed`;
           
           const { data, error } = await supabase.auth.signUp({
@@ -132,12 +132,12 @@ export const useAuthStore = create<AuthStore>()(
           if (data.session) {
             get().setAuth(data.session);
             console.log('Security Event: Successful sign up for email:', email.substring(0, 3) + '***');
-            return { success: true };
+            return { success: true, emailConfirmationRequired: false };
           }
 
           // Email confirmation required
           console.log('Security Event: Sign up successful, email confirmation required for:', email.substring(0, 3) + '***');
-          return { success: true };
+          return { success: true, emailConfirmationRequired: true };
         } catch (error) {
           console.error('Security Event: Sign up error:', error);
           return { success: false, error: 'An unexpected error occurred during registration. Please try again.' };

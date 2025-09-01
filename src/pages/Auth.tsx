@@ -94,10 +94,17 @@ const Auth = () => {
     try {
       const result = await signUp(signupData.email, signupData.password, signupData.name, signupData.passcode);
       if (result.success) {
-        toast({
-          title: "Account created successfully",
-          description: "Welcome to QC Dashboard! You can now access the system."
-        });
+        if (result.emailConfirmationRequired) {
+          toast({
+            title: "Account created - Email confirmation required",
+            description: "Please check your email and click the confirmation link to activate your account."
+          });
+        } else {
+          toast({
+            title: "Account created successfully",
+            description: "Welcome to QC Dashboard! You can now access the system."
+          });
+        }
       } else {
         toast({
           title: "Sign up failed",
