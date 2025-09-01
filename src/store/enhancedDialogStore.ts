@@ -9,9 +9,11 @@ interface EnhancedDialogStore {
   dialogs: Dialog[];
   isLoading: boolean;
   error: string | null;
+  dialogDetailsCache: Map<string, { data: Dialog; timestamp: number }>;
   
   // Dialog operations
   loadDialogs: () => Promise<void>;
+  loadDialogDetails: (id: string) => Promise<Dialog | null>;
   addDialog: (dialog: Omit<Dialog, 'id'>) => Promise<string>;
   updateDialog: (id: string, updates: Partial<Dialog>) => Promise<void>;
   deleteDialog: (id: string) => Promise<void>;
@@ -36,45 +38,75 @@ export const useEnhancedDialogStore = create<EnhancedDialogStore>()(
       dialogs: [],
       isLoading: false,
       error: null,
+      dialogDetailsCache: new Map(),
 
       setLoading: (loading: boolean) => set({ isLoading: loading }),
       
       setError: (error: string | null) => set({ error }),
-
+      
       loadDialogs: async () => {
         try {
           set({ isLoading: true, error: null });
           
           const dbDialogs = await databaseService.getDialogs();
-          const dialogs: Dialog[] = [];
-
-          for (const dbDialog of dbDialogs) {
-            // Load transcriptions and analyses for each dialog
-            const transcriptions = await databaseService.getTranscriptions(dbDialog.id);
-            const analyses = await databaseService.getAnalysis(dbDialog.id);
-            
-            const dialog = databaseService.convertToDialogFormat(dbDialog, transcriptions, analyses);
-            
-            // Load speaker utterances if available
-            const speakerTranscription = transcriptions.find(t => t.transcription_type === 'speaker');
-            if (speakerTranscription) {
-              const utterances = await databaseService.getUtterances(speakerTranscription.id);
-              dialog.speakerTranscription = databaseService.convertToSpeakerUtterances(utterances);
-            }
-
-            const russianSpeakerTranscription = transcriptions.find(t => t.transcription_type === 'russian_speaker');
-            if (russianSpeakerTranscription) {
-              const utterances = await databaseService.getUtterances(russianSpeakerTranscription.id);
-              dialog.russianSpeakerTranscription = databaseService.convertToSpeakerUtterances(utterances);
-            }
-
-            dialogs.push(dialog);
-          }
+          
+          // Load only essential data for dashboard view (no detailed transcriptions/analyses)
+          const dialogs: Dialog[] = dbDialogs.map(dbDialog => 
+            databaseService.convertToDialogFormat(dbDialog)
+          );
 
           set({ dialogs, isLoading: false });
         } catch (error) {
           console.error('Error loading dialogs:', error);
           set({ error: error instanceof Error ? error.message : 'Failed to load dialogs', isLoading: false });
+        }
+      },
+
+      // New method for loading detailed dialog data on-demand
+      loadDialogDetails: async (id: string): Promise<Dialog | null> => {
+        try {
+          const { dialogDetailsCache } = get();
+          const now = Date.now();
+          const cacheEntry = dialogDetailsCache.get(id);
+          
+          // Return cached data if it's less than 5 minutes old
+          if (cacheEntry && (now - cacheEntry.timestamp) < 5 * 60 * 1000) {
+            return cacheEntry.data;
+          }
+
+          const dbDialog = await databaseService.getDialog(id);
+          if (!dbDialog) return null;
+
+          // Load transcriptions and analyses in parallel
+          const [transcriptions, analyses] = await Promise.all([
+            databaseService.getTranscriptions(id),
+            databaseService.getAnalysis(id)
+          ]);
+          
+          const dialog = databaseService.convertToDialogFormat(dbDialog, transcriptions, analyses);
+          
+          // Load speaker utterances in parallel
+          const utterancePromises = transcriptions.map(async (transcription) => {
+            if (transcription.transcription_type === 'speaker') {
+              const utterances = await databaseService.getUtterances(transcription.id);
+              dialog.speakerTranscription = databaseService.convertToSpeakerUtterances(utterances);
+            } else if (transcription.transcription_type === 'russian_speaker') {
+              const utterances = await databaseService.getUtterances(transcription.id);
+              dialog.russianSpeakerTranscription = databaseService.convertToSpeakerUtterances(utterances);
+            }
+          });
+          
+          await Promise.all(utterancePromises);
+
+          // Cache the detailed data
+          dialogDetailsCache.set(id, { data: dialog, timestamp: now });
+          set({ dialogDetailsCache });
+
+          return dialog;
+        } catch (error) {
+          console.error('Error loading dialog details:', error);
+          set({ error: error instanceof Error ? error.message : 'Failed to load dialog details' });
+          return null;
         }
       },
 
@@ -153,9 +185,16 @@ export const useEnhancedDialogStore = create<EnhancedDialogStore>()(
           
           await databaseService.deleteDialog(id);
           
-          set(state => ({
-            dialogs: state.dialogs.filter(dialog => dialog.id !== id)
-          }));
+          set(state => {
+            // Remove from cache as well
+            const newCache = new Map(state.dialogDetailsCache);
+            newCache.delete(id);
+            
+            return {
+              dialogs: state.dialogs.filter(dialog => dialog.id !== id),
+              dialogDetailsCache: newCache
+            };
+          });
         } catch (error) {
           console.error('Error deleting dialog:', error);
           set({ error: error instanceof Error ? error.message : 'Failed to delete dialog' });
@@ -164,32 +203,9 @@ export const useEnhancedDialogStore = create<EnhancedDialogStore>()(
       },
 
       getDialog: async (id: string): Promise<Dialog | null> => {
-        try {
-          const dbDialog = await databaseService.getDialog(id);
-          if (!dbDialog) return null;
-
-          const transcriptions = await databaseService.getTranscriptions(id);
-          const analyses = await databaseService.getAnalysis(id);
-          
-          const dialog = databaseService.convertToDialogFormat(dbDialog, transcriptions, analyses);
-          
-          // Load speaker utterances
-          for (const transcription of transcriptions) {
-            if (transcription.transcription_type === 'speaker') {
-              const utterances = await databaseService.getUtterances(transcription.id);
-              dialog.speakerTranscription = databaseService.convertToSpeakerUtterances(utterances);
-            } else if (transcription.transcription_type === 'russian_speaker') {
-              const utterances = await databaseService.getUtterances(transcription.id);
-              dialog.russianSpeakerTranscription = databaseService.convertToSpeakerUtterances(utterances);
-            }
-          }
-
-          return dialog;
-        } catch (error) {
-          console.error('Error getting dialog:', error);
-          set({ error: error instanceof Error ? error.message : 'Failed to get dialog' });
-          return null;
-        }
+        // Use the new loadDialogDetails method for consistency
+        const { loadDialogDetails } = get();
+        return await loadDialogDetails(id);
       },
 
       saveTranscription: async (dialogId: string, transcription: string, type: 'plain' | 'russian') => {
@@ -307,7 +323,7 @@ export const useEnhancedDialogStore = create<EnhancedDialogStore>()(
         }
       },
 
-      clearDialogs: () => set({ dialogs: [] })
+      clearDialogs: () => set({ dialogs: [], dialogDetailsCache: new Map() })
     }),
     {
       name: 'enhanced-dialog-store',

@@ -144,7 +144,78 @@ const Settings = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="ai_confidence_threshold">AI Confidence Threshold</Label>
+                  <Input
+                    id="ai_confidence_threshold"
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.1"
+                    value={localConfig.ai_confidence_threshold || '0.8'}
+                    onChange={e => handleConfigChange('ai_confidence_threshold', e.target.value)}
+                    placeholder="0.8"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Minimum confidence threshold for AI analysis (0.0 - 1.0).
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="ai_temperature">AI Temperature</Label>
+                  <Input
+                    id="ai_temperature"
+                    type="number"
+                    min="0"
+                    max="2"
+                    step="0.1"
+                    value={localConfig.ai_temperature || '0.7'}
+                    onChange={e => handleConfigChange('ai_temperature', e.target.value)}
+                    placeholder="0.7"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Controls randomness in AI responses (0.0 - 2.0). Lower values are more focused.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="ai_reasoning_effort">AI Reasoning Effort</Label>
+                  <Select
+                    value={localConfig.ai_reasoning_effort || 'medium'}
+                    onValueChange={value => handleConfigChange('ai_reasoning_effort', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select reasoning effort" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-sm text-muted-foreground">
+                    Level of reasoning effort for AI analysis.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="max_tokens">Max Tokens</Label>
+                  <Input
+                    id="max_tokens"
+                    type="number"
+                    min="100"
+                    max="10000"
+                    step="100"
+                    value={localConfig.max_tokens || '1000'}
+                    onChange={e => handleConfigChange('max_tokens', e.target.value)}
+                    placeholder="1000"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Maximum number of tokens for AI responses.
+                  </p>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

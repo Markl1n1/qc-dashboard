@@ -5,10 +5,11 @@ import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Calendar } from './ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
-import { CalendarIcon, BarChart3 } from 'lucide-react';
+import { CalendarIcon, BarChart3, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
+import { reportService } from '../services/reportService';
 
 interface GenerateReportDialogProps {
   trigger?: React.ReactNode;
@@ -19,6 +20,7 @@ const GenerateReportDialog: React.FC<GenerateReportDialogProps> = ({ trigger }) 
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
   const [reportType, setReportType] = useState<string>('');
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const reportTypes = [
     { value: 'average-quality-by-agent', label: 'Average Quality Score by Agent' },
@@ -26,7 +28,7 @@ const GenerateReportDialog: React.FC<GenerateReportDialogProps> = ({ trigger }) 
     { value: 'type-c', label: 'Type C Report (Coming Soon)' }
   ];
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     if (!dateFrom || !dateTo) {
       toast.error('Please select both start and end dates');
       return;
@@ -42,15 +44,38 @@ const GenerateReportDialog: React.FC<GenerateReportDialogProps> = ({ trigger }) 
       return;
     }
 
-    // TODO: Implement actual report generation logic
-    console.log('Generating report:', {
-      type: reportType,
-      dateFrom: format(dateFrom, 'yyyy-MM-dd'),
-      dateTo: format(dateTo, 'yyyy-MM-dd')
-    });
-
-    toast.success('Report generation started');
-    setIsOpen(false);
+    setIsGenerating(true);
+    
+    try {
+      let reportBlob: Blob;
+      
+      switch (reportType) {
+        case 'average-quality-by-agent':
+          reportBlob = await reportService.generateAverageQualityByAgentReport(dateFrom, dateTo);
+          break;
+        default:
+          toast.error('Report type not yet implemented');
+          return;
+      }
+      
+      // Create download link
+      const url = URL.createObjectURL(reportBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${reportType}-${format(dateFrom, 'yyyy-MM-dd')}-to-${format(dateTo, 'yyyy-MM-dd')}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      toast.success('Report generated and downloaded successfully');
+      setIsOpen(false);
+    } catch (error) {
+      console.error('Error generating report:', error);
+      toast.error('Failed to generate report. Please try again.');
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleClose = () => {
@@ -148,11 +173,18 @@ const GenerateReportDialog: React.FC<GenerateReportDialogProps> = ({ trigger }) 
           </div>
 
           <div className="flex justify-end space-x-2 pt-4">
-            <Button variant="outline" onClick={handleClose}>
+            <Button variant="outline" onClick={handleClose} disabled={isGenerating}>
               Cancel
             </Button>
-            <Button onClick={handleGenerate}>
-              Generate Report
+            <Button onClick={handleGenerate} disabled={isGenerating}>
+              {isGenerating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                'Generate Report'
+              )}
             </Button>
           </div>
         </div>

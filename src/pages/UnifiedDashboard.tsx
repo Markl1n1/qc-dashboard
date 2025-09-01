@@ -14,7 +14,8 @@ import {
   AlertCircle,
   FileText,
   TrendingUp,
-  Trash2
+  Trash2,
+  Loader2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useDatabaseDialogs } from '../hooks/useDatabaseDialogs';
@@ -23,6 +24,8 @@ import { Dialog } from '../types';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import GenerateReportDialog from '@/components/GenerateReportDialog';
+import OptimizedDialogCard from '@/components/OptimizedDialogCard';
+import SkeletonLoader from '@/components/SkeletonLoader';
 
 type SortOption = 'newest' | 'oldest' | 'name' | 'status';
 type StatusFilter = 'all' | 'pending' | 'processing' | 'completed' | 'failed';
@@ -105,13 +108,52 @@ const UnifiedDashboard = () => {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-            <p className="text-muted-foreground">Loading dashboard...</p>
-          </div>
+      <div className="container mx-auto px-6 py-8 space-y-6">
+        {/* Header Skeleton */}
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div className="h-8 w-64 bg-muted rounded animate-pulse" />
+          <div className="h-10 w-32 bg-muted rounded animate-pulse" />
         </div>
+
+        {/* Stats Cards Skeleton */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 max-w-4xl mx-auto">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-2">
+                    <div className="h-4 w-16 bg-muted rounded animate-pulse" />
+                    <div className="h-6 w-8 bg-muted rounded animate-pulse" />
+                  </div>
+                  <div className="h-8 w-8 bg-muted rounded animate-pulse" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* Filters Skeleton */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex flex-col lg:flex-row gap-4">
+              <div className="flex-1 h-10 bg-muted rounded animate-pulse" />
+              <div className="h-10 w-[180px] bg-muted rounded animate-pulse" />
+              <div className="h-10 w-[150px] bg-muted rounded animate-pulse" />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Dialog Cards Skeleton */}
+        <Card>
+          <CardHeader>
+            <div className="h-6 w-32 bg-muted rounded animate-pulse" />
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <SkeletonLoader count={6} />
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -238,67 +280,66 @@ const UnifiedDashboard = () => {
           ) : (
             <div className="space-y-2">
               {filteredAndSortedDialogs.map((dialog) => (
-                <div
-                  key={dialog.id}
-                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
-                >
-                  <div className="flex items-center gap-4 flex-1 min-w-0">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-2">
-                        <h3 className="font-medium truncate">{dialog.fileName}</h3>
-                        <Badge className={getStatusColor(dialog.status)}>
-                          {getStatusIcon(dialog.status)}
-                          <span className="ml-1 capitalize">{dialog.status}</span>
-                        </Badge>
-                        <span className="text-sm text-muted-foreground">
-                          {new Date(dialog.uploadDate).toLocaleDateString()}
-                        </span>
-                      </div>
-                      
-                      <div className="text-sm text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <span>Supervisor: {dialog.assignedSupervisor}</span>
-                        {dialog.qualityScore && (
-                          <>
-                            <span className="hidden sm:inline">•</span>
-                            <span>{dialog.qualityScore}/100</span>
-                          </>
-                        )}
+                <div key={dialog.id}>
+                  <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                    <div className="flex items-center gap-4 flex-1 min-w-0">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-2">
+                          <h3 className="font-medium truncate">{dialog.fileName}</h3>
+                          <Badge className={getStatusColor(dialog.status)}>
+                            {getStatusIcon(dialog.status)}
+                            <span className="ml-1 capitalize">{dialog.status}</span>
+                          </Badge>
+                          <span className="text-sm text-muted-foreground">
+                            {new Date(dialog.uploadDate).toLocaleDateString()}
+                          </span>
+                        </div>
+                        
+                        <div className="text-sm text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span>Supervisor: {dialog.assignedSupervisor}</span>
+                          {dialog.qualityScore && (
+                            <>
+                              <span className="hidden sm:inline">•</span>
+                              <span>{dialog.qualityScore}/100</span>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  
-                  <div className="flex items-center gap-2 ml-4">
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={() => navigate(`/dialog/${dialog.id}`)}
-                    >
-                      View Details
-                    </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete Dialog</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Are you sure you want to delete "{dialog.fileName}"? This action cannot be undone and will remove all associated transcriptions and analyses.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction 
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            onClick={() => handleDeleteDialog(dialog.id)}
-                          >
-                            Delete
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+                    
+                    <div className="flex items-center gap-2 ml-4">
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => navigate(`/dialog/${dialog.id}`)}
+                      >
+                        View Details
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Dialog</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to delete "{dialog.fileName}"? This action cannot be undone and will remove all associated transcriptions and analyses.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction 
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                              onClick={() => handleDeleteDialog(dialog.id)}
+                            >
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
                   </div>
                 </div>
               ))}
