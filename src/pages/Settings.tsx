@@ -163,22 +163,6 @@ const Settings = () => {
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="ai_temperature">AI Temperature</Label>
-                  <Input
-                    id="ai_temperature"
-                    type="number"
-                    min="0"
-                    max="2"
-                    step="0.1"
-                    value={localConfig.ai_temperature || '0.7'}
-                    onChange={e => handleConfigChange('ai_temperature', e.target.value)}
-                    placeholder="0.7"
-                  />
-                  <p className="text-sm text-muted-foreground">
-                    Controls randomness in AI responses (0.0 - 2.0). Lower values are more focused.
-                  </p>
-                </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="ai_reasoning_effort">AI Reasoning Effort</Label>
@@ -350,13 +334,6 @@ const Settings = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <Alert className="mb-4">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  Only instructions uploaded in the "System" tab are used for AI evaluation and analysis. 
-                  Other tabs like "Evaluation" and "Analysis" are for reference only.
-                </AlertDescription>
-              </Alert>
               <AIInstructionsFileManager />
             </CardContent>
           </Card>

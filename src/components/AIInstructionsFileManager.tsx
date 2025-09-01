@@ -27,14 +27,10 @@ const AIInstructionsFileManager = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [files, setFiles] = useState<Record<string, InstructionFile[]>>({
-    system: [],
-    evaluation: [],
-    analysis: []
+    system: []
   });
   const [stats, setStats] = useState<Record<string, FileStats>>({
-    system: { count: 0, latestUpdate: null },
-    evaluation: { count: 0, latestUpdate: null },
-    analysis: { count: 0, latestUpdate: null }
+    system: { count: 0, latestUpdate: null }
   });
 
   const loadFiles = useCallback(async () => {
@@ -42,29 +38,13 @@ const AIInstructionsFileManager = () => {
     setError(null);
 
     try {
-      const types = ['system', 'evaluation', 'analysis'] as const;
-      const filePromises = types.map(type => aiInstructionsService.listInstructionFiles(type));
-      const statsPromises = types.map(type => aiInstructionsService.getFileStats(type));
-
-      const [fileResults, statsResults] = await Promise.all([
-        Promise.all(filePromises),
-        Promise.all(statsPromises)
+      const [systemFiles, systemStats] = await Promise.all([
+        aiInstructionsService.listInstructionFiles('system'),
+        aiInstructionsService.getFileStats('system')
       ]);
 
-      const newFiles = {
-        system: fileResults[0],
-        evaluation: fileResults[1],
-        analysis: fileResults[2]
-      };
-
-      const newStats = {
-        system: statsResults[0],
-        evaluation: statsResults[1],
-        analysis: statsResults[2]
-      };
-
-      setFiles(newFiles);
-      setStats(newStats);
+      setFiles({ system: systemFiles });
+      setStats({ system: systemStats });
     } catch (err) {
       console.error('Error loading files:', err);
       setError(err instanceof Error ? err.message : 'Failed to load files');
@@ -77,7 +57,7 @@ const AIInstructionsFileManager = () => {
     loadFiles();
   }, [loadFiles]);
 
-  const handleFileUpload = async (file: File, type: 'system' | 'evaluation' | 'analysis') => {
+  const handleFileUpload = async (file: File, type: 'system') => {
     try {
       setError(null);
       await aiInstructionsService.uploadInstructionFile(file, type);
@@ -104,7 +84,7 @@ const AIInstructionsFileManager = () => {
   };
 
   const FileUploadSection = ({ type, icon: Icon, title, description }: {
-    type: 'system' | 'evaluation' | 'analysis';
+    type: 'system';
     icon: React.ComponentType<any>;
     title: string;
     description: string;
@@ -237,69 +217,28 @@ const AIInstructionsFileManager = () => {
           </Button>
         </div>
 
-        <Tabs defaultValue="system" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="system" className="flex items-center gap-2">
-              <Cpu className="h-4 w-4" />
-              System
-            </TabsTrigger>
-            <TabsTrigger value="evaluation" className="flex items-center gap-2">
-              <Target className="h-4 w-4" />
-              Evaluation
-            </TabsTrigger>
-            <TabsTrigger value="analysis" className="flex items-center gap-2">
-              <FileText className="h-4 w-4" />
-              Analysis
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="system">
-            <FileUploadSection
-              type="system"
-              icon={Cpu}
-              title="System Instructions"
-              description="Core system instructions that define how the AI should behave and format responses."
-            />
-          </TabsContent>
-
-          <TabsContent value="evaluation">
-            <FileUploadSection
-              type="evaluation"
-              icon={Target}
-              title="Evaluation Instructions"
-              description="Instructions for evaluating agent performance, call quality, and customer service metrics."
-            />
-          </TabsContent>
-
-          <TabsContent value="analysis">
-            <FileUploadSection
-              type="analysis"
-              icon={FileText}
-              title="Analysis Instructions"
-              description="Instructions for analyzing conversation patterns, sentiment, and generating insights."
-            />
-          </TabsContent>
-        </Tabs>
+        <FileUploadSection
+          type="system"
+          icon={Cpu}
+          title="System Instructions"
+          description="Core system instructions that define how the AI should behave and format responses. These instructions are used for AI evaluation and analysis."
+        />
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {(['system', 'evaluation', 'analysis'] as const).map((type) => (
-          <Card key={type}>
-            <CardContent className="pt-6">
-              <div className="text-center space-y-2">
-                <div className="text-2xl font-bold">{stats[type].count}</div>
-                <div className="text-sm text-muted-foreground capitalize">{type} Files</div>
-                {stats[type].latestUpdate && (
-                  <div className="text-xs text-muted-foreground">
-                    Last: {new Date(stats[type].latestUpdate).toLocaleDateString()}
-                  </div>
-                )}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="text-center space-y-2">
+            <div className="text-2xl font-bold">{stats.system.count}</div>
+            <div className="text-sm text-muted-foreground">System Files</div>
+            {stats.system.latestUpdate && (
+              <div className="text-xs text-muted-foreground">
+                Last: {new Date(stats.system.latestUpdate).toLocaleDateString()}
               </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };

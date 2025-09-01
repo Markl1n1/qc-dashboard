@@ -57,7 +57,20 @@ export const useAuthStore = create<AuthStore>()(
 
           if (error) {
             console.log('Security Event: Failed login attempt for email:', email.substring(0, 3) + '***', 'Error:', error.message);
-            return { success: false, error: error.message };
+            
+            // Parse specific error messages
+            let userFriendlyMessage = error.message;
+            if (error.message.includes('Invalid login credentials')) {
+              userFriendlyMessage = 'Invalid email or password. Please check your credentials and try again.';
+            } else if (error.message.includes('Email not confirmed')) {
+              userFriendlyMessage = 'Please check your email and click the confirmation link before logging in.';
+            } else if (error.message.includes('Too many requests')) {
+              userFriendlyMessage = 'Too many login attempts. Please wait a few minutes before trying again.';
+            } else if (error.message.includes('User not found')) {
+              userFriendlyMessage = 'No account found with this email address. Please check your email or sign up.';
+            }
+            
+            return { success: false, error: userFriendlyMessage };
           }
 
           if (data.session) {
@@ -66,10 +79,10 @@ export const useAuthStore = create<AuthStore>()(
             return { success: true };
           }
 
-          return { success: false, error: 'Login failed' };
+          return { success: false, error: 'Login failed. Please try again.' };
         } catch (error) {
           console.error('Security Event: Login error:', error);
-          return { success: false, error: 'An unexpected error occurred' };
+          return { success: false, error: 'An unexpected error occurred during login. Please try again.' };
         }
       },
 
@@ -81,7 +94,7 @@ export const useAuthStore = create<AuthStore>()(
           const isPasscodeValid = await get().verifyPasscode(passcode);
           if (!isPasscodeValid) {
             console.log('Security Event: Invalid passcode used during signup attempt for email:', email.substring(0, 3) + '***');
-            return { success: false, error: 'Passcode incorrect, request your passcode from an administrator' };
+            return { success: false, error: 'Invalid passcode. Please contact your administrator for the correct passcode.' };
           }
 
           // Use the email-confirmed page as redirect URL
@@ -100,18 +113,34 @@ export const useAuthStore = create<AuthStore>()(
 
           if (error) {
             console.log('Security Event: Sign up failed for email:', email.substring(0, 3) + '***', 'Error:', error.message);
-            return { success: false, error: error.message };
+            
+            // Parse specific error messages
+            let userFriendlyMessage = error.message;
+            if (error.message.includes('User already registered')) {
+              userFriendlyMessage = 'An account with this email already exists. Please try logging in instead.';
+            } else if (error.message.includes('Password should be at least')) {
+              userFriendlyMessage = 'Password is too weak. Please use at least 6 characters.';
+            } else if (error.message.includes('Invalid email')) {
+              userFriendlyMessage = 'Please enter a valid email address.';
+            } else if (error.message.includes('Email rate limit exceeded')) {
+              userFriendlyMessage = 'Too many signup attempts. Please wait a few minutes before trying again.';
+            }
+            
+            return { success: false, error: userFriendlyMessage };
           }
 
           if (data.session) {
             get().setAuth(data.session);
+            console.log('Security Event: Successful sign up for email:', email.substring(0, 3) + '***');
+            return { success: true };
           }
 
-          console.log('Security Event: Successful sign up for email:', email.substring(0, 3) + '***');
+          // Email confirmation required
+          console.log('Security Event: Sign up successful, email confirmation required for:', email.substring(0, 3) + '***');
           return { success: true };
         } catch (error) {
           console.error('Security Event: Sign up error:', error);
-          return { success: false, error: 'An unexpected error occurred' };
+          return { success: false, error: 'An unexpected error occurred during registration. Please try again.' };
         }
       },
 

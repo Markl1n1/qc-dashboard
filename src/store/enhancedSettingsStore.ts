@@ -9,7 +9,6 @@ interface EnhancedSettingsState {
   maxConcurrentTranscriptions: number;
   autoDeleteEnabled: boolean;
   aiConfidenceThreshold: number;
-  aiTemperature: number;
   aiReasoningEffort: string;
   aiMaxTokensGpt5: number;
   aiMaxTokensGpt5Mini: number;
@@ -33,7 +32,6 @@ interface EnhancedSettingsState {
   updateMaxConcurrentTranscriptions: (count: number) => Promise<void>;
   updateAutoDeleteEnabled: (enabled: boolean) => Promise<void>;
   updateAiConfidenceThreshold: (threshold: number) => Promise<void>;
-  updateAiTemperature: (temperature: number) => Promise<void>;
   updateAiReasoningEffort: (effort: string) => Promise<void>;
   updateAiMaxTokensGpt5: (tokens: number) => Promise<void>;
   updateAiMaxTokensGpt5Mini: (tokens: number) => Promise<void>;
@@ -51,7 +49,6 @@ export const useEnhancedSettingsStore = create<EnhancedSettingsState>((set, get)
   maxConcurrentTranscriptions: 5,
   autoDeleteEnabled: true,
   aiConfidenceThreshold: 0.8,
-  aiTemperature: 0.7,
   aiReasoningEffort: 'medium',
   aiMaxTokensGpt5: 2000,
   aiMaxTokensGpt5Mini: 1000,
@@ -75,7 +72,6 @@ export const useEnhancedSettingsStore = create<EnhancedSettingsState>((set, get)
         maxConcurrentTranscriptions: parseInt(config.max_concurrent_transcriptions || '5'),
         autoDeleteEnabled: config.auto_delete_enabled === 'true',
         aiConfidenceThreshold: parseFloat(config.ai_confidence_threshold || '0.8'),
-        aiTemperature: parseFloat(config.ai_temperature || '0.7'),
         aiReasoningEffort: config.ai_reasoning_effort || 'medium',
         aiMaxTokensGpt5: parseInt(config.ai_max_tokens_gpt5 || '2000'),
         aiMaxTokensGpt5Mini: parseInt(config.ai_max_tokens_gpt5_mini || '1000'),
@@ -133,7 +129,6 @@ export const useEnhancedSettingsStore = create<EnhancedSettingsState>((set, get)
         max_concurrent_transcriptions: '5',
         auto_delete_enabled: 'true',
         ai_confidence_threshold: '0.8',
-        ai_temperature: '0.7',
         ai_reasoning_effort: 'medium',
         ai_max_tokens_gpt5_mini: '1000',
         ai_max_tokens_gpt5: '2000',
@@ -236,17 +231,6 @@ export const useEnhancedSettingsStore = create<EnhancedSettingsState>((set, get)
     }
   },
 
-  updateAiTemperature: async (temperature: number) => {
-    try {
-      set({ error: null });
-      await databaseService.updateSystemConfig('ai_temperature', temperature.toString());
-      set({ aiTemperature: temperature });
-    } catch (error) {
-      console.error('Error updating AI temperature:', error);
-      set({ error: error instanceof Error ? error.message : 'Failed to update AI temperature' });
-      throw error;
-    }
-  },
 
   updateAiReasoningEffort: async (effort: string) => {
     try {
