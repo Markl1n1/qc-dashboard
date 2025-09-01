@@ -116,6 +116,11 @@ class OpenAIEvaluationService {
 
       const validatedResult = this.validateResult(parsedResult, settings.aiConfidenceThreshold);
 
+      progressCallback({ stage: 'processing_response', message: 'Saving analysis results', progress: 0.9 });
+
+      // Save the analysis to database
+      await this.saveAnalysis(dialogId, parsedResult, validatedResult.confidence, evaluation.tokenEstimation);
+
       progressCallback({ stage: 'complete', message: 'Validation complete', progress: 0.9 });
 
       logger.info(`OpenAI evaluation completed for dialog ${dialogId}`);
@@ -125,6 +130,172 @@ class OpenAIEvaluationService {
     } catch (error: any) {
       await this.handleApiError(error, 'evaluate');
       throw error;
+    }
+  }
+
+  private async saveAnalysis(
+    dialogId: string,
+    result: any,
+    confidence: number,
+    tokenUsage?: any
+  ): Promise<void> {
+    try {
+      console.log('💾 Saving analysis to database...', { dialogId, confidence, tokenUsage });
+      console.log('📊 Analysis result structure:', result);
+      
+      // Extract speaker information from both the raw result and parsed format
+      let speakerData = null;
+      if (result.speakers) {
+        if (Array.isArray(result.speakers) && result.speakers.length > 0) {
+          speakerData = result.speakers[0];
+        } else if (typeof result.speakers === 'object') {
+          speakerData = result.speakers;
+        }
+        console.log('👥 Extracted speaker data:', speakerData);
+      }
+
+      // Save individual mistakes as separate rows with structured data
+      if (result.mistakes && Array.isArray(result.mistakes) && result.mistakes.length > 0) {
+        console.log(`📝 Saving ${result.mistakes.length} mistakes individually...`);
+        
+        for (const mistake of result.mistakes) {
+          const analysisData = {
+            dialog_id: dialogId,
+            analysis_type: 'openai',
+            overall_score: result.score,
+            mistakes: [mistake], // Keep the original format for backward compatibility
+            category_scores: {},
+            confidence: confidence,
+            token_usage: tokenUsage || {},
+            summary: '',
+            recommendations: [],
+            // New structured columns
+            comment: mistake.comment || '',
+            utterance: mistake.utterance || '',
+            rule_category: mistake.rule_category || '',
+            speaker_0: speakerData?.speaker_0 || '',
+            role_0: speakerData?.role_0 || '',
+            speaker_1: speakerData?.speaker_1 || '',
+            role_1: speakerData?.role_1 || ''
+          };
+
+          console.log('💾 Saving individual mistake:', analysisData);
+          
+          const { data, error } = await supabase
+            .from('dialog_analysis')
+            .insert(analysisData)
+            .select()
+            .single();
+          
+          if (error) {
+            console.error('❌ Failed to save individual mistake:', error, analysisData);
+            throw new Error(`Failed to save analysis: ${error.message}`);
+          }
+
+          console.log('✅ Individual mistake saved successfully:', data);
+        }
+      } else {
+        // Fallback: save a single row with overall score even if no mistakes
+        console.log('📝 No mistakes found, saving summary analysis...');
+        
+        const analysisData = {
+          dialog_id: dialogId,
+          analysis_type: 'openai',
+          overall_score: result.score,
+          mistakes: [],
+          category_scores: {},
+          confidence: confidence,
+          token_usage: tokenUsage || {},
+          summary: '',
+          recommendations: [],
+          // New structured columns
+          comment: '',
+          utterance: '',
+          rule_category: '',
+          speaker_0: speakerData?.speaker_0 || '',
+          role_0: speakerData?.role_0 || '',
+          speaker_1: speakerData?.speaker_1 || '',
+          role_1: speakerData?.role_1 || ''
+        };
+
+        const { data, error } = await supabase
+          .from('dialog_analysis')
+          .insert(analysisData)
+          .select()
+          .single();
+        
+        if (error) {
+          console.error('❌ Failed to save summary analysis:', error);
+          throw new Error(`Failed to save analysis: ${error.message}`);
+        }
+
+        console.log('✅ Summary analysis saved successfully:', data);
+      }
+
+      // Update speaker names in utterances if speakers data is available
+      if (speakerData) {
+        await this.updateSpeakerNames(dialogId, [speakerData]);
+        console.log('✅ Speaker names updated successfully');
+      }
+    } catch (error) {
+      console.error('❌ Error saving analysis:', error);
+      throw error;
+    }
+  }
+
+  private async updateSpeakerNames(dialogId: string, speakersData: any[]): Promise<void> {
+    try {
+      // Get the dialog's transcription and utterances
+      const { data: transcriptions, error: transcriptionsError } = await supabase
+        .from('dialog_transcriptions')
+        .select('id')
+        .eq('dialog_id', dialogId);
+
+      if (transcriptionsError || !transcriptions || transcriptions.length === 0) {
+        console.log('No transcriptions found for dialog:', dialogId);
+        return;
+      }
+
+      for (const transcription of transcriptions) {
+        const { data: utterances, error: utterancesError } = await supabase
+          .from('dialog_speaker_utterances')
+          .select('*')
+          .eq('transcription_id', transcription.id);
+
+        if (utterancesError || !utterances) {
+          console.log('No utterances found for transcription:', transcription.id);
+          continue;
+        }
+
+        // Update speaker names
+        const speakerMapping = speakersData[0] || {};
+        const updates = utterances.map(utterance => {
+          let newSpeaker = utterance.speaker;
+          
+          if (utterance.speaker === 'Speaker 0' && speakerMapping.speaker_0) {
+            newSpeaker = speakerMapping.speaker_0;
+          } else if (utterance.speaker === 'Speaker 1' && speakerMapping.speaker_1) {
+            newSpeaker = speakerMapping.speaker_1;
+          }
+
+          return {
+            id: utterance.id,
+            speaker: newSpeaker
+          };
+        });
+
+        // Batch update the utterances
+        for (const update of updates) {
+          if (update.speaker !== utterances.find(u => u.id === update.id)?.speaker) {
+            await supabase
+              .from('dialog_speaker_utterances')
+              .update({ speaker: update.speaker })
+              .eq('id', update.id);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error updating speaker names:', error);
     }
   }
 

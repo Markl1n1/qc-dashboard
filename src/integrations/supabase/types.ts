@@ -135,6 +135,7 @@ export type Database = {
           analysis_type: string
           banned_words_detected: Json | null
           category_scores: Json | null
+          comment: string | null
           confidence: number | null
           conversation_flow: Json | null
           created_at: string
@@ -144,15 +145,22 @@ export type Database = {
           overall_score: number | null
           processing_time: number | null
           recommendations: Json | null
+          role_0: string | null
+          role_1: string | null
+          rule_category: string | null
           sentiment: Json | null
+          speaker_0: string | null
+          speaker_1: string | null
           summary: string | null
           token_usage: Json | null
           updated_at: string
+          utterance: string | null
         }
         Insert: {
           analysis_type: string
           banned_words_detected?: Json | null
           category_scores?: Json | null
+          comment?: string | null
           confidence?: number | null
           conversation_flow?: Json | null
           created_at?: string
@@ -162,15 +170,22 @@ export type Database = {
           overall_score?: number | null
           processing_time?: number | null
           recommendations?: Json | null
+          role_0?: string | null
+          role_1?: string | null
+          rule_category?: string | null
           sentiment?: Json | null
+          speaker_0?: string | null
+          speaker_1?: string | null
           summary?: string | null
           token_usage?: Json | null
           updated_at?: string
+          utterance?: string | null
         }
         Update: {
           analysis_type?: string
           banned_words_detected?: Json | null
           category_scores?: Json | null
+          comment?: string | null
           confidence?: number | null
           conversation_flow?: Json | null
           created_at?: string
@@ -180,10 +195,16 @@ export type Database = {
           overall_score?: number | null
           processing_time?: number | null
           recommendations?: Json | null
+          role_0?: string | null
+          role_1?: string | null
+          rule_category?: string | null
           sentiment?: Json | null
+          speaker_0?: string | null
+          speaker_1?: string | null
           summary?: string | null
           token_usage?: Json | null
           updated_at?: string
+          utterance?: string | null
         }
         Relationships: [
           {

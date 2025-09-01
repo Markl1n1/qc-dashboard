@@ -120,7 +120,24 @@ serve(async (req) => {
       model: data.model
     });
     
+    // Enhanced logging for debugging parsing issues
+    console.log('📝 RAW CONTENT START 📝');
+    console.log(content);
+    console.log('📝 RAW CONTENT END 📝');
+    
     console.log('📝 Response content preview:', content?.substring(0, 200) + '...');
+
+    // Try to parse the JSON to see if it's valid
+    try {
+      const parsedContent = JSON.parse(content);
+      console.log('✅ Content is valid JSON');
+      console.log('🔍 Parsed structure:', parsedContent);
+      console.log('📊 Mistakes count:', parsedContent.mistakes?.length || 0);
+      console.log('👥 Speakers data:', parsedContent.speakers);
+    } catch (parseError) {
+      console.error('❌ Content is NOT valid JSON:', parseError);
+      console.log('🔧 Content that failed to parse:', content);
+    }
     
     // Warn about truncated responses
     if (finishReason === 'length') {

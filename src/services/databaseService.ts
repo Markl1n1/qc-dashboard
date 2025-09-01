@@ -64,6 +64,14 @@ export interface DatabaseAnalysis {
   processing_time?: number;
   created_at: string;
   updated_at: string;
+  // New structured columns for parsed evaluation data
+  comment?: string;
+  utterance?: string;
+  rule_category?: string;
+  speaker_0?: string;
+  role_0?: string;
+  speaker_1?: string;
+  role_1?: string;
 }
 
 /**
@@ -339,6 +347,68 @@ class DatabaseService {
     return data as DatabaseAnalysis;
   }
 
+  async getStructuredAnalysis(dialogId: string, analysisType?: 'openai'): Promise<{
+    overallScore: number;
+    mistakes: Array<{
+      rule_category: string;
+      comment: string;
+      utterance: string;
+    }>;
+    speakers: {
+      speaker_0?: string;
+      role_0?: string;
+      speaker_1?: string;
+      role_1?: string;
+    };
+    confidence: number;
+    tokenUsage: any;
+  } | null> {
+    let query = supabase.from('dialog_analysis').select('*').eq('dialog_id', dialogId);
+    
+    if (analysisType) {
+      query = query.eq('analysis_type', analysisType);
+    }
+    
+    const { data, error } = await query.order('created_at', { ascending: false });
+    
+    if (error) {
+      console.error('Error fetching structured analysis:', error);
+      throw new Error(`Failed to fetch analysis: ${error.message}`);
+    }
+    
+    if (!data || data.length === 0) {
+      return null;
+    }
+
+    // Get the overall score from the first record
+    const firstRecord = data[0];
+    
+    // Extract mistakes from records that have rule_category
+    const mistakes = data
+      .filter(record => record.rule_category && record.rule_category.trim() !== '')
+      .map(record => ({
+        rule_category: record.rule_category || '',
+        comment: record.comment || '',
+        utterance: record.utterance || ''
+      }));
+
+    // Extract speaker information from the first record
+    const speakers = {
+      speaker_0: firstRecord.speaker_0 || undefined,
+      role_0: firstRecord.role_0 || undefined,
+      speaker_1: firstRecord.speaker_1 || undefined,
+      role_1: firstRecord.role_1 || undefined
+    };
+
+    return {
+      overallScore: firstRecord.overall_score || 0,
+      mistakes,
+      speakers,
+      confidence: firstRecord.confidence || 0,
+      tokenUsage: firstRecord.token_usage || {}
+    };
+  }
+
   // System configuration operations
   async getSystemConfig(key: string): Promise<string | null> {
     const { data, error } = await supabase
@@ -423,19 +493,52 @@ class DatabaseService {
       }
     }
 
-    // Add analyses if provided
+    // Add OpenAI analysis if available - use structured format if new columns exist
     if (analyses) {
-      const openaiAnalysis = analyses.find(a => a.analysis_type === 'openai');
-      if (openaiAnalysis) {
-        dialog.openaiEvaluation = {
-          overallScore: openaiAnalysis.overall_score || 0,
-          categoryScores: openaiAnalysis.category_scores,
-          mistakes: openaiAnalysis.mistakes,
-          recommendations: openaiAnalysis.recommendations,
-          summary: openaiAnalysis.summary || '',
-          confidence: openaiAnalysis.confidence || 0,
-          tokenUsage: openaiAnalysis.token_usage
-        };
+      const openaiAnalyses = analyses.filter(a => a.analysis_type === 'openai');
+      if (openaiAnalyses.length > 0) {
+        // Check if we have new structured data (rule_category column)
+        const structuredAnalyses = openaiAnalyses.filter(a => a.rule_category && a.rule_category.trim() !== '');
+        
+        if (structuredAnalyses.length > 0) {
+          // Use new structured format
+          const firstRecord = openaiAnalyses[0];
+          const mistakes = structuredAnalyses.map(record => ({
+            rule_category: record.rule_category || '',
+            comment: record.comment || '',
+            utterance: record.utterance || ''
+          }));
+
+          const speakers = {
+            speaker_0: firstRecord.speaker_0 || undefined,
+            role_0: firstRecord.role_0 || undefined,
+            speaker_1: firstRecord.speaker_1 || undefined,
+            role_1: firstRecord.role_1 || undefined
+          };
+
+          dialog.openaiEvaluation = {
+            overallScore: firstRecord.overall_score || 0,
+            categoryScores: {},
+            mistakes: mistakes,
+            recommendations: [],
+            summary: `Analysis completed with score: ${firstRecord.overall_score || 0}/100`,
+            confidence: firstRecord.confidence || 0,
+            tokenUsage: firstRecord.token_usage || {},
+            speakers: speakers
+          };
+        } else {
+          // Fallback to old format for backward compatibility
+          const openaiAnalysis = openaiAnalyses[0];
+          dialog.openaiEvaluation = {
+            overallScore: openaiAnalysis.overall_score || 0,
+            categoryScores: openaiAnalysis.category_scores,
+            mistakes: openaiAnalysis.mistakes,
+            recommendations: openaiAnalysis.recommendations,
+            summary: openaiAnalysis.summary || '',
+            confidence: openaiAnalysis.confidence || 0,
+            tokenUsage: openaiAnalysis.token_usage
+          };
+        }
       }
     }
 
