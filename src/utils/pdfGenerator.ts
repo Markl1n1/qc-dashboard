@@ -58,8 +58,8 @@ export class PDFGenerator {
       };
       
       if (current.speaker === next.speaker) {
-        // Merge with current utterance
-        current.text = `${current.text} ${next.text}`;
+        // Merge with current utterance - format each utterance on a new line
+        current.text = `${current.text}\n${next.text}`;
         current.end = next.end; // Update end time to the latest
         current.confidence = Math.min(current.confidence, next.confidence); // Use lower confidence
       } else {
@@ -96,18 +96,29 @@ export class PDFGenerator {
     this.doc.setFont('Roboto', 'normal');
     this.doc.setFontSize(10);
 
-    // ✅ Ensure proper wrapping and spacing
+    // ✅ Handle line breaks for merged utterances and ensure proper wrapping
     const maxWidth = this.doc.internal.pageSize.width - (this.margin * 2) - 10; // account for indent
-    const cleanedText = utterance.text.replace(/\s+/g, ' ').trim(); // remove weird spaces / breaks
-    const textLines = this.doc.splitTextToSize(cleanedText, maxWidth);
-
-    textLines.forEach((line: string) => {
-      this.checkPageBreak(this.lineHeight);
-      this.doc.text(line, this.margin + 10, this.yPosition, {
-        align: 'left',
-        baseline: 'top' // ✅ ensures text doesn't float strangely
-      });
-      this.yPosition += this.lineHeight;
+    const lines = utterance.text.split('\n');
+    
+    lines.forEach((line, lineIndex) => {
+      if (line.trim()) { // Only process non-empty lines
+        const cleanedText = line.replace(/\s+/g, ' ').trim(); // remove weird spaces / breaks
+        const textLines = this.doc.splitTextToSize(cleanedText, maxWidth);
+        
+        textLines.forEach((textLine: string) => {
+          this.checkPageBreak(this.lineHeight);
+          this.doc.text(textLine, this.margin + 10, this.yPosition, {
+            align: 'left',
+            baseline: 'top' // ✅ ensures text doesn't float strangely
+          });
+          this.yPosition += this.lineHeight;
+        });
+        
+        // Small spacing between merged lines within same utterance
+        if (lineIndex < lines.length - 1) {
+          this.yPosition += 2;
+        }
+      }
     });
     
     this.yPosition += 5; // spacing between utterances

@@ -1,16 +1,27 @@
-
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { ScrollArea } from './ui/scroll-area';
-import { Clock, Copy, User, Users } from 'lucide-react';
+import { Clock, Copy, User, Users, AlertTriangle, ExternalLink } from 'lucide-react';
 import { SpeakerUtterance } from '../types';
 import { copyToClipboard, formatDialogForCopy } from '../utils/dialogFormatting';
 import { toast } from 'sonner';
 
-interface DeepgramSpeakerDialogProps {
+interface DetectedIssue {
+  rule_category?: string;
+  comment?: string;
+  utterance?: string;
+  category?: string;
+  description?: string;
+  mistakeName?: string;
+}
+
+interface EnhancedSpeakerDialogProps {
   utterances: SpeakerUtterance[];
+  mistakes?: DetectedIssue[];
+  highlightedUtterance?: string | null;
+  onNavigateToAnalysis?: (issueIndex: number) => void;
   detectedLanguage?: {
     language: string;
     confidence: number;
@@ -21,8 +32,11 @@ interface DeepgramSpeakerDialogProps {
   };
 }
 
-const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
+const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
   utterances,
+  mistakes = [],
+  highlightedUtterance,
+  onNavigateToAnalysis,
   detectedLanguage,
   metadata
 }) => {
@@ -33,44 +47,38 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
   };
 
   const getSpeakerStyle = (speaker: string) => {
-    // Color scheme for different speakers using numeric assignment
     const speakerColors = [
       {
-        backgroundColor: 'hsl(210, 100%, 97%)', // Light blue
+        backgroundColor: 'hsl(210, 100%, 97%)',
         borderColor: 'hsl(210, 100%, 85%)',
         textColor: 'hsl(210, 100%, 25%)'
       },
       {
-        backgroundColor: 'hsl(120, 60%, 97%)', // Light green
+        backgroundColor: 'hsl(120, 60%, 97%)',
         borderColor: 'hsl(120, 60%, 85%)',
         textColor: 'hsl(120, 60%, 25%)'
       },
       {
-        backgroundColor: 'hsl(280, 60%, 97%)', // Light purple
+        backgroundColor: 'hsl(280, 60%, 97%)',
         borderColor: 'hsl(280, 60%, 85%)',
         textColor: 'hsl(280, 60%, 25%)'
       },
       {
-        backgroundColor: 'hsl(30, 100%, 97%)', // Light orange
+        backgroundColor: 'hsl(30, 100%, 97%)',
         borderColor: 'hsl(30, 100%, 85%)',
         textColor: 'hsl(30, 100%, 25%)'
       }
     ];
 
-    // Clean speaker label to extract number - handle "Speaker Speaker 0" -> "0"
     const cleanSpeaker = speaker
-      .replace(/^Speaker\s+Speaker\s*/, '') // Remove "Speaker Speaker" prefix
-      .replace(/^Speaker\s*/, ''); // Remove remaining "Speaker" prefix
+      .replace(/^Speaker\s+Speaker\s*/, '')
+      .replace(/^Speaker\s*/, '');
     
-    // Extract speaker number for color assignment
     const speakerIndex = parseInt(cleanSpeaker) || 0;
-    
-    // Use modulo to cycle through colors if we have more speakers than colors
     const colorIndex = speakerIndex % speakerColors.length;
     return speakerColors[colorIndex];
   };
 
-  // Merge consecutive utterances from the same speaker and clean speaker labels
   const mergeConsecutiveUtterances = (utterances: SpeakerUtterance[]): SpeakerUtterance[] => {
     if (!utterances || utterances.length === 0) return [];
 
@@ -78,33 +86,36 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
     let current = { 
       ...utterances[0], 
       speaker: utterances[0].speaker
-        .replace(/^Speaker\s+Speaker\s*/, 'Speaker ') // Clean "Speaker Speaker X" -> "Speaker X"
-        .replace(/^Speaker\s+/, 'Speaker ') // Ensure consistent "Speaker " prefix
+        .replace(/^Speaker\s+Speaker\s*/, 'Speaker ')
+        .replace(/^Speaker\s+/, 'Speaker ')
     };
 
     for (let i = 1; i < utterances.length; i++) {
       const next = { 
         ...utterances[i], 
         speaker: utterances[i].speaker
-          .replace(/^Speaker\s+Speaker\s*/, 'Speaker ') // Clean "Speaker Speaker X" -> "Speaker X"
-          .replace(/^Speaker\s+/, 'Speaker ') // Ensure consistent "Speaker " prefix
+          .replace(/^Speaker\s+Speaker\s*/, 'Speaker ')
+          .replace(/^Speaker\s+/, 'Speaker ')
       };
       
       if (current.speaker === next.speaker) {
-        // Merge with current utterance - format each utterance on a new line
         current.text = `${current.text}\n${next.text}`;
-        current.end = next.end; // Update end time to the latest
-        current.confidence = Math.min(current.confidence, next.confidence); // Use lower confidence
+        current.end = next.end;
+        current.confidence = Math.min(current.confidence, next.confidence);
       } else {
-        // Different speaker, add current to merged and start new one
         merged.push(current);
         current = { ...next };
       }
     }
     
-    // Add the last utterance
     merged.push(current);
     return merged;
+  };
+
+  const getUtteranceMistakes = (utteranceText: string) => {
+    return mistakes.filter(mistake => 
+      mistake.utterance && utteranceText.includes(mistake.utterance)
+    );
   };
 
   const mergedUtterances = mergeConsecutiveUtterances(utterances);
@@ -139,6 +150,12 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
               <Users className="h-4 w-4" />
               Transcription Results
               <Badge variant="outline">{mergedUtterances.length} segments</Badge>
+              {mistakes.length > 0 && (
+                <Badge variant="destructive" className="ml-2">
+                  <AlertTriangle className="h-3 w-3 mr-1" />
+                  {mistakes.length} issues
+                </Badge>
+              )}
             </CardTitle>
             <Button variant="outline" size="sm" onClick={handleCopyDialog}>
               <Copy className="h-4 w-4 mr-2" />
@@ -207,22 +224,33 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
             <div className="p-6 space-y-4">
               {mergedUtterances.map((utterance, index) => {
                 const style = getSpeakerStyle(utterance.speaker);
+                const utteranceMistakes = getUtteranceMistakes(utterance.text);
+                const isHighlighted = highlightedUtterance && utterance.text.includes(highlightedUtterance);
                 
                 return (
                   <div
                     key={index}
-                    className="flex gap-4 p-4 rounded-lg border-l-4 transition-all hover:shadow-sm"
+                    className={`flex gap-4 p-4 rounded-lg border-l-4 transition-all hover:shadow-sm ${
+                      isHighlighted ? 'ring-2 ring-primary shadow-lg' : ''
+                    } ${utteranceMistakes.length > 0 ? 'border-red-200 bg-red-50/50' : ''}`}
                     style={{
-                      backgroundColor: style.backgroundColor,
-                      borderLeftColor: style.borderColor
+                      backgroundColor: isHighlighted ? 'hsl(var(--primary) / 0.1)' : 
+                                      utteranceMistakes.length > 0 ? 'hsl(var(--destructive) / 0.05)' : 
+                                      style.backgroundColor,
+                      borderLeftColor: utteranceMistakes.length > 0 ? 'hsl(var(--destructive))' : style.borderColor
                     }}
                   >
                     <div className="flex-shrink-0 flex items-start">
                       <div
-                        className="w-8 h-8 rounded-full flex items-center justify-center"
+                        className="w-8 h-8 rounded-full flex items-center justify-center relative"
                         style={{ backgroundColor: style.borderColor }}
                       >
                         <User className="h-4 w-4" style={{ color: style.textColor }} />
+                        {utteranceMistakes.length > 0 && (
+                          <div className="absolute -top-1 -right-1 w-4 h-4 bg-destructive rounded-full flex items-center justify-center">
+                            <AlertTriangle className="h-2 w-2 text-destructive-foreground" />
+                          </div>
+                        )}
                       </div>
                     </div>
                     
@@ -240,6 +268,11 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
                         <Badge variant="outline" className="text-xs font-bold" style={{ color: style.textColor, borderColor: style.borderColor }}>
                           {Math.round(utterance.confidence * 100)}%
                         </Badge>
+                        {utteranceMistakes.length > 0 && (
+                          <Badge variant="destructive" className="text-xs">
+                            {utteranceMistakes.length} issue{utteranceMistakes.length > 1 ? 's' : ''}
+                          </Badge>
+                        )}
                       </div>
                       
                       <div className="text-sm leading-relaxed" style={{ color: style.textColor }}>
@@ -249,6 +282,39 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
                           </div>
                         ))}
                       </div>
+
+                      {/* Show mistakes for this utterance */}
+                      {utteranceMistakes.length > 0 && onNavigateToAnalysis && (
+                        <div className="mt-3 pt-3 border-t border-destructive/20">
+                          <div className="text-xs font-medium text-destructive mb-2">
+                            Issues in this utterance:
+                          </div>
+                          <div className="space-y-2">
+                            {utteranceMistakes.map((mistake, mistakeIndex) => (
+                              <div key={mistakeIndex} className="text-xs bg-destructive/10 p-2 rounded border border-destructive/20">
+                                <div className="font-medium">{mistake.rule_category || 'Issue'}</div>
+                                <div className="text-muted-foreground">{mistake.comment || mistake.description}</div>
+                                <Button
+                                  variant="link"
+                                  size="sm"
+                                  className="h-auto p-0 text-xs text-destructive hover:underline mt-1"
+                                  onClick={() => {
+                                    const issueIndex = mistakes.findIndex(m => 
+                                      m.utterance === mistake.utterance && m.comment === mistake.comment
+                                    );
+                                    if (issueIndex !== -1) {
+                                      onNavigateToAnalysis(issueIndex);
+                                    }
+                                  }}
+                                >
+                                  <ExternalLink className="h-3 w-3 mr-1" />
+                                  View in Analysis Results
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -261,4 +327,4 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
   );
 };
 
-export default DeepgramSpeakerDialog;
+export default EnhancedSpeakerDialog;

@@ -11,6 +11,8 @@ import { useDatabaseDialogs } from '../hooks/useDatabaseDialogs';
 import { toast } from 'sonner';
 import { extractUsernameFromEmail, capitalizeStatus } from '../utils/userUtils';
 import DeepgramSpeakerDialog from '../components/DeepgramSpeakerDialog';
+import EnhancedSpeakerDialog from '../components/EnhancedSpeakerDialog';
+import EnhancedDialogDetail from '../components/EnhancedDialogDetail';
 import { openaiEvaluationService } from '../services/openaiEvaluationService';
 import { OpenAIEvaluationProgress } from '../types/openaiEvaluation';
 import { supabase } from '../integrations/supabase/client';
@@ -26,6 +28,8 @@ const DialogDetail = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState<OpenAIEvaluationProgress | null>(null);
+  const [currentTab, setCurrentTab] = useState('transcription');
+  const [highlightedUtterance, setHighlightedUtterance] = useState<string | null>(null);
   const {
     getDialog,
     updateDialog
@@ -204,7 +208,7 @@ const DialogDetail = () => {
       </div>
 
       {/* Main Content */}
-      <Tabs defaultValue="transcription" className="w-full">
+      <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="transcription" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
@@ -222,12 +226,29 @@ const DialogDetail = () => {
 
         <TabsContent value="transcription" className="mt-6">
           <div className="space-y-6">
-            {/* Speaker Transcription */}
-            {dialog.speakerTranscription && dialog.speakerTranscription.length > 0 ? <DeepgramSpeakerDialog utterances={dialog.speakerTranscription} detectedLanguage={undefined} metadata={undefined} /> : <Card>
+            {/* Enhanced Speaker Transcription with mistake highlighting */}
+            {dialog.speakerTranscription && dialog.speakerTranscription.length > 0 ? 
+              <EnhancedSpeakerDialog 
+                utterances={dialog.speakerTranscription} 
+                mistakes={dialog.openaiEvaluation?.mistakes || []}
+                highlightedUtterance={highlightedUtterance}
+                onNavigateToAnalysis={(issueIndex) => {
+                  setCurrentTab('results');
+                  // Scroll to the specific issue
+                  setTimeout(() => {
+                    const element = document.getElementById(`issue-${issueIndex}`);
+                    element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  }, 100);
+                }}
+                detectedLanguage={undefined} 
+                metadata={undefined} 
+              /> : 
+              <Card>
                 <CardContent className="pt-6">
                   <p className="text-center text-muted-foreground">No transcription available</p>
                 </CardContent>
-              </Card>}
+              </Card>
+            }
           </div>
         </TabsContent>
 
@@ -313,43 +334,36 @@ const DialogDetail = () => {
                     </CardContent>
                   </Card>}
 
-                {/* Mistakes */}
-                {dialog.openaiEvaluation.mistakes && dialog.openaiEvaluation.mistakes.length > 0 && <Card>
+                {/* Enhanced Detected Issues with bidirectional navigation */}
+                {dialog.openaiEvaluation.mistakes && dialog.openaiEvaluation.mistakes.length > 0 && (
+                  <Card>
                     <CardHeader>
                       <CardTitle>Detected Issues ({dialog.openaiEvaluation.mistakes.length})</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="space-y-4">
-                        {dialog.openaiEvaluation.mistakes.map((mistake, index) => <div key={mistake.id || index} className="p-4 border rounded-lg">
-                            <div className="flex items-start justify-between mb-2">
-                              <div className="flex items-center gap-2">
-                                <Badge variant={mistake.level === 'critical' ? 'destructive' : mistake.level === 'major' ? 'default' : 'secondary'}>
-                                  {mistake.level}
-                                </Badge>
-                                <Badge variant="outline">{mistake.category}</Badge>
-                                <span className="text-sm text-muted-foreground">
-                                  {mistake.speaker}
-                                </span>
-                              </div>
-                              <Badge variant="outline" className="text-xs">
-                                {mistake.confidence}% confident
-                              </Badge>
-                            </div>
-                            
-                            <h5 className="font-medium mb-2">{mistake.mistakeName}</h5>
-                            <p className="text-sm text-muted-foreground mb-2">{mistake.description}</p>
-                            
-                            {mistake.text && <div className="bg-muted p-2 rounded text-sm mb-2">
-                                <strong>Quote:</strong> "{mistake.text}"
-                              </div>}
-                            
-                            {mistake.suggestion && <div className="text-sm">
-                                <strong>Suggestion:</strong> {mistake.suggestion}
-                              </div>}
-                          </div>)}
-                      </div>
+                      <EnhancedDialogDetail
+                        mistakes={dialog.openaiEvaluation.mistakes}
+                        utterances={dialog.speakerTranscription || []}
+                        onNavigateToSpeaker={(utteranceText) => {
+                          setHighlightedUtterance(utteranceText);
+                          setCurrentTab('transcription');
+                          // Scroll to the utterance in speaker dialog
+                          setTimeout(() => {
+                            const elements = document.querySelectorAll('[data-utterance-text]');
+                            for (const element of elements) {
+                              if (element.getAttribute('data-utterance-text')?.includes(utteranceText)) {
+                                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                break;
+                              }
+                            }
+                          }, 100);
+                        }}
+                        currentTab={currentTab}
+                        onTabChange={setCurrentTab}
+                      />
                     </CardContent>
-                  </Card>}
+                  </Card>
+                )}
               </div> : <Card>
                 <CardContent className="pt-6">
                   <p className="text-center text-muted-foreground">
