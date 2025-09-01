@@ -351,14 +351,50 @@ You must respond in the following JSON format:
       const score = typeof parsed.score === 'number' ? parsed.score : 0;
       const mistakes = Array.isArray(parsed.mistakes) ? parsed.mistakes : [];
       
-      // Handle new flat speaker object format
+      // Handle GPT-5 speaker format: array containing flat object with speaker_0, role_0, etc.
       let speakers = [];
-      if (parsed.speakers && typeof parsed.speakers === 'object' && !Array.isArray(parsed.speakers)) {
-        // New format: flat object with speaker_0, role_0, speaker_1, role_1
-        speakers = [parsed.speakers];
-      } else if (Array.isArray(parsed.speakers)) {
-        // Fallback: old array format
-        speakers = parsed.speakers;
+      if (Array.isArray(parsed.speakers) && parsed.speakers.length > 0) {
+        const speakerData = parsed.speakers[0];
+        console.log('Processing speaker data:', speakerData);
+        
+        // Transform flat format to structured format
+        if (typeof speakerData === 'object' && 
+            (speakerData.speaker_0 !== undefined || speakerData.speaker_1 !== undefined)) {
+          
+          if (speakerData.speaker_0 !== undefined) {
+            speakers.push({
+              name: speakerData.speaker_0,
+              role: speakerData.role_0 || 'Unknown'
+            });
+          }
+          
+          if (speakerData.speaker_1 !== undefined) {
+            speakers.push({
+              name: speakerData.speaker_1,
+              role: speakerData.role_1 || 'Unknown'
+            });
+          }
+          
+          console.log('Transformed speakers:', speakers);
+        } else {
+          // Already in structured format
+          speakers = parsed.speakers;
+        }
+      } else if (parsed.speakers && typeof parsed.speakers === 'object' && !Array.isArray(parsed.speakers)) {
+        // Direct flat object format
+        const speakerData = parsed.speakers;
+        if (speakerData.speaker_0 !== undefined) {
+          speakers.push({
+            name: speakerData.speaker_0,
+            role: speakerData.role_0 || 'Unknown'
+          });
+        }
+        if (speakerData.speaker_1 !== undefined) {
+          speakers.push({
+            name: speakerData.speaker_1,
+            role: speakerData.role_1 || 'Unknown'
+          });
+        }
       }
 
       // Enhanced validation with detailed error messages
@@ -407,46 +443,51 @@ You must respond in the following JSON format:
       cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
     }
     
+    // First: Handle triple-escaped quotes from GPT-5 responses
+    cleanContent = cleanContent.replace(/\\\\\"/g, '\\"');
+    
     // Enhanced quote escaping for contractions and embedded quotes
-    // First pass: Handle common contractions that appear in utterances
+    // Handle common contractions that appear in utterances with various escaping levels
     const contractionPatterns = [
-      { pattern: /(\s|^|")don't(\s|$|")/gi, replacement: "$1don\\'t$2" },
-      { pattern: /(\s|^|")can't(\s|$|")/gi, replacement: "$1can\\'t$2" },
-      { pattern: /(\s|^|")won't(\s|$|")/gi, replacement: "$1won\\'t$2" },
-      { pattern: /(\s|^|")it's(\s|$|")/gi, replacement: "$1it\\'s$2" },
-      { pattern: /(\s|^|")we're(\s|$|")/gi, replacement: "$1we\\'re$2" },
-      { pattern: /(\s|^|")they're(\s|$|")/gi, replacement: "$1they\\'re$2" },
-      { pattern: /(\s|^|")you're(\s|$|")/gi, replacement: "$1you\\'re$2" },
-      { pattern: /(\s|^|")there's(\s|$|")/gi, replacement: "$1there\\'s$2" },
-      { pattern: /(\s|^|")that's(\s|$|")/gi, replacement: "$1that\\'s$2" },
-      { pattern: /(\s|^|")what's(\s|$|")/gi, replacement: "$1what\\'s$2" },
-      { pattern: /(\s|^|")I'm(\s|$|")/gi, replacement: "$1I\\'m$2" },
-      { pattern: /(\s|^|")doesn't(\s|$|")/gi, replacement: "$1doesn\\'t$2" }
+      { pattern: /(\s|^|["\\\"])don't(\s|$|["\\\"])/gi, replacement: "$1don\\'t$2" },
+      { pattern: /(\s|^|["\\\"])can't(\s|$|["\\\"])/gi, replacement: "$1can\\'t$2" },
+      { pattern: /(\s|^|["\\\"])won't(\s|$|["\\\"])/gi, replacement: "$1won\\'t$2" },
+      { pattern: /(\s|^|["\\\"])it's(\s|$|["\\\"])/gi, replacement: "$1it\\'s$2" },
+      { pattern: /(\s|^|["\\\"])we're(\s|$|["\\\"])/gi, replacement: "$1we\\'re$2" },
+      { pattern: /(\s|^|["\\\"])they're(\s|$|["\\\"])/gi, replacement: "$1they\\'re$2" },
+      { pattern: /(\s|^|["\\\"])you're(\s|$|["\\\"])/gi, replacement: "$1you\\'re$2" },
+      { pattern: /(\s|^|["\\\"])there's(\s|$|["\\\"])/gi, replacement: "$1there\\'s$2" },
+      { pattern: /(\s|^|["\\\"])that's(\s|$|["\\\"])/gi, replacement: "$1that\\'s$2" },
+      { pattern: /(\s|^|["\\\"])what's(\s|$|["\\\"])/gi, replacement: "$1what\\'s$2" },
+      { pattern: /(\s|^|["\\\"])I'm(\s|$|["\\\"])/gi, replacement: "$1I\\'m$2" },
+      { pattern: /(\s|^|["\\\"])doesn't(\s|$|["\\\"])/gi, replacement: "$1doesn\\'t$2" }
     ];
     
     for (const { pattern, replacement } of contractionPatterns) {
       cleanContent = cleanContent.replace(pattern, replacement);
     }
     
-    // Second pass: Context-aware quote escaping for content within JSON string values
-    // Match content within quotes that are JSON string values and escape internal quotes
+    // Progressive quote escaping - handle multiple levels of escaping
+    // Fix utterance and comment fields specifically
     cleanContent = cleanContent.replace(
-      /"(utterance|comment)"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/g,
+      /"(utterance|comment)"\s*:\s*\\?"([^"]*(?:\\.[^"]*)*)\\?"/g,
       (match, key, value) => {
-        // Escape any unescaped quotes within the value
-        const escapedValue = value.replace(/(?<!\\)"/g, '\\"');
+        // Clean up the value and properly escape quotes
+        let escapedValue = value.replace(/\\+"/g, '\\"').replace(/(?<!\\)"/g, '\\"');
         return `"${key}": "${escapedValue}"`;
       }
     );
     
-    // Fix common quote escaping issues
-    cleanContent = cleanContent
-      .replace(/([^\\])"([^"]*[^\\])"([^:])/g, '$1\\"$2\\"$3') // Escape unescaped quotes not followed by colons
-      .replace(/\\"([^"]*)\\":/g, '"$1":') // Fix over-escaped property names
-      .replace(/:\s*"([^"]*[^\\])"/g, (match, p1) => {
-        // Only escape quotes in values, not property names
-        return `: "${p1.replace(/"/g, '\\"')}"`;
-      });
+    // Context-aware quote escaping for general JSON string values
+    cleanContent = cleanContent.replace(
+      /"([^"]+)"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/g,
+      (match, key, value) => {
+        // Don't escape quotes in property names, only in values
+        if (key.includes('\\')) return match; // Skip already processed keys
+        const escapedValue = value.replace(/(?<!\\)"/g, '\\"');
+        return `"${key}": "${escapedValue}"`;
+      }
+    );
     
     return cleanContent;
   }
@@ -536,35 +577,66 @@ You must respond in the following JSON format:
 
   private extractSpeakersFromText(speakersText: string): any[] {
     try {
-      // Try to extract flat speaker object format first
-      const flatSpeakerMatch = speakersText.match(/"speakers"\s*:\s*\{([^}]+)\}/);
+      // Handle GPT-5 array format: [ { "speaker_0": "Name", "role_0": "Agent", ... } ]
+      const arrayMatch = speakersText.match(/\[\s*\{([^}]+)\}\s*\]/);
+      if (arrayMatch) {
+        try {
+          const speakerObj = JSON.parse(`{${arrayMatch[1]}}`);
+          
+          // Transform flat format to structured format
+          const transformedSpeakers = [];
+          if (speakerObj.speaker_0 !== undefined) {
+            transformedSpeakers.push({
+              name: speakerObj.speaker_0,
+              role: speakerObj.role_0 || 'Unknown'
+            });
+          }
+          if (speakerObj.speaker_1 !== undefined) {
+            transformedSpeakers.push({
+              name: speakerObj.speaker_1,
+              role: speakerObj.role_1 || 'Unknown'
+            });
+          }
+          
+          return transformedSpeakers;
+        } catch (error) {
+          console.warn('Failed to parse GPT-5 speaker array format');
+        }
+      }
+      
+      // Try to extract flat speaker object format
+      const flatSpeakerMatch = speakersText.match(/\{([^}]+)\}/);
       if (flatSpeakerMatch) {
         try {
           const speakersObj = JSON.parse(`{${flatSpeakerMatch[1]}}`);
+          
+          // Check if it's the flat format
+          if (speakersObj.speaker_0 !== undefined || speakersObj.speaker_1 !== undefined) {
+            const transformedSpeakers = [];
+            if (speakersObj.speaker_0 !== undefined) {
+              transformedSpeakers.push({
+                name: speakersObj.speaker_0,
+                role: speakersObj.role_0 || 'Unknown'
+              });
+            }
+            if (speakersObj.speaker_1 !== undefined) {
+              transformedSpeakers.push({
+                name: speakersObj.speaker_1,
+                role: speakersObj.role_1 || 'Unknown'
+              });
+            }
+            return transformedSpeakers;
+          }
+          
           return [speakersObj];
         } catch (error) {
           console.warn('Failed to parse flat speaker format');
         }
       }
       
-      // Fallback to array format
-      const speakers = [];
-      const speakerMatches = speakersText.match(/\{[^}]+\}/g);
-      
-      if (speakerMatches) {
-        for (const match of speakerMatches) {
-          try {
-            const cleanMatch = this.cleanAndRepairJSON(match);
-            const speaker = JSON.parse(cleanMatch);
-            speakers.push(speaker);
-          } catch (error) {
-            console.warn('Failed to parse individual speaker:', match);
-          }
-        }
-      }
-      
-      return speakers;
+      return [];
     } catch (error) {
+      console.error('Error in extractSpeakersFromText:', error);
       return [];
     }
   }
