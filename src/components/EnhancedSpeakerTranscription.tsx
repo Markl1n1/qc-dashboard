@@ -3,12 +3,13 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { AlertTriangle } from 'lucide-react';
 import { SpeakerUtterance } from '../types';
+import { OpenAIEvaluationMistake } from '../types/openaiEvaluation';
 import { shouldExcludeFromHighlighting } from '../utils/textProcessing';
 import DialogCopyButton from './DialogCopyButton';
 
 interface EnhancedSpeakerTranscriptionProps {
   utterances: SpeakerUtterance[];
-  mistakes?: EvaluationMistake[];
+  mistakes?: OpenAIEvaluationMistake[];
   highlightedMistake?: string | null;
 }
 
@@ -21,26 +22,27 @@ const EnhancedSpeakerTranscription: React.FC<EnhancedSpeakerTranscriptionProps> 
     if (!mistakes.length) return text;
     
     let highlightedText = text;
-    const speakerMistakes = mistakes.filter(m => m.speaker === speaker);
+    // Filter mistakes that are found in this text (since OpenAI mistakes don't have speaker property)
+    const relevantMistakes = mistakes.filter(m => m.utterance && text.includes(m.utterance));
     
-    // Sort by position to avoid overlapping highlights
-    speakerMistakes
-      .sort((a, b) => b.text.length - a.text.length)
+    // Sort by length to avoid overlapping highlights
+    relevantMistakes
+      .sort((a, b) => b.utterance.length - a.utterance.length)
       .forEach(mistake => {
-        if (mistake.text && highlightedText.includes(mistake.text)) {
+        if (mistake.utterance && highlightedText.includes(mistake.utterance)) {
           // Don't highlight if it's a speaker label or should be excluded
-          if (shouldExcludeFromHighlighting(mistake.text)) {
+          if (shouldExcludeFromHighlighting(mistake.utterance)) {
             return;
           }
           
-          const isHighlighted = highlightedMistake === mistake.text;
+          const isHighlighted = highlightedMistake === mistake.utterance;
           const highlightClass = isHighlighted 
             ? "bg-yellow-300 text-yellow-900 px-1 rounded border-2 border-yellow-500 font-bold animate-pulse"
             : "bg-red-200 text-red-800 px-1 rounded underline decoration-red-500 decoration-2";
             
           highlightedText = highlightedText.replace(
-            mistake.text,
-            `<mark class="${highlightClass}">${mistake.text}</mark>`
+            mistake.utterance,
+            `<mark class="${highlightClass}">${mistake.utterance}</mark>`
           );
         }
       });
@@ -49,7 +51,10 @@ const EnhancedSpeakerTranscription: React.FC<EnhancedSpeakerTranscriptionProps> 
   };
 
   const getSpeakerMistakeCount = (speaker: string) => {
-    return mistakes.filter(m => m.speaker === speaker).length;
+    // Count mistakes that appear in any utterance from this speaker
+    return mistakes.filter(m => {
+      return utterances.some(u => u.speaker === speaker && u.text.includes(m.utterance));
+    }).length;
   };
 
   if (!utterances || utterances.length === 0) {
