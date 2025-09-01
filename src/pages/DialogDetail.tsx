@@ -272,7 +272,7 @@ const DialogDetail = () => {
                           {dialog.openaiEvaluation.overallScore}%
                         </div>
                         <div className="text-sm text-muted-foreground mt-1">
-                          Confidence: {dialog.openaiEvaluation.confidence}%
+                          Confidence: {Math.round((dialog.openaiEvaluation.confidence || 0) * 100)}%
                         </div>
                       </div>
                       

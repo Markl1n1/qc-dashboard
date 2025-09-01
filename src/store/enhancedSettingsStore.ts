@@ -11,6 +11,8 @@ interface EnhancedSettingsState {
   aiConfidenceThreshold: number;
   aiTemperature: number;
   aiReasoningEffort: string;
+  aiMaxTokensGpt5: number;
+  aiMaxTokensGpt5Mini: number;
   signupPasscode: string;
   
   // System config object for easier access
@@ -33,6 +35,8 @@ interface EnhancedSettingsState {
   updateAiConfidenceThreshold: (threshold: number) => Promise<void>;
   updateAiTemperature: (temperature: number) => Promise<void>;
   updateAiReasoningEffort: (effort: string) => Promise<void>;
+  updateAiMaxTokensGpt5: (tokens: number) => Promise<void>;
+  updateAiMaxTokensGpt5Mini: (tokens: number) => Promise<void>;
   updateSignupPasscode: (passcode: string) => Promise<void>;
   cleanupExpiredDialogs: () => Promise<number>;
   updateDialogExpirationDates: () => Promise<number>;
@@ -49,6 +53,8 @@ export const useEnhancedSettingsStore = create<EnhancedSettingsState>((set, get)
   aiConfidenceThreshold: 0.8,
   aiTemperature: 0.7,
   aiReasoningEffort: 'medium',
+  aiMaxTokensGpt5: 2000,
+  aiMaxTokensGpt5Mini: 1000,
   signupPasscode: '',
   systemConfig: null,
   isLoading: false,
@@ -71,6 +77,8 @@ export const useEnhancedSettingsStore = create<EnhancedSettingsState>((set, get)
         aiConfidenceThreshold: parseFloat(config.ai_confidence_threshold || '0.8'),
         aiTemperature: parseFloat(config.ai_temperature || '0.7'),
         aiReasoningEffort: config.ai_reasoning_effort || 'medium',
+        aiMaxTokensGpt5: parseInt(config.ai_max_tokens_gpt5 || '2000'),
+        aiMaxTokensGpt5Mini: parseInt(config.ai_max_tokens_gpt5_mini || '1000'),
         signupPasscode: config.signup_passcode || '',
         systemConfig: config,
         isLoading: false
@@ -248,6 +256,30 @@ export const useEnhancedSettingsStore = create<EnhancedSettingsState>((set, get)
     } catch (error) {
       console.error('Error updating AI reasoning effort:', error);
       set({ error: error instanceof Error ? error.message : 'Failed to update AI reasoning effort' });
+      throw error;
+    }
+  },
+
+  updateAiMaxTokensGpt5: async (tokens: number) => {
+    try {
+      set({ error: null });
+      await databaseService.updateSystemConfig('ai_max_tokens_gpt5', tokens.toString());
+      set({ aiMaxTokensGpt5: tokens });
+    } catch (error) {
+      console.error('Error updating AI max tokens for GPT-5:', error);
+      set({ error: error instanceof Error ? error.message : 'Failed to update AI max tokens for GPT-5' });
+      throw error;
+    }
+  },
+
+  updateAiMaxTokensGpt5Mini: async (tokens: number) => {
+    try {
+      set({ error: null });
+      await databaseService.updateSystemConfig('ai_max_tokens_gpt5_mini', tokens.toString());
+      set({ aiMaxTokensGpt5Mini: tokens });
+    } catch (error) {
+      console.error('Error updating AI max tokens for GPT-5 Mini:', error);
+      set({ error: error instanceof Error ? error.message : 'Failed to update AI max tokens for GPT-5 Mini' });
       throw error;
     }
   },

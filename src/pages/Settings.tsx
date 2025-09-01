@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Badge } from '../components/ui/badge';
 import { Alert, AlertDescription } from '../components/ui/alert';
+import { Switch } from '../components/ui/switch';
 import { Settings as SettingsIcon, Save, Brain, Shield, FileText, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useEnhancedSettingsStore } from '../store/enhancedSettingsStore';
@@ -200,19 +201,36 @@ const Settings = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="max_tokens">Max Tokens</Label>
+                  <Label htmlFor="ai_max_tokens_gpt5">Max Tokens (GPT-5)</Label>
                   <Input
-                    id="max_tokens"
+                    id="ai_max_tokens_gpt5"
                     type="number"
                     min="100"
                     max="10000"
                     step="100"
-                    value={localConfig.max_tokens || '1000'}
-                    onChange={e => handleConfigChange('max_tokens', e.target.value)}
+                    value={localConfig.ai_max_tokens_gpt5 || '2000'}
+                    onChange={e => handleConfigChange('ai_max_tokens_gpt5', e.target.value)}
+                    placeholder="2000"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Maximum number of tokens for GPT-5 AI responses.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="ai_max_tokens_gpt5_mini">Max Tokens (GPT-5 Mini)</Label>
+                  <Input
+                    id="ai_max_tokens_gpt5_mini"
+                    type="number"
+                    min="100"
+                    max="10000"
+                    step="100"
+                    value={localConfig.ai_max_tokens_gpt5_mini || '1000'}
+                    onChange={e => handleConfigChange('ai_max_tokens_gpt5_mini', e.target.value)}
                     placeholder="1000"
                   />
                   <p className="text-sm text-muted-foreground">
-                    Maximum number of tokens for AI responses.
+                    Maximum number of tokens for GPT-5 Mini AI responses.
                   </p>
                 </div>
               </div>
@@ -228,13 +246,83 @@ const Settings = () => {
                 Access Control
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="signup_passcode">Signup Passcode</Label>
-                <Input id="signup_passcode" type="password" value={localConfig.signup_passcode || ''} onChange={e => handleConfigChange('signup_passcode', e.target.value)} placeholder="Enter signup passcode" />
-                <p className="text-sm text-muted-foreground">
-                  Required passcode for new user registration.
-                </p>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="signup_passcode">Signup Passcode</Label>
+                  <Input 
+                    id="signup_passcode" 
+                    type="password" 
+                    value={localConfig.signup_passcode || ''} 
+                    onChange={e => handleConfigChange('signup_passcode', e.target.value)} 
+                    placeholder="Enter signup passcode" 
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Required passcode for new user registration.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="max_concurrent_transcriptions">Max Concurrent Transcriptions</Label>
+                  <Input
+                    id="max_concurrent_transcriptions"
+                    type="number"
+                    min="1"
+                    max="50"
+                    value={localConfig.max_concurrent_transcriptions || '5'}
+                    onChange={e => handleConfigChange('max_concurrent_transcriptions', e.target.value)}
+                    placeholder="5"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Maximum number of simultaneous transcription processes.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="max_file_size_mb">Max Audio Size (MB)</Label>
+                  <Input
+                    id="max_file_size_mb"
+                    type="number"
+                    min="1"
+                    max="1000"
+                    value={localConfig.max_file_size_mb || '100'}
+                    onChange={e => handleConfigChange('max_file_size_mb', e.target.value)}
+                    placeholder="100"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Maximum audio file size allowed for upload.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="data_retention_days">Dialog Retention (days)</Label>
+                  <Input
+                    id="data_retention_days"
+                    type="number"
+                    min="1"
+                    max="365"
+                    value={localConfig.data_retention_days || '30'}
+                    onChange={e => handleConfigChange('data_retention_days', e.target.value)}
+                    placeholder="30"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Number of days to keep dialogs before automatic deletion.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="auto_delete_enabled">Dialog Rotation</Label>
+                    <Switch
+                      id="auto_delete_enabled"
+                      checked={localConfig.auto_delete_enabled === 'true'}
+                      onCheckedChange={checked => handleConfigChange('auto_delete_enabled', checked.toString())}
+                    />
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Enable automatic deletion of expired dialogs.
+                  </p>
+                </div>
               </div>
               
               <div className="pt-4 border-t">

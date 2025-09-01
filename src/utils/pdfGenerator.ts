@@ -145,7 +145,7 @@ export class PDFGenerator {
     this.yPosition += 5;
     
     this.addText(`Overall Score: ${evaluation.overallScore}%`, 12, 'bold');
-    this.addText(`Confidence: ${evaluation.confidence}%`, 10, 'normal');
+    this.addText(`Confidence: ${Math.round((evaluation.confidence || 0) * 100)}%`, 10, 'normal');
     this.addText(`Model Used: ${evaluation.modelUsed}`, 10, 'normal');
     this.addText(`Processing Time: ${Math.round(evaluation.processingTime / 1000)}s`, 10, 'normal');
     this.yPosition += 10;
