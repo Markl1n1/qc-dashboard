@@ -91,9 +91,11 @@ serve(async (req) => {
 
     const openAIData = await openAIResponse.json();
     console.log('✅ OpenAI API response received');
+    console.log('🔍 Full OpenAI response:', JSON.stringify(openAIData, null, 2));
 
     if (!openAIData.choices?.[0]?.message?.content) {
-      throw new Error('Invalid OpenAI response format');
+      console.error('❌ Invalid OpenAI response structure:', JSON.stringify(openAIData, null, 2));
+      throw new Error(`Invalid OpenAI response format: ${JSON.stringify(openAIData)}`);
     }
 
     // Parse the JSON response
