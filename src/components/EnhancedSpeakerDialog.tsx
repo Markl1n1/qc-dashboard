@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 
 interface DetectedIssue {
   rule_category?: string;
-  comment?: string;
+  comment?: string | { original?: string; russian?: string };
   utterance?: string;
   category?: string;
   description?: string;
@@ -347,7 +347,12 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
                             {utteranceMistakes.map((mistake, mistakeIndex) => (
                               <div key={mistakeIndex} className="text-xs bg-destructive/10 p-2 rounded border border-destructive/20">
                                 <div className="font-medium">{mistake.rule_category || 'Issue'}</div>
-                                <div className="text-muted-foreground">{mistake.comment || mistake.description}</div>
+                                <div className="text-muted-foreground">
+                                  {typeof mistake.comment === 'object' && mistake.comment ? 
+                                    ((mistake.comment as any).original || (mistake.comment as any).russian || '') : 
+                                    (mistake.comment || mistake.description || '')
+                                  }
+                                </div>
                                 <Button
                                   variant="link"
                                   size="sm"

@@ -69,42 +69,77 @@ const DialogDetail = () => {
       toast.error('No transcription available for analysis');
       return;
     }
+
     setIsAnalyzing(true);
-    setAnalysisProgress(null);
+    setAnalysisProgress({
+      stage: 'starting',
+      progress: 10,
+      message: 'Starting background analysis...'
+    });
+
     try {
-      openaiEvaluationService.setProgressCallback(progress => {
-        setAnalysisProgress(progress);
+      console.log('Starting background OpenAI analysis for dialog:', dialog.id);
+      
+      // Call the background analysis function
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/openai-evaluate-background`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          dialogId: dialog.id,
+          utterances: dialog.speakerTranscription,
+          model: 'gpt-5-mini-2025-08-07'
+        }),
       });
-      console.log('Starting OpenAI analysis for dialog:', dialog.id);
-      const result = await openaiEvaluationService.evaluateConversation(dialog.speakerTranscription, 'gpt-5-mini-2025-08-07');
-      console.log('OpenAI analysis completed:', result);
-      const {
-        error: analysisError
-      } = await supabase.from('dialog_analysis').insert({
-        dialog_id: dialog.id,
-        analysis_type: 'openai',
-        overall_score: result.overallScore,
-        category_scores: result.categoryScores as any,
-        mistakes: result.mistakes as any,
-        recommendations: result.recommendations,
-        summary: result.summary,
-        confidence: result.confidence,
-        token_usage: result.tokenUsage as any,
-        processing_time: result.processingTime
-      });
-      if (analysisError) {
-        throw analysisError;
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP ${response.status}`);
       }
-      await updateDialog(dialog.id, {
-        openaiEvaluation: result,
-        qualityScore: result.overallScore
+
+      const result = await response.json();
+      console.log('Background analysis started:', result);
+
+      setAnalysisProgress({
+        stage: 'processing',
+        progress: 50,
+        message: 'Analysis running in background. You can safely refresh or navigate away.'
       });
-      toast.success('AI analysis completed successfully!');
-      await loadDialog(dialog.id);
+
+      toast.success('Analysis started! It will continue in the background.', {
+        description: 'Check back in a few minutes for results.',
+        duration: 5000,
+      });
+
+      // Auto-reload data every 10 seconds to check for completion
+      const checkCompletion = setInterval(async () => {
+        try {
+          await loadDialog(dialog.id);
+          const updatedDialog = await getDialog(dialog.id);
+          if (updatedDialog?.openaiEvaluation) {
+            clearInterval(checkCompletion);
+            setAnalysisProgress({
+              stage: 'complete',
+              progress: 100,
+              message: 'Analysis completed successfully!'
+            });
+            toast.success('Background analysis completed!');
+            setCurrentTab('results'); // Auto-redirect to results
+          }
+        } catch (error) {
+          console.error('Error checking analysis completion:', error);
+        }
+      }, 10000);
+
+      // Clear interval after 5 minutes
+      setTimeout(() => clearInterval(checkCompletion), 300000);
+
     } catch (error) {
-      console.error('Error starting analysis:', error);
+      console.error('Error starting background analysis:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      toast.error(`Analysis failed: ${errorMessage}`);
+      toast.error(`Failed to start analysis: ${errorMessage}`);
       setAnalysisProgress({
         stage: 'error',
         progress: 0,
