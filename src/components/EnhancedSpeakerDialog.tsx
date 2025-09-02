@@ -8,6 +8,7 @@ import { SpeakerUtterance } from '../types';
 import { copyToClipboard, formatDialogForCopy } from '../utils/dialogFormatting';
 import { toast } from 'sonner';
 import { useSpeakerMapping } from '../hooks/useSpeakerMapping';
+import { useLanguageStore } from '../store/languageStore';
 
 interface DetectedIssue {
   rule_category?: string;
@@ -48,7 +49,26 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
   metadata,
   analysisData
 }) => {
-  const { mapSpeakerName } = useSpeakerMapping(analysisData || null);
+  const { commentLanguage } = useLanguageStore();
+  const { mapSpeakerName } = useSpeakerMapping(analysisData);
+
+  console.log('🗣️ EnhancedSpeakerDialog - analysisData:', analysisData);
+  console.log('🌐 EnhancedSpeakerDialog - commentLanguage:', commentLanguage);
+
+  // Helper function to get comment based on language preference
+  const getDisplayComment = (mistake: DetectedIssue): string => {
+    if (!mistake.comment) return mistake.description || '';
+    
+    if (typeof mistake.comment === 'object' && mistake.comment) {
+      const commentObj = mistake.comment as any;
+      if (commentLanguage === 'russian' && commentObj.russian) {
+        return commentObj.russian;
+      }
+      return commentObj.original || commentObj.russian || '';
+    }
+    
+    return mistake.comment || mistake.description || '';
+  };
   const formatTime = (seconds: number): string => {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = Math.floor(seconds % 60);
@@ -353,11 +373,8 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
                               <div key={mistakeIndex} className="text-xs bg-destructive/10 p-2 rounded border border-destructive/20">
                                 <div className="font-medium">{mistake.rule_category || 'Issue'}</div>
                                 <div className="text-muted-foreground">
-                                  {typeof mistake.comment === 'object' && mistake.comment ? 
-                                    ((mistake.comment as any).original || (mistake.comment as any).russian || '') : 
-                                    (mistake.comment || mistake.description || '')
-                                  }
-                                </div>
+                                   {getDisplayComment(mistake)}
+                                 </div>
                                 <Button
                                   variant="link"
                                   size="sm"

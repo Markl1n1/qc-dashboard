@@ -61,22 +61,58 @@ Deno.serve(async (req) => {
       let retryCount = 0;
       const maxRetries = 3;
       
+      // Add file validation before attempting download
+      console.log('📁 Attempting to download file:', storageFile);
+      console.log('📁 Full storage path validation:', `audio-files/${storageFile}`);
+      
+      // Check if file exists first
+      const { data: fileList, error: listError } = await supabase.storage
+        .from('audio-files')
+        .list('', { search: storageFile });
+      
+      if (listError) {
+        console.error('❌ Error listing files:', listError);
+        throw new Error(`Failed to verify file existence: ${listError.message}`);
+      }
+      
+      const fileExists = fileList?.some(file => file.name === storageFile);
+      if (!fileExists) {
+        console.error('❌ File not found in storage:', storageFile);
+        console.log('📁 Available files:', fileList?.map(f => f.name) || []);
+        throw new Error(`File not found in storage: ${storageFile}`);
+      }
+      
+      console.log('✅ File exists in storage, proceeding with download');
+      
       while (retryCount <= maxRetries) {
-        const result = await supabase.storage
-          .from('audio-files')
-          .download(storageFile);
+        try {
+          console.log(`📥 Download attempt ${retryCount + 1}/${maxRetries + 1} for file: ${storageFile}`);
           
-        fileData = result.data;
-        downloadError = result.error;
-        
-        if (!downloadError) break;
+          const result = await supabase.storage
+            .from('audio-files')
+            .download(storageFile);
+            
+          fileData = result.data;
+          downloadError = result.error;
+          
+          if (!downloadError && fileData) {
+            console.log('✅ File downloaded successfully, size:', fileData.size);
+            break;
+          }
+          
+          console.log(`❌ Download attempt ${retryCount + 1} failed:`, downloadError);
+          
+        } catch (err) {
+          console.error(`❌ Download attempt ${retryCount + 1} threw error:`, err);
+          downloadError = err as any;
+        }
         
         retryCount++;
-        console.log(`Storage download attempt ${retryCount} failed:`, downloadError);
         
         if (retryCount <= maxRetries) {
-          console.log(`Retrying in ${retryCount * 2} seconds...`);
-          await new Promise(resolve => setTimeout(resolve, retryCount * 2000));
+          const waitTime = retryCount * 2000;
+          console.log(`⏳ Retrying in ${waitTime}ms...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
         }
       }
 

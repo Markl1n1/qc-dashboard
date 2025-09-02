@@ -7,10 +7,28 @@ export class PDFGenerator {
   private pageHeight: number;
   private margin: number = 20;
   private lineHeight: number = 7;
+  private languagePreference: 'original' | 'russian' = 'original';
 
   constructor() {
     this.doc = new jsPDF();
     this.pageHeight = this.doc.internal.pageSize.height;
+  }
+
+  setLanguagePreference(preference: 'original' | 'russian'): void {
+    this.languagePreference = preference;
+  }
+
+  private getCommentText(comment: any): string {
+    if (!comment) return '';
+    
+    if (typeof comment === 'object' && comment) {
+      if (this.languagePreference === 'russian' && comment.russian) {
+        return comment.russian;
+      }
+      return comment.original || comment.russian || '';
+    }
+    
+    return String(comment) || '';
   }
 
   private checkPageBreak(additionalHeight: number = 0): void {
@@ -210,13 +228,7 @@ export class PDFGenerator {
     this.addText(`Overall Score: ${evaluation.overallScore}%`, 12, 'bold');
     this.addText(`Confidence: ${Math.round((evaluation.confidence || 0) * 100)}%`, 10, 'normal');
     
-    // Only show model and processing time if they have valid values
-    if (evaluation.modelUsed && evaluation.modelUsed !== 'undefined') {
-      this.addText(`Model Used: ${evaluation.modelUsed}`, 10, 'normal');
-    }
-    if (evaluation.processingTime && !isNaN(evaluation.processingTime) && evaluation.processingTime > 0) {
-      this.addText(`Processing Time: ${Math.round(evaluation.processingTime / 1000)}s`, 10, 'normal');
-    }
+    // Model and processing time removed per requirements
     this.yPosition += 10;
 
     // Category Scores
@@ -281,7 +293,10 @@ export class PDFGenerator {
         
         // Add comment/description
         if (mistake.comment) {
-          this.addText(`Description: ${mistake.comment.russian}`, 10, 'normal');
+          const commentText = this.getCommentText(mistake.comment);
+          if (commentText) {
+            this.addText(`Description: ${commentText}`, 10, 'normal');
+          }
         }
         
         // Add utterance quote with enhanced styling
@@ -431,8 +446,9 @@ export class PDFGenerator {
   }
 }
 
-export const generateDialogPDF = (dialog: Dialog): void => {
+export const generateDialogPDF = (dialog: Dialog, languagePreference?: 'original' | 'russian'): void => {
   const generator = new PDFGenerator();
+  generator.setLanguagePreference(languagePreference || 'original');
   const doc = generator.generateComprehensivePDF(dialog);
   const filename = `${dialog.fileName.replace(/\.[^/.]+$/, '')}_Report.pdf`;
   generator.save(filename);

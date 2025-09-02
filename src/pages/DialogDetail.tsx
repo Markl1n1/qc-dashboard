@@ -18,6 +18,8 @@ import { openaiEvaluationService } from '../services/openaiEvaluationService';
 import { OpenAIEvaluationProgress } from '../types/openaiEvaluation';
 import { supabase } from '../integrations/supabase/client';
 import { generateDialogPDF } from '../utils/pdfGenerator';
+import { useLanguageStore } from '../store/languageStore';
+
 const DialogDetail = () => {
   const {
     id
@@ -160,11 +162,13 @@ const DialogDetail = () => {
       setIsAnalyzing(false);
     }
   };
+  const { commentLanguage } = useLanguageStore();
+  
   const handleExportPDF = async () => {
     if (!dialog) return;
     setIsExportingPDF(true);
     try {
-      generateDialogPDF(dialog);
+      generateDialogPDF(dialog, commentLanguage);
       toast.success('PDF exported successfully!');
     } catch (error) {
       console.error('Error exporting PDF:', error);

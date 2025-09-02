@@ -9,7 +9,12 @@ interface SpeakerMappingData {
 
 export const useSpeakerMapping = (analysisData: SpeakerMappingData | null) => {
   const speakerMapping = useMemo(() => {
-    if (!analysisData) return {};
+    console.log('🎭 useSpeakerMapping - input analysisData:', analysisData);
+    
+    if (!analysisData) {
+      console.log('🎭 useSpeakerMapping - no analysisData, returning empty mapping');
+      return {};
+    }
     
     const mapping: Record<string, string> = {};
     
@@ -18,6 +23,7 @@ export const useSpeakerMapping = (analysisData: SpeakerMappingData | null) => {
       const name = analysisData.speaker_0 || '';
       const role = analysisData.role_0 || '';
       mapping['Speaker 0'] = name ? `${name} (${role})` : role;
+      console.log('🎭 useSpeakerMapping - mapped Speaker 0:', mapping['Speaker 0']);
     }
     
     // Map Speaker 1
@@ -25,8 +31,10 @@ export const useSpeakerMapping = (analysisData: SpeakerMappingData | null) => {
       const name = analysisData.speaker_1 || '';
       const role = analysisData.role_1 || '';
       mapping['Speaker 1'] = name ? `${name} (${role})` : role;
+      console.log('🎭 useSpeakerMapping - mapped Speaker 1:', mapping['Speaker 1']);
     }
     
+    console.log('🎭 useSpeakerMapping - final mapping:', mapping);
     return mapping;
   }, [analysisData]);
   
