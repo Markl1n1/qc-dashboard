@@ -69,45 +69,41 @@ const DialogDetail = () => {
       toast.error('No transcription available for analysis');
       return;
     }
-    
     setIsAnalyzing(true);
     setAnalysisProgress({
       stage: 'analyzing',
       progress: 10,
       message: 'Starting background analysis...'
     });
-
     try {
       console.log('Starting background OpenAI analysis for dialog:', dialog.id);
-      
+
       // Call the background edge function
-      const { data, error } = await supabase.functions.invoke('openai-evaluate-background', {
+      const {
+        data,
+        error
+      } = await supabase.functions.invoke('openai-evaluate-background', {
         body: {
           dialogId: dialog.id,
           utterances: dialog.speakerTranscription,
           modelId: 'gpt-5-mini-2025-08-07'
         }
       });
-
       if (error) {
         throw new Error(`Background analysis failed: ${error.message}`);
       }
-
       if (!data?.success) {
         throw new Error(data?.error || 'Background analysis failed');
       }
-
       setAnalysisProgress({
         stage: 'complete',
         progress: 100,
         message: 'Analysis completed successfully!'
       });
-
       toast.success('AI analysis completed successfully!');
-      
+
       // Reload dialog to get the updated analysis
       await loadDialog(dialog.id);
-      
     } catch (error) {
       console.error('Error starting analysis:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -245,28 +241,21 @@ const DialogDetail = () => {
         <TabsContent value="transcription" className="mt-6">
           <div className="space-y-6">
             {/* Enhanced Speaker Transcription with mistake highlighting */}
-            {dialog.speakerTranscription && dialog.speakerTranscription.length > 0 ? 
-              <EnhancedSpeakerDialog 
-                utterances={dialog.speakerTranscription} 
-                mistakes={dialog.openaiEvaluation?.mistakes || []}
-                highlightedUtterance={highlightedUtterance}
-                onNavigateToAnalysis={(issueIndex) => {
-                  setCurrentTab('results');
-                  // Scroll to the specific issue
-                  setTimeout(() => {
-                    const element = document.getElementById(`issue-${issueIndex}`);
-                    element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                  }, 100);
-                }}
-                detectedLanguage={undefined} 
-                metadata={undefined} 
-              /> : 
-              <Card>
+            {dialog.speakerTranscription && dialog.speakerTranscription.length > 0 ? <EnhancedSpeakerDialog utterances={dialog.speakerTranscription} mistakes={dialog.openaiEvaluation?.mistakes || []} highlightedUtterance={highlightedUtterance} onNavigateToAnalysis={issueIndex => {
+            setCurrentTab('results');
+            // Scroll to the specific issue
+            setTimeout(() => {
+              const element = document.getElementById(`issue-${issueIndex}`);
+              element?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center'
+              });
+            }, 100);
+          }} detectedLanguage={undefined} metadata={undefined} /> : <Card>
                 <CardContent className="pt-6">
                   <p className="text-center text-muted-foreground">No transcription available</p>
                 </CardContent>
-              </Card>
-            }
+              </Card>}
           </div>
         </TabsContent>
 
@@ -300,18 +289,16 @@ const DialogDetail = () => {
             {/* OpenAI Analysis Results */}
             {dialog.openaiEvaluation ? <div className="space-y-4">
                 {/* Violation Summary Cards */}
-                {dialog.openaiEvaluation.mistakes && dialog.openaiEvaluation.mistakes.length > 0 && (
-                  <AnalysisSummaryCards mistakes={dialog.openaiEvaluation.mistakes} />
-                )}
+                {dialog.openaiEvaluation.mistakes && dialog.openaiEvaluation.mistakes.length > 0 && <AnalysisSummaryCards mistakes={dialog.openaiEvaluation.mistakes} />}
 
                 <Card>
                   <CardHeader>
-                    <CardTitle>Overall Analysis Results</CardTitle>
+                    <CardTitle>Overall Score</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div>
-                        <h4 className="font-medium mb-2">Overall Score</h4>
+                        
                         <div className="text-3xl font-bold text-primary">
                           {dialog.openaiEvaluation.overallScore}%
                         </div>
@@ -343,16 +330,7 @@ const DialogDetail = () => {
                   </Card>}
 
                 {/* Summary */}
-                {dialog.openaiEvaluation.summary && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Summary</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-muted-foreground">{dialog.openaiEvaluation.summary}</p>
-                    </CardContent>
-                  </Card>
-                )}
+                {dialog.openaiEvaluation.summary}
 
                 {/* Recommendations */}
                 {dialog.openaiEvaluation.recommendations && dialog.openaiEvaluation.recommendations.length > 0 && <Card>
@@ -367,35 +345,30 @@ const DialogDetail = () => {
                   </Card>}
 
                 {/* Enhanced Detected Issues with bidirectional navigation */}
-                {dialog.openaiEvaluation.mistakes && dialog.openaiEvaluation.mistakes.length > 0 && (
-                  <Card>
+                {dialog.openaiEvaluation.mistakes && dialog.openaiEvaluation.mistakes.length > 0 && <Card>
                     <CardHeader>
                       <CardTitle>Detected Issues ({dialog.openaiEvaluation.mistakes.length})</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <EnhancedDialogDetail
-                        mistakes={dialog.openaiEvaluation.mistakes}
-                        utterances={dialog.speakerTranscription || []}
-                        onNavigateToSpeaker={(utteranceText) => {
-                          setHighlightedUtterance(utteranceText);
-                          setCurrentTab('transcription');
-                          // Scroll to the utterance in speaker dialog
-                          setTimeout(() => {
-                            const elements = document.querySelectorAll('[data-utterance-text]');
-                            for (const element of elements) {
-                              if (element.getAttribute('data-utterance-text')?.includes(utteranceText)) {
-                                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                break;
-                              }
-                            }
-                          }, 100);
-                        }}
-                        currentTab={currentTab}
-                        onTabChange={setCurrentTab}
-                      />
+                      <EnhancedDialogDetail mistakes={dialog.openaiEvaluation.mistakes} utterances={dialog.speakerTranscription || []} onNavigateToSpeaker={utteranceText => {
+                  setHighlightedUtterance(utteranceText);
+                  setCurrentTab('transcription');
+                  // Scroll to the utterance in speaker dialog
+                  setTimeout(() => {
+                    const elements = document.querySelectorAll('[data-utterance-text]');
+                    for (const element of elements) {
+                      if (element.getAttribute('data-utterance-text')?.includes(utteranceText)) {
+                        element.scrollIntoView({
+                          behavior: 'smooth',
+                          block: 'center'
+                        });
+                        break;
+                      }
+                    }
+                  }, 100);
+                }} currentTab={currentTab} onTabChange={setCurrentTab} />
                     </CardContent>
-                  </Card>
-                )}
+                  </Card>}
               </div> : <Card>
                 <CardContent className="pt-6">
                   <p className="text-center text-muted-foreground">
