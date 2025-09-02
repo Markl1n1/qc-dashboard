@@ -110,7 +110,7 @@ const EnhancedDialogDetail: React.FC<EnhancedDialogDetailProps> = ({
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="font-medium">
-                Rule Category
+                Category
               </Badge>
               <span className="text-sm font-medium text-foreground">
                 {mistake.rule_category || mistake.category || 'Unknown'}

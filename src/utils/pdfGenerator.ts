@@ -281,7 +281,7 @@ export class PDFGenerator {
         
         // Add comment/description
         if (mistake.comment) {
-          this.addText(`Description: ${mistake.comment}`, 10, 'normal');
+          this.addText(`Description:`, 10, 'normal');
         }
         
         // Add utterance quote with enhanced styling
@@ -289,7 +289,7 @@ export class PDFGenerator {
           this.addText(`Quote: "${mistake.utterance}"`, 10, 'normal', true);
         }
         
-        this.yPosition += 8;
+        this.yPosition += 5;
       });
     }
 
