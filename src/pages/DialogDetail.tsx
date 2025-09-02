@@ -45,6 +45,16 @@ const DialogDetail = () => {
       setIsLoading(true);
       const dialogData = await getDialog(dialogId);
       if (dialogData) {
+        // Ensure openaiEvaluation is properly parsed
+        if (dialogData.openaiEvaluation && typeof dialogData.openaiEvaluation === 'string') {
+          try {
+            dialogData.openaiEvaluation = JSON.parse(dialogData.openaiEvaluation);
+          } catch (parseError) {
+            console.error('Failed to parse openaiEvaluation JSON:', parseError);
+            // Clear invalid JSON data
+            dialogData.openaiEvaluation = null;
+          }
+        }
         setDialog(dialogData);
       }
     } catch (error) {

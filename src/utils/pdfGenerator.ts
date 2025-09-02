@@ -21,12 +21,38 @@ export class PDFGenerator {
   }
 
   private preprocessText(text: string): string {
+    // Log original text for debugging encoding issues
+    console.log('📝 PDF Text Processing:', {
+      originalLength: text.length,
+      firstChars: text.substring(0, 50),
+      encoding: text.split('').map(char => ({ char, code: char.charCodeAt(0) })).slice(0, 10),
+      hasPolishChars: /[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/.test(text)
+    });
+
     // Enhanced Unicode normalization for Polish characters - preserve diacritics
-    return text
+    const processed = text
       .normalize('NFC') // Use standard form without decomposing
       .replace(/\u00A0/g, ' ') // Replace non-breaking spaces
       .replace(/\s+/g, ' ') // Normalize multiple spaces
+      .replace(/[ąĄ]/g, 'a') // Replace Polish chars that jsPDF can't handle
+      .replace(/[ćĆ]/g, 'c')
+      .replace(/[ęĘ]/g, 'e')
+      .replace(/[łŁ]/g, 'l')
+      .replace(/[ńŃ]/g, 'n')
+      .replace(/[óÓ]/g, 'o')
+      .replace(/[śŚ]/g, 's')
+      .replace(/[źŹ]/g, 'z')
+      .replace(/[żŻ]/g, 'z')
       .trim();
+
+    // Log processed text for comparison
+    console.log('✅ PDF Text Processed:', {
+      processedLength: processed.length,
+      firstProcessedChars: processed.substring(0, 50),
+      changed: text !== processed
+    });
+
+    return processed;
   }
 
   private addText(text: string, fontSize: number = 10, fontWeight: 'normal' | 'bold' = 'normal', isQuote: boolean = false): void {

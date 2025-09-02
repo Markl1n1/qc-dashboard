@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
       );
       
       const { data: fileData, error: downloadError } = await supabase.storage
-        .from('ai-instructions')
+        .from('audio-files')
         .download(storageFile);
 
       if (downloadError) {
