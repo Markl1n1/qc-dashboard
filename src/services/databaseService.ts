@@ -50,7 +50,7 @@ export interface DatabaseUtterance {
 export interface DatabaseAnalysis {
   id: string;
   dialog_id: string;
-  analysis_type: 'openai';
+  analysis_type: 'openai' | 'openai_background';
   overall_score?: number;
   category_scores: Record<string, number>;
   mistakes: any[];
@@ -322,7 +322,7 @@ class DatabaseService {
     return data as DatabaseAnalysis;
   }
 
-  async getAnalysis(dialogId: string, analysisType?: 'openai'): Promise<DatabaseAnalysis[]> {
+  async getAnalysis(dialogId: string, analysisType?: 'openai' | 'openai_background'): Promise<DatabaseAnalysis[]> {
     let query = supabase
       .from('dialog_analysis')
       .select('*')
@@ -330,6 +330,9 @@ class DatabaseService {
 
     if (analysisType) {
       query = query.eq('analysis_type', analysisType);
+    } else {
+      // If no specific type is requested, get both openai and openai_background analyses
+      query = query.in('analysis_type', ['openai', 'openai_background']);
     }
 
     const { data, error } = await query.order('created_at', { ascending: false });
@@ -349,7 +352,7 @@ class DatabaseService {
     return data as DatabaseAnalysis;
   }
 
-  async getStructuredAnalysis(dialogId: string, analysisType?: 'openai'): Promise<{
+  async getStructuredAnalysis(dialogId: string, analysisType?: 'openai' | 'openai_background'): Promise<{
     overallScore: number;
     mistakes: Array<{
       rule_category: string;
@@ -369,6 +372,9 @@ class DatabaseService {
     
     if (analysisType) {
       query = query.eq('analysis_type', analysisType);
+    } else {
+      // If no specific type is requested, get both openai and openai_background analyses
+      query = query.in('analysis_type', ['openai', 'openai_background']);
     }
     
     const { data, error } = await query.order('created_at', { ascending: false });
@@ -497,7 +503,9 @@ class DatabaseService {
 
     // Add OpenAI analysis if available - use structured format if new columns exist
     if (analyses) {
-      const openaiAnalyses = analyses.filter(a => a.analysis_type === 'openai');
+      const openaiAnalyses = analyses.filter(a => 
+        a.analysis_type === 'openai' || a.analysis_type === 'openai_background'
+      );
       if (openaiAnalyses.length > 0) {
         // Check if we have new structured data (rule_category column)
         const structuredAnalyses = openaiAnalyses.filter(a => a.rule_category && a.rule_category.trim() !== '');
@@ -507,7 +515,10 @@ class DatabaseService {
           const firstRecord = openaiAnalyses[0];
           const mistakes = structuredAnalyses.map(record => ({
             rule_category: record.rule_category || '',
-            comment: record.comment || '',
+            comment: record.comment_original && record.comment_russian ? {
+              original: record.comment_original,
+              russian: record.comment_russian
+            } : record.comment || '',
             utterance: record.utterance || ''
           }));
 

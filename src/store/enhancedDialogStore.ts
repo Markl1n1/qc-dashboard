@@ -347,7 +347,16 @@ export const useEnhancedDialogStore = create<EnhancedDialogStore>()(
         }
       },
 
-      clearDialogs: () => set({ dialogs: [], dialogDetailsCache: new Map() })
+      clearDialogs: () => set({ dialogs: [], dialogDetailsCache: new Map() }),
+      
+      // Add method to clear cache for a specific dialog
+      clearDialogCache: (id: string) => {
+        set(state => {
+          const newCache = new Map(state.dialogDetailsCache);
+          newCache.delete(id);
+          return { dialogDetailsCache: newCache };
+        });
+      }
     }),
     {
       name: 'enhanced-dialog-store',
