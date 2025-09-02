@@ -80,27 +80,20 @@ const DialogDetail = () => {
     try {
       console.log('Starting background OpenAI analysis for dialog:', dialog.id);
       
-      // Call the background analysis function
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/openai-evaluate-background`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({
+      // Call the background analysis function using Supabase client
+      const { data, error } = await supabase.functions.invoke('openai-evaluate-background', {
+        body: {
           dialogId: dialog.id,
           utterances: dialog.speakerTranscription,
           model: 'gpt-5-mini-2025-08-07'
-        }),
+        }
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP ${response.status}`);
+      if (error) {
+        throw new Error(error.message);
       }
 
-      const result = await response.json();
-      console.log('Background analysis started:', result);
+      console.log('Background analysis started:', data);
 
       setAnalysisProgress({
         stage: 'processing',

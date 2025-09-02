@@ -78,7 +78,7 @@ const EnhancedDialogDetail: React.FC<EnhancedDialogDetailProps> = ({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold">Detected Issues ({mistakes.length})</h3>
+        <h2 className="text-xl font-bold">Detected Issues ({mistakes.length})</h2>
         {hasRussianComments && (
           <div className="flex items-center gap-2">
             <Button

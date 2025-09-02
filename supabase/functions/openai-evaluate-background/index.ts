@@ -65,13 +65,19 @@ async function runBackgroundAnalysis(
   openAIApiKey: string
 ) {
   try {
-    console.log(`Starting background analysis for dialog: ${dialogId}`);
+    console.log(`🚀 Starting background analysis for dialog: ${dialogId}`);
+    console.log(`📊 Model: ${model}, Utterances: ${utterances.length}`);
 
     // Update dialog status to processing
-    await supabase
+    const { error: statusError } = await supabase
       .from('dialogs')
       .update({ status: 'processing' })
       .eq('id', dialogId);
+    
+    if (statusError) {
+      console.error('❌ Failed to update dialog status:', statusError);
+      throw new Error(`Failed to update dialog status: ${statusError.message}`);
+    }
 
     // Build conversation context for OpenAI
     const conversationText = utterances
@@ -85,6 +91,7 @@ async function runBackgroundAnalysis(
 4. Brief summary
 5. Actionable recommendations
 6. Confidence level (0-1)
+7. Speaker identification and roles
 
 Format your response as valid JSON matching this structure:
 {
@@ -99,10 +106,19 @@ Format your response as valid JSON matching this structure:
   "mistakes": [
     {
       "category": "string",
-      "comment": "string",
+      "comment": {
+        "original": "string",
+        "russian": "string"
+      },
       "utterance": "string"
     }
   ],
+  "speakers": {
+    "speaker_0": "string",
+    "role_0": "Agent|Customer",
+    "speaker_1": "string", 
+    "role_1": "Agent|Customer"
+  },
   "summary": "string",
   "recommendations": ["string"],
   "confidence": number
@@ -139,8 +155,11 @@ Format your response as valid JSON matching this structure:
       body: JSON.stringify(requestBody),
     });
 
+    console.log(`📡 OpenAI API Response Status: ${response.status}`);
+
     if (!response.ok) {
       const errorText = await response.text();
+      console.error(`❌ OpenAI API Error: ${response.status} - ${errorText}`);
       throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
     }
 
@@ -168,7 +187,7 @@ Format your response as valid JSON matching this structure:
 
     console.log(`Analysis completed in ${processingTime}ms`);
 
-    // Store analysis result
+    // Store analysis result with speaker information
     const { error: analysisError } = await supabase
       .from('dialog_analysis')
       .insert({
@@ -181,7 +200,11 @@ Format your response as valid JSON matching this structure:
         summary: enhancedResult.summary,
         confidence: enhancedResult.confidence,
         token_usage: enhancedResult.tokenUsage,
-        processing_time: enhancedResult.processingTime
+        processing_time: enhancedResult.processingTime,
+        speaker_0: enhancedResult.speakers?.speaker_0 || null,
+        role_0: enhancedResult.speakers?.role_0 || null,
+        speaker_1: enhancedResult.speakers?.speaker_1 || null,
+        role_1: enhancedResult.speakers?.role_1 || null
       });
 
     if (analysisError) {
