@@ -78,7 +78,7 @@ serve(async (req) => {
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `Please analyze this conversation and provide a JSON response with the exact format specified in the instructions:\n\n${conversationText}` }
         ],
-        max_completion_tokens: 4000,
+        max_completion_tokens: 8000, // Increased from 4000 to handle longer responses
         response_format: { type: "json_object" }
       }),
     });
@@ -93,18 +93,34 @@ serve(async (req) => {
     console.log('✅ OpenAI API response received');
     console.log('🔍 Full OpenAI response:', JSON.stringify(openAIData, null, 2));
 
-    if (!openAIData.choices?.[0]?.message?.content) {
-      console.error('❌ Invalid OpenAI response structure:', JSON.stringify(openAIData, null, 2));
+    // Check if response is valid
+    if (!openAIData.choices?.[0]?.message) {
+      console.error('❌ Invalid OpenAI response structure - no message:', JSON.stringify(openAIData, null, 2));
       throw new Error(`Invalid OpenAI response format: ${JSON.stringify(openAIData)}`);
+    }
+
+    const messageContent = openAIData.choices[0].message.content;
+    const finishReason = openAIData.choices[0].finish_reason;
+
+    // Handle empty content due to token limits
+    if (!messageContent || messageContent.trim() === '') {
+      if (finishReason === 'length') {
+        console.error('❌ OpenAI response truncated due to token limit. Completion tokens:', openAIData.usage?.completion_tokens);
+        throw new Error('OpenAI response was truncated due to token limit. Try reducing conversation length or increasing max_completion_tokens.');
+      } else {
+        console.error('❌ OpenAI returned empty content:', JSON.stringify(openAIData, null, 2));
+        throw new Error(`OpenAI returned empty content with finish_reason: ${finishReason}`);
+      }
     }
 
     // Parse the JSON response
     let analysisResult;
     try {
-      analysisResult = JSON.parse(openAIData.choices[0].message.content);
+      analysisResult = JSON.parse(messageContent);
       console.log('📊 Analysis result parsed successfully');
     } catch (parseError) {
       console.error('❌ Failed to parse OpenAI JSON response:', parseError);
+      console.error('❌ Raw content:', messageContent);
       throw new Error('Failed to parse OpenAI response as JSON');
     }
 
