@@ -599,7 +599,7 @@ You must respond in the following JSON format:
         overallScore: score,
         categoryScores: {},
         recommendations: [],
-        summary: parsed.summary || `Conversation analysis completed with an overall quality score of ${score} out of 100.`,
+        summary: `Analysis completed with score: ${score}/100${speakers.length > 0 ? `, speakers identified: ${speakers.length}` : ''}`,
         confidence: finishReason === 'length' ? 0.7 : 0.9,
         tokenUsage: {
           input: response.usage?.prompt_tokens || response.tokenEstimation?.actualInputTokens || 0,

@@ -69,70 +69,42 @@ const DialogDetail = () => {
       toast.error('No transcription available for analysis');
       return;
     }
-
     setIsAnalyzing(true);
-    setAnalysisProgress({
-      stage: 'starting',
-      progress: 10,
-      message: 'Starting background analysis...'
-    });
-
+    setAnalysisProgress(null);
     try {
-      console.log('Starting background OpenAI analysis for dialog:', dialog.id);
-      
-      // Call the background analysis function using Supabase client
-      const { data, error } = await supabase.functions.invoke('openai-evaluate-background', {
-        body: {
-          dialogId: dialog.id,
-          utterances: dialog.speakerTranscription,
-          model: 'gpt-5-mini-2025-08-07'
-        }
+      openaiEvaluationService.setProgressCallback(progress => {
+        setAnalysisProgress(progress);
       });
-
-      if (error) {
-        throw new Error(error.message);
+      console.log('Starting OpenAI analysis for dialog:', dialog.id);
+      const result = await openaiEvaluationService.evaluateConversation(dialog.speakerTranscription, 'gpt-5-mini-2025-08-07');
+      console.log('OpenAI analysis completed:', result);
+      const {
+        error: analysisError
+      } = await supabase.from('dialog_analysis').insert({
+        dialog_id: dialog.id,
+        analysis_type: 'openai',
+        overall_score: result.overallScore,
+        category_scores: result.categoryScores as any,
+        mistakes: result.mistakes as any,
+        recommendations: result.recommendations,
+        summary: result.summary,
+        confidence: result.confidence,
+        token_usage: result.tokenUsage as any,
+        processing_time: result.processingTime
+      });
+      if (analysisError) {
+        throw analysisError;
       }
-
-      console.log('Background analysis started:', data);
-
-      setAnalysisProgress({
-        stage: 'processing',
-        progress: 50,
-        message: 'Analysis running in background. You can safely refresh or navigate away.'
+      await updateDialog(dialog.id, {
+        openaiEvaluation: result,
+        qualityScore: result.overallScore
       });
-
-      toast.success('Analysis started! It will continue in the background.', {
-        description: 'Check back in a few minutes for results.',
-        duration: 5000,
-      });
-
-      // Auto-reload data every 10 seconds to check for completion
-      const checkCompletion = setInterval(async () => {
-        try {
-          await loadDialog(dialog.id);
-          const updatedDialog = await getDialog(dialog.id);
-          if (updatedDialog?.openaiEvaluation) {
-            clearInterval(checkCompletion);
-            setAnalysisProgress({
-              stage: 'complete',
-              progress: 100,
-              message: 'Analysis completed successfully!'
-            });
-            toast.success('Background analysis completed!');
-            setCurrentTab('results'); // Auto-redirect to results
-          }
-        } catch (error) {
-          console.error('Error checking analysis completion:', error);
-        }
-      }, 10000);
-
-      // Clear interval after 5 minutes
-      setTimeout(() => clearInterval(checkCompletion), 300000);
-
+      toast.success('AI analysis completed successfully!');
+      await loadDialog(dialog.id);
     } catch (error) {
-      console.error('Error starting background analysis:', error);
+      console.error('Error starting analysis:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      toast.error(`Failed to start analysis: ${errorMessage}`);
+      toast.error(`Analysis failed: ${errorMessage}`);
       setAnalysisProgress({
         stage: 'error',
         progress: 0,

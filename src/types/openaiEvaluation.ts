@@ -33,7 +33,7 @@ export interface OpenAIEvaluationResult {
 }
 
 export interface OpenAIEvaluationProgress {
-  stage: 'initializing' | 'starting' | 'analyzing' | 'processing' | 'processing_response' | 'complete' | 'error';
+  stage: 'initializing' | 'analyzing' | 'processing_response' | 'complete' | 'error';
   progress: number;
   message: string;
   currentStep?: string;
