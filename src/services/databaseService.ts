@@ -521,7 +521,7 @@ class DatabaseService {
             categoryScores: {},
             mistakes: mistakes,
             recommendations: [],
-            summary: `Analysis completed with score: ${firstRecord.overall_score || 0}/100`,
+            summary: '',
             confidence: firstRecord.confidence || 0,
             tokenUsage: firstRecord.token_usage || {},
             speakers: speakers

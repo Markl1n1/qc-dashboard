@@ -21,14 +21,11 @@ export class PDFGenerator {
   }
 
   private preprocessText(text: string): string {
-    // Enhanced Unicode normalization for Polish characters
+    // Enhanced Unicode normalization for Polish characters - preserve diacritics
     return text
-      .normalize('NFD') // Decompose combined characters
-      .replace(/[\u0300-\u036f]/g, '') // Remove combining diacritical marks if needed
-      .normalize('NFC') // Recompose to standard form
+      .normalize('NFC') // Use standard form without decomposing
       .replace(/\u00A0/g, ' ') // Replace non-breaking spaces
       .replace(/\s+/g, ' ') // Normalize multiple spaces
-      .replace(/[^\u0000-\u007F\u00A0-\u024F\u1E00-\u1EFF]/g, '?') // Replace unsupported characters
       .trim();
   }
 

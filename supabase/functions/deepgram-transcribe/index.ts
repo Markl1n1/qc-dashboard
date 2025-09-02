@@ -211,6 +211,28 @@ Deno.serve(async (req) => {
       model: finalModel
     });
 
+    // Clean up storage file if it was uploaded
+    if (storageFile) {
+      try {
+        console.log('🗑️ Cleaning up storage file:', storageFile);
+        const supabase = createClient(
+          'https://sahudeguwojdypmmlbkd.supabase.co',
+          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNhaHVkZWd1d29qZHlwbW1sYmtkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NjExNjAwNSwiZXhwIjoyMDcxNjkyMDA1fQ.eAhxBJnG-1Fmd9lDvWe-_5tXDrS7SFKlUdqP5e1I0zM'
+        );
+        const { error: deleteError } = await supabase.storage
+          .from('audio-files')
+          .remove([storageFile]);
+        
+        if (deleteError) {
+          console.error('⚠️ Failed to delete storage file:', deleteError);
+        } else {
+          console.log('✅ Storage file cleaned up successfully');
+        }
+      } catch (cleanupError) {
+        console.error('⚠️ Storage cleanup error:', cleanupError);
+      }
+    }
+
     return new Response(
       JSON.stringify({ success: true, result }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

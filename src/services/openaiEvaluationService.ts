@@ -206,7 +206,7 @@ class OpenAIEvaluationService {
           category_scores: {},
           confidence: confidence,
           token_usage: tokenUsage || {},
-          summary: '',
+           summary: '',
           recommendations: [],
           // New structured columns
           comment: '',

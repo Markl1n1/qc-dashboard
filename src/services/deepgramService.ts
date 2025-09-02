@@ -26,7 +26,7 @@ class DeepgramService {
 
     try {
       const fileSizeMB = audioFile.size / (1024 * 1024);
-      const isLargeFile = fileSizeMB > 50;
+      const isLargeFile = fileSizeMB > 20;
 
       if (isLargeFile) {
         this.updateProgress('uploading', 10, 'Uploading large file to storage...');
