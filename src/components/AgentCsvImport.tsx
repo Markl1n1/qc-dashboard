@@ -103,8 +103,8 @@ const AgentCsvImport: React.FC<AgentCsvImportProps> = ({
         return;
       }
 
-      if (agentNames.length > 100) {
-        toast.error('Maximum 100 agents can be imported at once');
+      if (agentNames.length > 1000) {
+        toast.error('Maximum 1000 agents can be imported at once');
         setIsProcessing(false);
         return;
       }
