@@ -25,8 +25,8 @@ class DeepgramService {
     });
 
     try {
-      const fileSizeMB = audioFile.size / (1024 * 1024);
-      const isLargeFile = fileSizeMB > 20;
+    const fileSizeMB = audioFile.size / (1024 * 1024);
+    const isLargeFile = fileSizeMB > 15;
 
       if (isLargeFile) {
         this.updateProgress('uploading', 10, 'Uploading large file to storage...');
@@ -34,7 +34,7 @@ class DeepgramService {
         // Upload large file to Supabase storage
         const fileName = `audio_${Date.now()}_${audioFile.name}`;
         const { error: uploadError } = await supabase.storage
-          .from('ai-instructions')
+          .from('audio-files')
           .upload(fileName, audioFile);
 
         if (uploadError) {
@@ -62,7 +62,7 @@ class DeepgramService {
         });
 
         // Clean up storage file
-        await supabase.storage.from('ai-instructions').remove([fileName]);
+        await supabase.storage.from('audio-files').remove([fileName]);
 
         if (error) {
           logger.error('Deepgram edge function error (large file)', error, { fileName: audioFile.name });

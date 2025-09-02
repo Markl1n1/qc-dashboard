@@ -135,9 +135,11 @@ export class PDFGenerator {
     this.doc.setFont('helvetica', 'bold');
     
     if (utterance.speaker === 'Speaker 0') {
-      this.doc.setTextColor(0, 64, 128); // Blue for Agent
+      this.doc.setTextColor(0, 64, 128); // Blue for Speaker 0
+    } else if (utterance.speaker === 'Speaker 1') {
+      this.doc.setTextColor(25, 102, 25); // Green for Speaker 1
     } else {
-      this.doc.setTextColor(25, 102, 25); // Orange for Customer
+      this.doc.setTextColor(76, 25, 102); // Purple (#4C1966) for Speaker 2, 3, etc.
     }
     
     const speakerText = `[${index + 1}] ${utterance.speaker}:`;
@@ -207,8 +209,14 @@ export class PDFGenerator {
     
     this.addText(`Overall Score: ${evaluation.overallScore}%`, 12, 'bold');
     this.addText(`Confidence: ${Math.round((evaluation.confidence || 0) * 100)}%`, 10, 'normal');
-    this.addText(`Model Used: ${evaluation.modelUsed}`, 10, 'normal');
-    this.addText(`Processing Time: ${Math.round(evaluation.processingTime / 1000)}s`, 10, 'normal');
+    
+    // Only show model and processing time if they have valid values
+    if (evaluation.modelUsed && evaluation.modelUsed !== 'undefined') {
+      this.addText(`Model Used: ${evaluation.modelUsed}`, 10, 'normal');
+    }
+    if (evaluation.processingTime && !isNaN(evaluation.processingTime) && evaluation.processingTime > 0) {
+      this.addText(`Processing Time: ${Math.round(evaluation.processingTime / 1000)}s`, 10, 'normal');
+    }
     this.yPosition += 10;
 
     // Category Scores
@@ -223,13 +231,7 @@ export class PDFGenerator {
       this.yPosition += 10;
     }
 
-    // Summary
-    if (evaluation.summary) {
-      this.addText('Analysis Summary', 12, 'bold');
-      this.yPosition += 3;
-      this.addText(evaluation.summary, 10, 'normal');
-      this.yPosition += 10;
-    }
+    // Remove summary section completely
 
     // Recommendations
     if (evaluation.recommendations && evaluation.recommendations.length > 0) {
@@ -269,7 +271,7 @@ export class PDFGenerator {
             this.doc.setTextColor(34, 197, 94); // Green for Correct/Acceptable
         }
         
-        this.doc.text(`${index + 1}. ${mistake.rule_category || 'Issue'} [${(mistake.rule_category || 'GENERAL').toUpperCase()}]`, this.margin, this.yPosition);
+        this.doc.text(`${index + 1}. ${(mistake.rule_category || 'GENERAL').toUpperCase()}`, this.margin, this.yPosition);
         this.yPosition += this.lineHeight + 2;
         
         // Reset color for description

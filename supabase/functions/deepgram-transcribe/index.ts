@@ -55,13 +55,34 @@ Deno.serve(async (req) => {
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNhaHVkZWd1d29qZHlwbW1sYmtkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NjExNjAwNSwiZXhwIjoyMDcxNjkyMDA1fQ.eAhxBJnG-1Fmd9lDvWe-_5tXDrS7SFKlUdqP5e1I0zM'
       );
       
-      const { data: fileData, error: downloadError } = await supabase.storage
-        .from('audio-files')
-        .download(storageFile);
+      // Add retry logic for storage download
+      let fileData;
+      let downloadError;
+      let retryCount = 0;
+      const maxRetries = 3;
+      
+      while (retryCount <= maxRetries) {
+        const result = await supabase.storage
+          .from('audio-files')
+          .download(storageFile);
+          
+        fileData = result.data;
+        downloadError = result.error;
+        
+        if (!downloadError) break;
+        
+        retryCount++;
+        console.log(`Storage download attempt ${retryCount} failed:`, downloadError);
+        
+        if (retryCount <= maxRetries) {
+          console.log(`Retrying in ${retryCount * 2} seconds...`);
+          await new Promise(resolve => setTimeout(resolve, retryCount * 2000));
+        }
+      }
 
       if (downloadError) {
-        console.error('Storage download error:', downloadError);
-        throw new Error(`Failed to download file from storage: ${JSON.stringify(downloadError)}`);
+        console.error('Storage download failed after retries:', downloadError);
+        throw new Error(`Failed to download file from storage after ${maxRetries} retries: ${JSON.stringify(downloadError)}`);
       }
       
       if (!fileData) {
@@ -134,7 +155,7 @@ Deno.serve(async (req) => {
       },
       body: audioBuffer,
       // Increase timeout for large files
-      signal: AbortSignal.timeout(300000) // 5 minutes timeout
+      signal: AbortSignal.timeout(600000) // 10 minutes timeout
     });
 
     if (!deepgramResponse.ok) {
