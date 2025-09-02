@@ -281,7 +281,7 @@ export class PDFGenerator {
         
         // Add comment/description
         if (mistake.comment) {
-          this.addText(`Description:`, 10, 'normal');
+          this.addText(`Description: ${mistake.comment.russian}`, 10, 'normal');
         }
         
         // Add utterance quote with enhanced styling
