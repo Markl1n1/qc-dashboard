@@ -138,7 +138,10 @@ export const OpenAIEvaluationView: React.FC<OpenAIEvaluationViewProps> = ({
   };
 
   const hasRussianComments = result?.mistakes?.some(mistake => {
-    return typeof mistake.comment === 'object' && mistake.comment?.russian;
+    if (!mistake.comment) return false;
+    if (typeof mistake.comment !== 'object') return false;
+    const commentObj = mistake.comment as { original?: string; russian?: string };
+    return !!commentObj.russian;
   }) || false;
 
   const selectedModelData = OPENAI_MODELS.find(m => m.id === selectedModel);

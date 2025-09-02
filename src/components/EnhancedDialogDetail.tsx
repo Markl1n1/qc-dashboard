@@ -1,8 +1,9 @@
-import React, { useState, useRef } from 'react';
-import { Button } from './ui/button';
+import React, { useState } from 'react';
 import { Badge } from './ui/badge';
-import { ExternalLink } from 'lucide-react';
+import { Button } from './ui/button';
+import { ExternalLink, Languages } from 'lucide-react';
 import { SpeakerUtterance } from '../types';
+import { useLanguageStore } from '../store/languageStore';
 
 interface DetectedIssue {
   rule_category?: string;
