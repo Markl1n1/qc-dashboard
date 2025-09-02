@@ -60,7 +60,12 @@ Deno.serve(async (req) => {
         .download(storageFile);
 
       if (downloadError) {
-        throw new Error(`Failed to download file from storage: ${downloadError.message}`);
+        console.error('Storage download error:', downloadError);
+        throw new Error(`Failed to download file from storage: ${JSON.stringify(downloadError)}`);
+      }
+      
+      if (!fileData) {
+        throw new Error('No file data received from storage');
       }
 
       audioBuffer = new Uint8Array(await fileData.arrayBuffer());
@@ -127,7 +132,9 @@ Deno.serve(async (req) => {
         'Authorization': `Token ${DEEPGRAM_API_KEY}`,
         // Remove Content-Type header to let Deepgram auto-detect format
       },
-      body: audioBuffer
+      body: audioBuffer,
+      // Increase timeout for large files
+      signal: AbortSignal.timeout(300000) // 5 minutes timeout
     });
 
     if (!deepgramResponse.ok) {

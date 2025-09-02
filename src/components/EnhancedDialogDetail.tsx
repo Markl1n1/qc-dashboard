@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import { ExternalLink, Languages } from 'lucide-react';
 import { SpeakerUtterance } from '../types';
 import { useLanguageStore } from '../store/languageStore';
+import { useSpeakerMapping } from '../hooks/useSpeakerMapping';
 
 interface DetectedIssue {
   rule_category?: string;
@@ -22,6 +23,12 @@ interface EnhancedDialogDetailProps {
   onNavigateToSpeaker: (utteranceText: string) => void;
   currentTab: string;
   onTabChange: (tab: string) => void;
+  analysisData?: {
+    speaker_0?: string;
+    speaker_1?: string;
+    role_0?: string;
+    role_1?: string;
+  };
 }
 
 const EnhancedDialogDetail: React.FC<EnhancedDialogDetailProps> = ({
@@ -29,10 +36,12 @@ const EnhancedDialogDetail: React.FC<EnhancedDialogDetailProps> = ({
   utterances,
   onNavigateToSpeaker,
   currentTab,
-  onTabChange
+  onTabChange,
+  analysisData
 }) => {
   const [highlightedIssue, setHighlightedIssue] = useState<string | null>(null);
   const { commentLanguage, setCommentLanguage } = useLanguageStore();
+  const { mapSpeakerName } = useSpeakerMapping(analysisData || null);
 
   const handleNavigateToUtterance = (utteranceText: string) => {
     setHighlightedIssue(utteranceText);

@@ -40,6 +40,46 @@ const DialogDetail = () => {
       loadDialog(id);
     }
   }, [id]);
+
+  // Real-time subscription for analysis updates
+  useEffect(() => {
+    if (!id) return;
+
+    const channel = supabase
+      .channel('dialog-analysis-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'dialog_analysis',
+          filter: `dialog_id=eq.${id}`
+        },
+        () => {
+          console.log('Analysis completed, reloading dialog...');
+          loadDialog(id);
+          setCurrentTab('results');
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'dialogs',
+          filter: `id=eq.${id}`
+        },
+        () => {
+          console.log('Dialog updated, reloading...');
+          loadDialog(id);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id]);
   const loadDialog = async (dialogId: string) => {
     try {
       setIsLoading(true);
@@ -104,6 +144,9 @@ const DialogDetail = () => {
 
       // Reload dialog to get the updated analysis
       await loadDialog(dialog.id);
+      
+      // Auto-redirect to results tab
+      setCurrentTab('results');
     } catch (error) {
       console.error('Error starting analysis:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -251,7 +294,7 @@ const DialogDetail = () => {
                 block: 'center'
               });
             }, 100);
-          }} detectedLanguage={undefined} metadata={undefined} /> : <Card>
+          }} detectedLanguage={undefined} metadata={undefined} analysisData={dialog.openaiEvaluation} /> : <Card>
                 <CardContent className="pt-6">
                   <p className="text-center text-muted-foreground">No transcription available</p>
                 </CardContent>
@@ -329,8 +372,6 @@ const DialogDetail = () => {
                     </CardContent>
                   </Card>}
 
-                {/* Summary */}
-                {dialog.openaiEvaluation.summary}
 
                 {/* Recommendations */}
                 {dialog.openaiEvaluation.recommendations && dialog.openaiEvaluation.recommendations.length > 0 && <Card>
@@ -350,23 +391,30 @@ const DialogDetail = () => {
                       <CardTitle>Detected Issues ({dialog.openaiEvaluation.mistakes.length})</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <EnhancedDialogDetail mistakes={dialog.openaiEvaluation.mistakes} utterances={dialog.speakerTranscription || []} onNavigateToSpeaker={utteranceText => {
-                  setHighlightedUtterance(utteranceText);
-                  setCurrentTab('transcription');
-                  // Scroll to the utterance in speaker dialog
-                  setTimeout(() => {
-                    const elements = document.querySelectorAll('[data-utterance-text]');
-                    for (const element of elements) {
-                      if (element.getAttribute('data-utterance-text')?.includes(utteranceText)) {
-                        element.scrollIntoView({
-                          behavior: 'smooth',
-                          block: 'center'
-                        });
-                        break;
-                      }
-                    }
-                  }, 100);
-                }} currentTab={currentTab} onTabChange={setCurrentTab} />
+                      <EnhancedDialogDetail 
+                        mistakes={dialog.openaiEvaluation.mistakes} 
+                        utterances={dialog.speakerTranscription || []} 
+                        onNavigateToSpeaker={utteranceText => {
+                          setHighlightedUtterance(utteranceText);
+                          setCurrentTab('transcription');
+                          // Scroll to the utterance in speaker dialog
+                          setTimeout(() => {
+                            const elements = document.querySelectorAll('[data-utterance-text]');
+                            for (const element of elements) {
+                              if (element.getAttribute('data-utterance-text')?.includes(utteranceText)) {
+                                element.scrollIntoView({
+                                  behavior: 'smooth',
+                                  block: 'center'
+                                });
+                                break;
+                              }
+                            }
+                          }, 100);
+                        }} 
+                        currentTab={currentTab} 
+                        onTabChange={setCurrentTab}
+                        analysisData={dialog.openaiEvaluation}
+                      />
                     </CardContent>
                   </Card>}
               </div> : <Card>

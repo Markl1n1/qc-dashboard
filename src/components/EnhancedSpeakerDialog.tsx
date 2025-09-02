@@ -7,6 +7,7 @@ import { Clock, Copy, User, Users, AlertTriangle, ExternalLink } from 'lucide-re
 import { SpeakerUtterance } from '../types';
 import { copyToClipboard, formatDialogForCopy } from '../utils/dialogFormatting';
 import { toast } from 'sonner';
+import { useSpeakerMapping } from '../hooks/useSpeakerMapping';
 
 interface DetectedIssue {
   rule_category?: string;
@@ -30,6 +31,12 @@ interface EnhancedSpeakerDialogProps {
     duration: number;
     model: string;
   };
+  analysisData?: {
+    speaker_0?: string;
+    speaker_1?: string;
+    role_0?: string;
+    role_1?: string;
+  };
 }
 
 const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
@@ -38,8 +45,10 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
   highlightedUtterance,
   onNavigateToAnalysis,
   detectedLanguage,
-  metadata
+  metadata,
+  analysisData
 }) => {
+  const { mapSpeakerName } = useSpeakerMapping(analysisData || null);
   const formatTime = (seconds: number): string => {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = Math.floor(seconds % 60);
@@ -120,16 +129,15 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
       const cleanUtteranceText = utteranceText.toLowerCase().replace(/\s+/g, ' ').trim();
       const cleanMistakeText = mistake.utterance.toLowerCase().replace(/\s+/g, ' ').trim();
       
-      // Try multiple matching strategies
+      // Use more precise matching - only exact and strict substring matches
       return (
         // Exact match
+        cleanUtteranceText === cleanMistakeText ||
+        // Mistake text is contained in utterance (for merged utterances)
         cleanUtteranceText.includes(cleanMistakeText) ||
-        // Reverse match (mistake text contains utterance text)
-        cleanMistakeText.includes(cleanUtteranceText) ||
-        // Fuzzy match - check if substantial parts match (for merged utterances)
-        checkFuzzyMatch(cleanUtteranceText, cleanMistakeText) ||
-        // Word-based matching
-        checkWordMatch(cleanUtteranceText, cleanMistakeText)
+        // Utterance text is contained in mistake (rare case)
+        (cleanMistakeText.length > cleanUtteranceText.length && 
+         cleanMistakeText.includes(cleanUtteranceText))
       );
     });
   };
@@ -257,7 +265,7 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
                   }}
                 >
                   <User className="h-4 w-4" />
-                  <span className="font-medium">{speaker}</span>
+                  <span className="font-medium">{mapSpeakerName(speaker)}</span>
                   <Badge variant="outline" className="text-xs font-bold" style={{ color: style.textColor, borderColor: style.borderColor }}>
                     {stats.count} segments
                   </Badge>
@@ -314,7 +322,7 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
                           className="font-medium text-sm"
                           style={{ color: style.textColor }}
                         >
-                          {utterance.speaker}
+                          {mapSpeakerName(utterance.speaker)}
                         </span>
                         <span className="text-xs text-foreground/70">
                           {formatTime(utterance.start)} - {formatTime(utterance.end)}
