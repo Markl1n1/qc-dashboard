@@ -7,7 +7,8 @@ const corsHeaders = {
 };
 
 interface DeepgramRequest {
-  audio: string; // base64 encoded
+  audio?: string; // base64 encoded for small files
+  storageFile?: string; // storage path for large files
   mimeType: string;
   options: {
     model?: string;
@@ -34,16 +35,43 @@ Deno.serve(async (req) => {
       throw new Error('Deepgram API key not configured');
     }
 
-    const { audio, mimeType, options }: DeepgramRequest = await req.json();
+    const { audio, storageFile, mimeType, options }: DeepgramRequest = await req.json();
     
     console.log('🎙️ Processing Deepgram transcription request', {
       mimeType,
       options,
-      audioLength: audio.length
+      audioLength: audio?.length,
+      storageFile,
+      isLargeFile: !!storageFile
     });
 
-    // Convert base64 to binary
-    const audioBuffer = Uint8Array.from(atob(audio), c => c.charCodeAt(0));
+    let audioBuffer: Uint8Array;
+
+    if (storageFile) {
+      console.log('📁 Loading large file from storage:', storageFile);
+      // Download from Supabase storage
+      const supabase = createClient(
+        'https://sahudeguwojdypmmlbkd.supabase.co',
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNhaHVkZWd1d29qZHlwbW1sYmtkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NjExNjAwNSwiZXhwIjoyMDcxNjkyMDA1fQ.eAhxBJnG-1Fmd9lDvWe-_5tXDrS7SFKlUdqP5e1I0zM'
+      );
+      
+      const { data: fileData, error: downloadError } = await supabase.storage
+        .from('ai-instructions')
+        .download(storageFile);
+
+      if (downloadError) {
+        throw new Error(`Failed to download file from storage: ${downloadError.message}`);
+      }
+
+      audioBuffer = new Uint8Array(await fileData.arrayBuffer());
+      console.log('✅ File loaded from storage, size:', audioBuffer.length);
+    } else if (audio) {
+      // Convert base64 to binary for small files
+      audioBuffer = Uint8Array.from(atob(audio), c => c.charCodeAt(0));
+      console.log('✅ Base64 audio converted, size:', audioBuffer.length);
+    } else {
+      throw new Error('No audio data or storage file provided');
+    }
 
     // Prepare Deepgram request parameters
     const params = new URLSearchParams();

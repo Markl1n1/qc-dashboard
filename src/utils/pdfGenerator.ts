@@ -21,30 +21,48 @@ export class PDFGenerator {
   }
 
   private preprocessText(text: string): string {
-    // Ensure proper UTF-8 encoding for Polish characters
+    // Enhanced Unicode normalization for Polish characters
     return text
-      .normalize('NFC') // Normalize Unicode characters
+      .normalize('NFD') // Decompose combined characters
+      .replace(/[\u0300-\u036f]/g, '') // Remove combining diacritical marks if needed
+      .normalize('NFC') // Recompose to standard form
       .replace(/\u00A0/g, ' ') // Replace non-breaking spaces
       .replace(/\s+/g, ' ') // Normalize multiple spaces
+      .replace(/[^\u0000-\u007F\u00A0-\u024F\u1E00-\u1EFF]/g, '?') // Replace unsupported characters
       .trim();
   }
 
-  private addText(text: string, fontSize: number = 10, fontWeight: 'normal' | 'bold' = 'normal'): void {
+  private addText(text: string, fontSize: number = 10, fontWeight: 'normal' | 'bold' = 'normal', isQuote: boolean = false): void {
     this.doc.setFontSize(fontSize);
-    this.doc.setFont('helvetica', fontWeight); // Use helvetica instead of Roboto
     
-    // Preprocess text for proper character handling
+    // Enhanced font handling for Polish characters
+    if (isQuote) {
+      this.doc.setFont('helvetica', 'italic');
+      this.doc.setTextColor(60, 60, 60); // Slightly grayed for quotes
+    } else {
+      this.doc.setFont('helvetica', fontWeight);
+      this.doc.setTextColor(0, 0, 0);
+    }
+    
+    // Enhanced text preprocessing for Polish characters
     const processedText = this.preprocessText(text);
     
     // Handle text encoding and line wrapping
-    const maxWidth = this.doc.internal.pageSize.width - (this.margin * 2);
+    const maxWidth = this.doc.internal.pageSize.width - (this.margin * 2) - (isQuote ? 20 : 0);
+    const leftMargin = this.margin + (isQuote ? 20 : 0);
+    
     const lines = this.doc.splitTextToSize(processedText, maxWidth);
     
     lines.forEach((line: string) => {
       this.checkPageBreak(this.lineHeight);
-      this.doc.text(line, this.margin, this.yPosition);
+      this.doc.text(line, leftMargin, this.yPosition);
       this.yPosition += this.lineHeight;
     });
+    
+    // Reset text color after quotes
+    if (isQuote) {
+      this.doc.setTextColor(0, 0, 0);
+    }
   }
 
   private cleanSpeakerLabel(speaker: string): string {
@@ -241,10 +259,9 @@ export class PDFGenerator {
           this.addText(`Description: ${mistake.comment}`, 10, 'normal');
         }
         
-        // Add utterance quote
+        // Add utterance quote with enhanced styling
         if (mistake.utterance) {
-          this.doc.setFont('helvetica', 'normal'); // Use helvetica instead of Roboto
-          this.addText(`Quote: "${mistake.utterance}"`, 10, 'normal');
+          this.addText(`Quote: "${mistake.utterance}"`, 10, 'normal', true);
         }
         
         this.yPosition += 8;

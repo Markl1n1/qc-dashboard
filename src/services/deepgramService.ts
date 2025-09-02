@@ -25,68 +25,126 @@ class DeepgramService {
     });
 
     try {
-      this.updateProgress('uploading', 10, 'Uploading audio to Deepgram...');
+      const fileSizeMB = audioFile.size / (1024 * 1024);
+      const isLargeFile = fileSizeMB > 50;
 
-      // Convert File to base64
-      const base64Audio = await this.fileToBase64(audioFile);
-      
-      this.updateProgress('processing', 30, 'Processing audio with Deepgram...');
+      if (isLargeFile) {
+        this.updateProgress('uploading', 10, 'Uploading large file to storage...');
+        
+        // Upload large file to Supabase storage
+        const fileName = `audio_${Date.now()}_${audioFile.name}`;
+        const { error: uploadError } = await supabase.storage
+          .from('ai-instructions')
+          .upload(fileName, audioFile);
 
-      // Call Deepgram edge function
-      const { data, error } = await supabase.functions.invoke('deepgram-transcribe', {
-        body: {
-          audio: base64Audio,
-          mimeType: audioFile.type,
-          options: {
-            model: options.model || 'nova-2',
-            language: options.language_detection ? undefined : options.language,
-            detect_language: options.language_detection || false,
-            diarize: options.speaker_labels || false,
-            punctuate: true,
-            utterances: options.speaker_labels || false,
-            smart_format: options.smart_formatting !== false,
-            profanity_filter: options.profanity_filter || false
-          }
+        if (uploadError) {
+          throw new Error(`Failed to upload file: ${uploadError.message}`);
         }
-      });
 
-      if (error) {
-        logger.error('Deepgram edge function error', error, { fileName: audioFile.name });
-        throw new Error(`Deepgram transcription failed: ${error.message}`);
+        this.updateProgress('processing', 30, 'Processing large audio file...');
+
+        // Call edge function with storage path
+        const { data, error } = await supabase.functions.invoke('deepgram-transcribe', {
+          body: {
+            storageFile: fileName,
+            mimeType: audioFile.type,
+            options: {
+              model: options.model || 'nova-2',
+              language: options.language_detection ? undefined : options.language,
+              detect_language: options.language_detection || false,
+              diarize: options.speaker_labels || false,
+              punctuate: true,
+              utterances: options.speaker_labels || false,
+              smart_format: options.smart_formatting !== false,
+              profanity_filter: options.profanity_filter || false
+            }
+          }
+        });
+
+        // Clean up storage file
+        await supabase.storage.from('ai-instructions').remove([fileName]);
+
+        if (error) {
+          logger.error('Deepgram edge function error (large file)', error, { fileName: audioFile.name });
+          throw new Error(`Deepgram transcription failed: ${error.message}`);
+        }
+
+        if (!data || !data.success) {
+          const errorMsg = data?.error || 'Deepgram transcription failed';
+          logger.error('Deepgram transcription failed (large file)', new Error(errorMsg), { fileName: audioFile.name });
+          throw new Error(errorMsg);
+        }
+
+        return this.processTranscriptionResult(data, audioFile.name);
+      } else {
+        this.updateProgress('uploading', 10, 'Processing audio with Deepgram...');
+
+        // Convert File to base64 for small files
+        const base64Audio = await this.fileToBase64(audioFile);
+        
+        this.updateProgress('processing', 30, 'Processing audio with Deepgram...');
+
+        // Call Deepgram edge function with base64
+        const { data, error } = await supabase.functions.invoke('deepgram-transcribe', {
+          body: {
+            audio: base64Audio,
+            mimeType: audioFile.type,
+            options: {
+              model: options.model || 'nova-2',
+              language: options.language_detection ? undefined : options.language,
+              detect_language: options.language_detection || false,
+              diarize: options.speaker_labels || false,
+              punctuate: true,
+              utterances: options.speaker_labels || false,
+              smart_format: options.smart_formatting !== false,
+              profanity_filter: options.profanity_filter || false
+            }
+          }
+        });
+
+        if (error) {
+          logger.error('Deepgram edge function error', error, { fileName: audioFile.name });
+          throw new Error(`Deepgram transcription failed: ${error.message}`);
+        }
+
+        if (!data || !data.success) {
+          const errorMsg = data?.error || 'Deepgram transcription failed';
+          logger.error('Deepgram transcription failed', new Error(errorMsg), { fileName: audioFile.name });
+          throw new Error(errorMsg);
+        }
+
+        return this.processTranscriptionResult(data, audioFile.name);
       }
 
-      if (!data || !data.success) {
-        const errorMsg = data?.error || 'Deepgram transcription failed';
-        logger.error('Deepgram transcription failed', new Error(errorMsg), { fileName: audioFile.name });
-        throw new Error(errorMsg);
-      }
-
-      this.updateProgress('processing', 80, 'Processing speaker diarization...');
-
-      const result = data.result as DeepgramTranscriptionResult;
-      
-      // Process utterances
-      const speakerUtterances = this.processRawSpeakerUtterances(result.speakerUtterances);
-      
-      this.updateProgress('complete', 100, 'Transcription complete!');
-
-      logger.info('Deepgram transcription completed successfully', {
-        fileName: audioFile.name,
-        textLength: result.text.length,
-        utteranceCount: speakerUtterances.length,
-        detectedLanguage: result.detectedLanguage
-      });
-
-      return {
-        text: result.text,
-        speakerUtterances
-      };
 
     } catch (error) {
       logger.error('Deepgram service error', error as Error, { fileName: audioFile.name });
       this.updateProgress('error', 0, error instanceof Error ? error.message : 'Transcription failed');
       throw error;
     }
+  }
+
+  private processTranscriptionResult(data: any, fileName: string) {
+    this.updateProgress('processing', 80, 'Processing speaker diarization...');
+
+    const result = data.result as DeepgramTranscriptionResult;
+    
+    // Process utterances
+    const speakerUtterances = this.processRawSpeakerUtterances(result.speakerUtterances);
+    
+    this.updateProgress('complete', 100, 'Transcription complete!');
+
+    logger.info('Deepgram transcription completed successfully', {
+      fileName,
+      textLength: result.text.length,
+      utteranceCount: speakerUtterances.length,
+      detectedLanguage: result.detectedLanguage
+    });
+
+    return {
+      text: result.text,
+      speakerUtterances
+    };
   }
 
   private async fileToBase64(file: File): Promise<string> {

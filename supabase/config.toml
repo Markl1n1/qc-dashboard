@@ -1,1 +1,5 @@
 project_id = "sahudeguwojdypmmlbkd"
+
+[functions.deepgram-transcribe]
+memory_mb = 512
+timeout_sec = 300
