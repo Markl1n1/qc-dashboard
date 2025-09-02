@@ -61,28 +61,8 @@ Deno.serve(async (req) => {
       let retryCount = 0;
       const maxRetries = 3;
       
-      // Add file validation before attempting download
+      // Direct download with retry logic (no file existence check)
       console.log('📁 Attempting to download file:', storageFile);
-      console.log('📁 Full storage path validation:', `audio-files/${storageFile}`);
-      
-      // Check if file exists first
-      const { data: fileList, error: listError } = await supabase.storage
-        .from('audio-files')
-        .list('', { search: storageFile });
-      
-      if (listError) {
-        console.error('❌ Error listing files:', listError);
-        throw new Error(`Failed to verify file existence: ${listError.message}`);
-      }
-      
-      const fileExists = fileList?.some(file => file.name === storageFile);
-      if (!fileExists) {
-        console.error('❌ File not found in storage:', storageFile);
-        console.log('📁 Available files:', fileList?.map(f => f.name) || []);
-        throw new Error(`File not found in storage: ${storageFile}`);
-      }
-      
-      console.log('✅ File exists in storage, proceeding with download');
       
       while (retryCount <= maxRetries) {
         try {
@@ -100,7 +80,15 @@ Deno.serve(async (req) => {
             break;
           }
           
-          console.log(`❌ Download attempt ${retryCount + 1} failed:`, downloadError);
+          // Log specific error types for better debugging
+          if (downloadError) {
+            console.log(`❌ Download attempt ${retryCount + 1} failed:`, {
+              name: downloadError.name,
+              message: downloadError.message,
+              status: (downloadError as any).status,
+              statusCode: (downloadError as any).statusCode
+            });
+          }
           
         } catch (err) {
           console.error(`❌ Download attempt ${retryCount + 1} threw error:`, err);
@@ -110,6 +98,7 @@ Deno.serve(async (req) => {
         retryCount++;
         
         if (retryCount <= maxRetries) {
+          // Exponential backoff: 2s, 4s, 6s
           const waitTime = retryCount * 2000;
           console.log(`⏳ Retrying in ${waitTime}ms...`);
           await new Promise(resolve => setTimeout(resolve, waitTime));
