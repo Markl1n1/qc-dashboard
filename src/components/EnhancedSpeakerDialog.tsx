@@ -348,9 +348,6 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
                       {/* Show mistakes for this utterance */}
                       {utteranceMistakes.length > 0 && onNavigateToAnalysis && (
                         <div className="mt-3 pt-3 border-t border-destructive/20">
-                          <div className="text-xs font-medium text-destructive mb-2">
-                            Issues in this utterance:
-                          </div>
                           <div className="space-y-2">
                             {utteranceMistakes.map((mistake, mistakeIndex) => (
                               <div key={mistakeIndex} className="text-xs bg-destructive/10 p-2 rounded border border-destructive/20">
