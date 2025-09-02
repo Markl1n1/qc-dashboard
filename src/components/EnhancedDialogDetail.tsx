@@ -6,11 +6,13 @@ import { SpeakerUtterance } from '../types';
 
 interface DetectedIssue {
   rule_category?: string;
-  comment?: string;
+  comment?: string | { original?: string; russian?: string };
   utterance?: string;
   category?: string;
   description?: string;
   mistakeName?: string;
+  comment_original?: string;
+  comment_russian?: string;
 }
 
 interface EnhancedDialogDetailProps {
@@ -29,6 +31,7 @@ const EnhancedDialogDetail: React.FC<EnhancedDialogDetailProps> = ({
   onTabChange
 }) => {
   const [highlightedIssue, setHighlightedIssue] = useState<string | null>(null);
+  const { commentLanguage, setCommentLanguage } = useLanguageStore();
 
   const handleNavigateToUtterance = (utteranceText: string) => {
     setHighlightedIssue(utteranceText);
@@ -36,8 +39,59 @@ const EnhancedDialogDetail: React.FC<EnhancedDialogDetailProps> = ({
     onTabChange('transcription');
   };
 
+  const getDisplayComment = (issue: DetectedIssue): string => {
+    // Handle new format with original/russian object
+    if (typeof issue.comment === 'object' && issue.comment) {
+      if (commentLanguage === 'russian' && issue.comment.russian) {
+        return issue.comment.russian;
+      }
+      return issue.comment.original || '';
+    }
+    
+    // Handle database format with separate columns
+    if (commentLanguage === 'russian' && issue.comment_russian) {
+      return issue.comment_russian;
+    }
+    if (issue.comment_original) {
+      return issue.comment_original;
+    }
+    
+    // Fallback to legacy format
+    return typeof issue.comment === 'string' ? issue.comment : '';
+  };
+
+  const hasRussianComments = mistakes.some(issue => {
+    if (typeof issue.comment === 'object' && issue.comment?.russian) return true;
+    if (issue.comment_russian) return true;
+    return false;
+  });
+
+  if (!mistakes || mistakes.length === 0) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        No detected issues in this conversation.
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold">Detected Issues ({mistakes.length})</h3>
+        {hasRussianComments && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCommentLanguage(commentLanguage === 'original' ? 'russian' : 'original')}
+              className="flex items-center gap-2"
+            >
+              <Languages size={16} />
+              {commentLanguage === 'original' ? 'Show Russian' : 'Show Original'}
+            </Button>
+          </div>
+        )}
+      </div>
       {mistakes.map((mistake, index) => (
         <div 
           key={index} 
@@ -59,7 +113,7 @@ const EnhancedDialogDetail: React.FC<EnhancedDialogDetailProps> = ({
                 Comment
               </Badge>
               <span className="text-sm text-foreground">
-                {mistake.comment || mistake.description || mistake.mistakeName || 'No description'}
+                {getDisplayComment(mistake) || mistake.description || mistake.mistakeName || 'No description'}
               </span>
             </div>
             

@@ -159,6 +159,22 @@ class OpenAIEvaluationService {
         console.log(`📝 Saving ${result.mistakes.length} mistakes individually...`);
         
         for (const mistake of result.mistakes) {
+          // Extract comment data (handle both old and new formats)
+          let comment_original = null;
+          let comment_russian = null;
+          let legacy_comment = null;
+
+          if (mistake.comment) {
+            if (typeof mistake.comment === 'object') {
+              // New format with original/russian
+              comment_original = mistake.comment.original || null;
+              comment_russian = mistake.comment.russian || null;
+            } else {
+              // Old format - string comment
+              legacy_comment = mistake.comment;
+            }
+          }
+
           const analysisData = {
             dialog_id: dialogId,
             analysis_type: 'openai',
@@ -170,7 +186,9 @@ class OpenAIEvaluationService {
             summary: '',
             recommendations: [],
             // New structured columns
-            comment: mistake.comment || '',
+            comment: legacy_comment,
+            comment_original: comment_original,
+            comment_russian: comment_russian,
             utterance: mistake.utterance || '',
             rule_category: mistake.rule_category || '',
             speaker_0: speakerData?.speaker_0 || '',
@@ -306,22 +324,23 @@ class OpenAIEvaluationService {
 
 You must respond in the following JSON format:
 {
-  "score": <int>,                 // итоговая оценка (1-100)
+  "score": <int>,
   "mistakes": [
     {
       "rule_category": "Correct|Acceptable|Not Recommended|Mistake|Banned",
-      "comment": "<string>", // comment from analysis
-      "utterance": "<string>" // agent utterance where mistake found
+      "comment": {
+          "original": "<short comment in dialog language>",
+          "russian": "<short comment in Russian>"
+      },
+      "utterance": "<exact phrase>"
     }
   ],
   "speakers": [
-    {
-      "speaker_0": "<string>", // name of speaker if defined
-      "role_0": "<string>", // role of speaker 0 (Agent or Customer)
-      "speaker_1": "<string>", // name of speaker if defined
-      "role_1": "<string>", // role of speaker 1 (Agent or Customer)
-    }
-  ]
+      "speaker_0":"<Speaker 0 name if identified>",
+      "role_0":"Agent|Customer",
+      "speaker_1":"<Speaker 1 name if identified>",
+      "role_1":"Agent|Customer"
+   ]
 }
       
       Transcription:

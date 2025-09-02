@@ -65,13 +65,15 @@ export interface DatabaseAnalysis {
   created_at: string;
   updated_at: string;
   // New structured columns for parsed evaluation data
-  comment?: string;
-  utterance?: string;
-  rule_category?: string;
-  speaker_0?: string;
-  role_0?: string;
-  speaker_1?: string;
-  role_1?: string;
+    comment?: string;
+    comment_original?: string;
+    comment_russian?: string;
+    utterance?: string;
+    rule_category?: string;
+    speaker_0?: string;
+    role_0?: string;
+    speaker_1?: string;
+    role_1?: string;
 }
 
 /**

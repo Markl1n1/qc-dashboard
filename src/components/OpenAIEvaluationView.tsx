@@ -1,47 +1,61 @@
-import React, { useState } from 'react';
-import { SpeakerUtterance } from '../types';
-import { OpenAIEvaluationResult, OpenAIModel, OPENAI_MODELS } from '../types/openaiEvaluation';
-import { openaiEvaluationService } from '../services/openaiEvaluationService';
-import { useDialogStore } from '../store/dialogStore';
+import React, { useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Alert, AlertDescription } from './ui/alert';
 import { Progress } from './ui/progress';
 import { 
-  Play, 
-  Loader2, 
-  CheckCircle, 
-  AlertTriangle, 
   Zap, 
   Brain, 
-  DollarSign,
-  Star
+  Gauge, 
+  DollarSign, 
+  AlertTriangle, 
+  CheckCircle, 
+  Clock,
+  User,
+  MessageSquare,
+  Languages,
+  Star,
+  Loader2,
+  Play
 } from 'lucide-react';
-import { useToast } from '../hooks/use-toast';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select';
+import { SpeakerUtterance } from '../types';
+import { OpenAIEvaluationResult, OPENAI_MODELS, OpenAIModel } from '../types/openaiEvaluation';
+import { openaiEvaluationService } from '../services/openaiEvaluationService';
+import { useEnhancedDialogStore } from '../store/enhancedDialogStore';
+import { useLanguageStore } from '../store/languageStore';
+import { toast } from 'sonner';
 
 interface OpenAIEvaluationViewProps {
   utterances: SpeakerUtterance[];
   transcriptId: string;
   openaiResult?: OpenAIEvaluationResult;
   onClose: () => void;
-  onMistakeClick?: (mistakeText: string, position: number) => void;
+  onMistakeClick?: (utterance: string) => void;
+  onTabChange?: (tab: string) => void;
 }
 
 export const OpenAIEvaluationView: React.FC<OpenAIEvaluationViewProps> = ({
   utterances,
   transcriptId,
   openaiResult,
-  onMistakeClick
+  onClose,
+  onMistakeClick,
+  onTabChange
 }) => {
-  const [selectedModel, setSelectedModel] = useState<string>('gpt-5-mini-2025-08-07');
+  const [selectedModel, setSelectedModel] = useState('gpt-5-2025-08-07');
   const [isRunning, setIsRunning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState('');
-  const [result, setResult] = useState<OpenAIEvaluationResult | undefined>(openaiResult);
-  const { updateDialog } = useDialogStore();
-  const { toast } = useToast();
+  const [result, setResult] = useState<OpenAIEvaluationResult | null>(openaiResult || null);
+  const { updateDialog } = useEnhancedDialogStore();
+  const { commentLanguage, setCommentLanguage } = useLanguageStore();
 
   const getModelIcon = (category: OpenAIModel['category']) => {
     switch (category) {
@@ -65,11 +79,7 @@ export const OpenAIEvaluationView: React.FC<OpenAIEvaluationViewProps> = ({
 
   const handleStartEvaluation = async () => {
     if (!utterances || utterances.length === 0) {
-      toast({
-        title: "No conversation data",
-        description: "Cannot evaluate without conversation transcript.",
-        variant: "destructive",
-      });
+      toast.error('Cannot evaluate without conversation transcript.');
       return;
     }
 
@@ -85,42 +95,59 @@ export const OpenAIEvaluationView: React.FC<OpenAIEvaluationViewProps> = ({
 
       const evaluationResult = await openaiEvaluationService.evaluateConversation(utterances, selectedModel);
       
+      setProgress(100);
+      setProgressMessage('Evaluation complete');
       setResult(evaluationResult);
       
-      updateDialog(transcriptId, { 
-        openaiEvaluation: evaluationResult
-      });
+      // Show success message
+      toast.success('OpenAI evaluation completed successfully!');
+      
+      // Update the dialog store with the new analysis
+      if (transcriptId) {
+        updateDialog(transcriptId, {
+          openaiEvaluation: evaluationResult
+        });
+      }
 
-      toast({
-        title: "Evaluation completed",
-        description: `OpenAI analysis finished with overall score: ${evaluationResult.score || evaluationResult.overallScore}/100`,
-      });
+      // Auto-redirect to Analysis Results tab
+      if (onTabChange) {
+        setTimeout(() => {
+          onTabChange('results');
+        }, 1000); // Delay to show completion message
+      }
 
     } catch (error) {
       console.error('OpenAI evaluation failed:', error);
-      toast({
-        title: "Evaluation failed",
-        description: error instanceof Error ? error.message : 'Unknown error occurred',
-        variant: "destructive",
-      });
+      toast.error(error instanceof Error ? error.message : 'Unknown error occurred');
     } finally {
       setIsRunning(false);
     }
   };
 
+  const getDisplayComment = (mistake: any): string => {
+    // Handle new format with original/russian object
+    if (typeof mistake.comment === 'object' && mistake.comment) {
+      if (commentLanguage === 'russian' && mistake.comment.russian) {
+        return mistake.comment.russian;
+      }
+      return mistake.comment.original || '';
+    }
+    
+    // Fallback to legacy format
+    return typeof mistake.comment === 'string' ? mistake.comment : '';
+  };
+
+  const hasRussianComments = result?.mistakes?.some(mistake => {
+    return typeof mistake.comment === 'object' && mistake.comment?.russian;
+  }) || false;
+
   const selectedModelData = OPENAI_MODELS.find(m => m.id === selectedModel);
 
   if (!utterances || utterances.length === 0) {
     return (
-      <Card>
-        <CardContent className="pt-6">
-          <div className="text-center text-muted-foreground">
-            <AlertTriangle className="h-12 w-12 mx-auto mb-4" />
-            <p className="text-lg font-semibold mb-2">No Conversation Data</p>
-            <p>Please upload and process an audio file first to enable OpenAI evaluation.</p>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="text-center py-8 text-muted-foreground">
+        No conversation data available for evaluation.
+      </div>
     );
   }
 
@@ -213,77 +240,39 @@ export const OpenAIEvaluationView: React.FC<OpenAIEvaluationViewProps> = ({
                   <span className="font-medium">Model Used:</span> {result.modelUsed}
                 </div>
                 <div>
-                  <span className="font-medium">Confidence:</span> {Math.round((result.confidence * 100))}%
+                  <span className="font-medium">Confidence:</span> {Math.round((result.confidence || 0) * 100)}%
                 </div>
                 <div>
-                  <span className="font-medium">Processing Time:</span> {(result.processingTime / 1000).toFixed(1)}s
+                  <span className="font-medium">Processing Time:</span> {((result.processingTime || 0) / 1000).toFixed(1)}s
                 </div>
                 <div>
-                  <span className="font-medium">Cost:</span> ${result.tokenUsage.cost?.toFixed(4) || 'N/A'}
+                  <span className="font-medium">Cost:</span> ${result.tokenUsage?.cost?.toFixed(4) || 'N/A'}
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Category Scores */}
-          {Object.keys(result.categoryScores).length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Category Performance</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  {Object.entries(result.categoryScores).map(([categoryId, score]) => (
-                    <div key={categoryId} className="text-center p-3 border rounded">
-                      <div className="font-medium capitalize">{categoryId.replace('_', ' ')}</div>
-                      <div className={`text-2xl font-bold ${
-                        score >= 80 ? 'text-green-600' : 
-                        score >= 60 ? 'text-yellow-600' : 
-                        'text-red-600'
-                      }`}>
-                        {score}/100
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Speakers Information */}
-          {result.speakers && result.speakers.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Speaker Information</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {result.speakers.map((speaker, index) => (
-                    <div key={index} className="p-3 border rounded">
-                      {speaker.speaker_0 && (
-                        <div className="mb-2">
-                          <span className="font-medium">Speaker 0:</span> {speaker.speaker_0}
-                          {speaker.role_0 && <span className="text-muted-foreground ml-2">({speaker.role_0})</span>}
-                        </div>
-                      )}
-                      {speaker.speaker_1 && (
-                        <div>
-                          <span className="font-medium">Speaker 1:</span> {speaker.speaker_1}
-                          {speaker.role_1 && <span className="text-muted-foreground ml-2">({speaker.role_1})</span>}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
           {/* Detected Issues */}
-          {result.mistakes.length > 0 && (
+          {result.mistakes && result.mistakes.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle>Detected Issues ({result.mistakes.length} items)</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <AlertTriangle size={20} />
+                    Detected Issues ({result.mistakes?.length || 0})
+                  </CardTitle>
+                  {hasRussianComments && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCommentLanguage(commentLanguage === 'original' ? 'russian' : 'original')}
+                      className="flex items-center gap-2"
+                    >
+                      <Languages size={16} />
+                      {commentLanguage === 'original' ? 'Show Russian' : 'Show Original'}
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
@@ -295,7 +284,7 @@ export const OpenAIEvaluationView: React.FC<OpenAIEvaluationViewProps> = ({
                       'border-green-500'
                     }`}>
                       <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-medium text-sm">{mistake.comment}</h4>
+                        <h4 className="font-medium text-sm">{getDisplayComment(mistake)}</h4>
                         <Badge variant={
                           mistake.rule_category === 'Banned' ? 'destructive' : 
                           mistake.rule_category === 'Mistake' ? 'default' : 
@@ -307,7 +296,7 @@ export const OpenAIEvaluationView: React.FC<OpenAIEvaluationViewProps> = ({
                       </div>
                       {mistake.utterance && onMistakeClick && (
                         <button
-                          onClick={() => onMistakeClick(mistake.utterance, 0)}
+                          onClick={() => onMistakeClick(mistake.utterance)}
                           className="text-sm italic border-l-2 border-muted pl-2 mb-2 block hover:bg-muted rounded p-1 cursor-pointer transition-colors w-full text-left"
                         >
                           <span className="text-muted-foreground">Quote:</span> "{mistake.utterance}" 
@@ -317,22 +306,6 @@ export const OpenAIEvaluationView: React.FC<OpenAIEvaluationViewProps> = ({
                     </div>
                   ))}
                 </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Recommendations */}
-          {result.recommendations.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Recommendations</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="list-disc pl-5 space-y-1">
-                  {result.recommendations.map((rec, index) => (
-                    <li key={index} className="text-sm">{rec}</li>
-                  ))}
-                </ul>
               </CardContent>
             </Card>
           )}

@@ -136,6 +136,8 @@ export type Database = {
           banned_words_detected: Json | null
           category_scores: Json | null
           comment: string | null
+          comment_original: string | null
+          comment_russian: string | null
           confidence: number | null
           conversation_flow: Json | null
           created_at: string
@@ -161,6 +163,8 @@ export type Database = {
           banned_words_detected?: Json | null
           category_scores?: Json | null
           comment?: string | null
+          comment_original?: string | null
+          comment_russian?: string | null
           confidence?: number | null
           conversation_flow?: Json | null
           created_at?: string
@@ -186,6 +190,8 @@ export type Database = {
           banned_words_detected?: Json | null
           category_scores?: Json | null
           comment?: string | null
+          comment_original?: string | null
+          comment_russian?: string | null
           confidence?: number | null
           conversation_flow?: Json | null
           created_at?: string
