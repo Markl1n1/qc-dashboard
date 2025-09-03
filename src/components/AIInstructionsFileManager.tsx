@@ -48,7 +48,7 @@ const AIInstructionsFileManager = () => {
     try {
       setError(null);
       await aiInstructionsService.uploadInstructionFile(file, type);
-      toast.success(`${type} instructions uploaded successfully`);
+      toast.success(`Uploaded successfully`);
       await loadFiles(); // Reload to show updated files
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to upload file';
