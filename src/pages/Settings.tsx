@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, FileText, Shield, Brain, Save, Loader2, Settings as SettingsIcon } from "lucide-react";
+import { AlertCircle, FileText, Shield, Brain, Save, Loader2, Settings as SettingsIcon, Mic, Database, Trash2 } from "lucide-react";
 import AIInstructionsFileManager from "@/components/AIInstructionsFileManager";
 import { useEnhancedSettingsStore } from "@/store/enhancedSettingsStore";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -25,11 +25,14 @@ const Settings: React.FC = () => {
     loadSystemConfig,
     updateSystemConfig,
     resetToDefaults,
+    cleanupExpiredDialogs,
+    updateDialogExpirationDates,
   } = useEnhancedSettingsStore();
 
   const [localConfig, setLocalConfig] = useState<Record<string, string>>({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isCleaningUp, setIsCleaningUp] = useState(false);
 
   useEffect(() => {
     loadSystemConfig();
@@ -57,6 +60,27 @@ const Settings: React.FC = () => {
       toast.error('Failed to save settings');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleCleanupExpiredDialogs = async () => {
+    try {
+      setIsCleaningUp(true);
+      const deletedCount = await cleanupExpiredDialogs();
+      toast.success(`Cleaned up ${deletedCount} expired dialogs`);
+    } catch (error) {
+      toast.error('Failed to cleanup expired dialogs');
+    } finally {
+      setIsCleaningUp(false);
+    }
+  };
+
+  const handleUpdateExpirationDates = async () => {
+    try {
+      const updatedCount = await updateDialogExpirationDates();
+      toast.success(`Updated expiration dates for ${updatedCount} dialogs`);
+    } catch (error) {
+      toast.error('Failed to update expiration dates');
     }
   };
 
@@ -93,9 +117,10 @@ const Settings: React.FC = () => {
       </div>
 
       <Tabs defaultValue="ai" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="ai">AI Analysis</TabsTrigger>
           <TabsTrigger value="system">System</TabsTrigger>
+          <TabsTrigger value="deepgram">Deepgram</TabsTrigger>
           <TabsTrigger value="instructions">AI Instructions</TabsTrigger>
         </TabsList>
 
@@ -104,11 +129,28 @@ const Settings: React.FC = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Brain className="h-5 w-5" />
-                AI Configuration
+                AI Analysis Configuration
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="ai_reasoning_effort">AI Reasoning Effort</Label>
+                  <Select 
+                    value={localConfig.ai_reasoning_effort || 'low'} 
+                    onValueChange={(value) => handleConfigChange('ai_reasoning_effort', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select reasoning effort" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="ai_confidence_threshold">AI Confidence Threshold</Label>
                   <div className="space-y-3">
@@ -126,6 +168,42 @@ const Settings: React.FC = () => {
                     </div>
                   </div>
                 </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="ai_max_tokens_gpt5">AI Max Tokens GPT-5</Label>
+                  <div className="space-y-3">
+                    <Slider
+                      id="ai_max_tokens_gpt5"
+                      min={1000}
+                      max={20000}
+                      step={1000}
+                      value={[parseInt(localConfig.ai_max_tokens_gpt5 || '12000')]}
+                      onValueChange={([value]) => handleConfigChange('ai_max_tokens_gpt5', value.toString())}
+                      className="w-full"
+                    />
+                    <div className="text-center text-sm text-muted-foreground">
+                      {parseInt(localConfig.ai_max_tokens_gpt5 || '12000').toLocaleString()} tokens
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="ai_max_tokens_gpt5_mini">AI Max Tokens GPT-5 Mini</Label>
+                  <div className="space-y-3">
+                    <Slider
+                      id="ai_max_tokens_gpt5_mini"
+                      min={1000}
+                      max={12000}
+                      step={1000}
+                      value={[parseInt(localConfig.ai_max_tokens_gpt5_mini || '8000')]}
+                      onValueChange={([value]) => handleConfigChange('ai_max_tokens_gpt5_mini', value.toString())}
+                      className="w-full"
+                    />
+                    <div className="text-center text-sm text-muted-foreground">
+                      {parseInt(localConfig.ai_max_tokens_gpt5_mini || '8000').toLocaleString()} tokens
+                    </div>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -135,11 +213,109 @@ const Settings: React.FC = () => {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Shield className="h-5 w-5" />
-                Access Control
+                <SettingsIcon className="h-5 w-5" />
+                System Configuration
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="max_file_size_mb">Max File Size (MB)</Label>
+                  <Input
+                    id="max_file_size_mb"
+                    type="number"
+                    min="1"
+                    max="1000"
+                    value={localConfig.max_file_size_mb || '200'}
+                    onChange={(e) => handleConfigChange('max_file_size_mb', e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="max_concurrent_transcriptions">Max Concurrent Transcriptions</Label>
+                  <Input
+                    id="max_concurrent_transcriptions"
+                    type="number"
+                    min="1"
+                    max="50"
+                    value={localConfig.max_concurrent_transcriptions || '20'}
+                    onChange={(e) => handleConfigChange('max_concurrent_transcriptions', e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="data_retention_days">Data Retention Days</Label>
+                  <div className="space-y-3">
+                    <Slider
+                      id="data_retention_days"
+                      min={1}
+                      max={365}
+                      step={1}
+                      value={[parseInt(localConfig.data_retention_days || '30')]}
+                      onValueChange={([value]) => handleConfigChange('data_retention_days', value.toString())}
+                      className="w-full"
+                    />
+                    <div className="text-center text-sm text-muted-foreground">
+                      {parseInt(localConfig.data_retention_days || '30')} days
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="auto_delete_enabled"
+                    checked={localConfig.auto_delete_enabled === 'true'}
+                    onCheckedChange={(checked) => handleConfigChange('auto_delete_enabled', checked.toString())}
+                  />
+                  <Label htmlFor="auto_delete_enabled">Auto Delete Expired Dialogs</Label>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="signup_passcode">Signup Passcode</Label>
+                  <Input
+                    id="signup_passcode"
+                    type="password"
+                    value={localConfig.signup_passcode || ''}
+                    onChange={(e) => handleConfigChange('signup_passcode', e.target.value)}
+                    placeholder="Enter signup passcode"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4 border-t space-y-4">
+                <h4 className="text-sm font-medium flex items-center gap-2">
+                  <Database className="h-4 w-4" />
+                  Data Management
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  <Button 
+                    onClick={handleCleanupExpiredDialogs} 
+                    disabled={isCleaningUp}
+                    variant="outline"
+                    size="sm"
+                  >
+                    {isCleaningUp ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Cleaning...
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Cleanup Expired Dialogs
+                      </>
+                    )}
+                  </Button>
+                  <Button 
+                    onClick={handleUpdateExpirationDates} 
+                    variant="outline"
+                    size="sm"
+                  >
+                    Update Expiration Dates
+                  </Button>
+                </div>
+              </div>
+
               <div className="pt-4 border-t">
                 <Button onClick={handleSaveConfig} disabled={isSaving || !hasUnsavedChanges}>
                   {isSaving ? <>
@@ -150,6 +326,36 @@ const Settings: React.FC = () => {
                       Save All Settings
                     </>}
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="deepgram" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Mic className="h-5 w-5" />
+                Deepgram Configuration
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-4">
+                Model assignment and keyterm configuration will be available here.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label>Nova-2 Languages</Label>
+                  <Badge variant="secondary">English (en)</Badge>
+                </div>
+                <div className="space-y-2">
+                  <Label>Nova-3 Languages</Label>
+                  <div className="flex flex-wrap gap-1">
+                    {['es', 'fr', 'de', 'it', 'pt', 'ru', 'zh', 'ja', 'ko', 'ar'].map(lang => (
+                      <Badge key={lang} variant="default" className="text-xs">{lang}</Badge>
+                    ))}
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>

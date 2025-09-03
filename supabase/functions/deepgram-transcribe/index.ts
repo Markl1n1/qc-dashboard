@@ -61,25 +61,8 @@ Deno.serve(async (req) => {
     let useSignedUrl = false;
 
     if (storageFile) {
-      console.log('🔗 Using signed URL approach for large file:', storageFile);
-      useSignedUrl = true;
-      
-      // Create signed URL for Deepgram to access directly
-      const { data: signedUrlData, error: signedUrlError } = await supabase
-        .storage
-        .from('audio-files')
-        .createSignedUrl(storageFile, 60 * 15); // 15 minutes
-      
-      if (signedUrlError) {
-        console.error('❌ Failed to create signed URL:', signedUrlError);
-        throw new Error(`Failed to create signed URL: ${signedUrlError.message}`);
-      }
-      
-      if (!signedUrlData?.signedUrl) {
-        throw new Error('No signed URL received from storage');
-      }
-      
-      console.log('✅ Signed URL created successfully');
+      console.log('🔗 Using direct public URL for large file:', storageFile);
+      useSignedUrl = true; // Still use URL approach but with public URL
       
     } else if (audio) {
       // Convert base64 to binary for small files
@@ -191,11 +174,9 @@ Deno.serve(async (req) => {
     let deepgramResponse: Response;
 
     if (useSignedUrl) {
-      // Get signed URL data for large files
-      const { data: signedUrlData } = await supabase
-        .storage
-        .from('audio-files')
-        .createSignedUrl(storageFile!, 60 * 15);
+      // Use direct public URL since bucket is public
+      const publicUrl = `https://sahudeguwojdypmmlbkd.supabase.co/storage/v1/object/public/audio-files/${storageFile}`;
+      console.log('🔗 Using public URL:', publicUrl);
 
       deepgramResponse = await fetch(deepgramUrl, {
         method: 'POST',
@@ -203,7 +184,7 @@ Deno.serve(async (req) => {
           'Authorization': `Token ${DEEPGRAM_API_KEY}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ url: signedUrlData!.signedUrl }),
+        body: JSON.stringify({ url: publicUrl }),
         signal: AbortSignal.timeout(600000) // 10 minutes timeout
       });
     } else {
