@@ -1,168 +1,162 @@
-import React, { useEffect, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Badge } from '../components/ui/badge';
-import { Alert, AlertDescription } from '../components/ui/alert';
-import { Switch } from '../components/ui/switch';
-import { Settings as SettingsIcon, Save, Brain, Shield, FileText, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
-import { toast } from 'sonner';
-import { useEnhancedSettingsStore } from '../store/enhancedSettingsStore';
-import { useUserRole } from '../hooks/useUserRole';
-import AIInstructionsFileManager from '../components/AIInstructionsFileManager';
-import { logger } from '../services/loggingService';
-interface SettingsProps {}
-const Settings = () => {
-  const {
-    isAdmin,
-    isSupervisor
-  } = useUserRole();
+import React, { useState, useEffect } from 'react';
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
+import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertCircle, FileText, Shield, Brain, Save, Loader2, Settings as SettingsIcon } from "lucide-react";
+import AIInstructionsFileManager from "@/components/AIInstructionsFileManager";
+import { useEnhancedSettingsStore } from "@/store/enhancedSettingsStore";
+import { useUserRole } from "@/hooks/useUserRole";
+import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+
+const Settings: React.FC = () => {
+  const { role, isLoading: roleLoading } = useUserRole();
   const {
     systemConfig,
     isLoading,
+    error,
     loadSystemConfig,
     updateSystemConfig,
-    resetToDefaults
+    resetToDefaults,
   } = useEnhancedSettingsStore();
+
   const [localConfig, setLocalConfig] = useState<Record<string, string>>({});
-  const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
   useEffect(() => {
     loadSystemConfig();
   }, [loadSystemConfig]);
+
   useEffect(() => {
     if (systemConfig) {
-      setLocalConfig({
-        ...systemConfig
-      });
+      setLocalConfig(systemConfig);
       setHasUnsavedChanges(false);
     }
   }, [systemConfig]);
-  const handleConfigChange = (key: string, value: string): void => {
-    setLocalConfig(prev => ({
-      ...prev,
-      [key]: value
-    }));
+
+  const handleConfigChange = (key: string, value: string) => {
+    setLocalConfig(prev => ({ ...prev, [key]: value }));
     setHasUnsavedChanges(true);
   };
-  const handleSaveConfig = async (): Promise<void> => {
-    setIsSaving(true);
+
+  const handleSaveConfig = async () => {
     try {
+      setIsSaving(true);
       await updateSystemConfig(localConfig);
       setHasUnsavedChanges(false);
       toast.success('Settings saved successfully');
-      logger.info('System settings updated successfully');
     } catch (error) {
-      logger.error('Failed to save settings', error as Error, {
-        configKeys: Object.keys(localConfig)
-      });
       toast.error('Failed to save settings');
     } finally {
       setIsSaving(false);
     }
   };
-  const handleResetDefaults = async (): Promise<void> => {
+
+  const handleResetDefaults = async () => {
     try {
+      setIsSaving(true);
       await resetToDefaults();
+      setHasUnsavedChanges(false);
       toast.success('Settings reset to defaults');
-      logger.info('System settings reset to defaults');
     } catch (error) {
-      logger.error('Failed to reset settings', error as Error);
       toast.error('Failed to reset settings');
+    } finally {
+      setIsSaving(false);
     }
   };
-  if (!isAdmin && !isSupervisor) {
-    return <div className="container mx-auto px-4 py-8">
-        <Alert>
-          <Shield className="h-4 w-4" />
+
+  if (roleLoading || isLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
+
+  if (role !== 'admin' && role !== 'supervisor') {
+    return (
+      <div className="p-6">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
           <AlertDescription>
-            You don't have permission to access settings. Only administrators and supervisors can modify system settings.
+            Access denied. Only administrators and supervisors can access settings.
           </AlertDescription>
         </Alert>
-      </div>;
+      </div>
+    );
   }
-  if (isLoading) {
-    return <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
-            <p className="text-muted-foreground">Loading settings...</p>
-          </div>
-        </div>
-      </div>;
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      </div>
+    );
   }
-  return <div className="container mx-auto px-6 py-8">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <SettingsIcon className="h-8 w-8" />
-            System Settings
-          </h1>
-        </div>
-        
-        {hasUnsavedChanges && <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-orange-600 border-orange-600">
-              <AlertCircle className="h-3 w-3 mr-1" />
-              Unsaved Changes
-            </Badge>
-            <Button onClick={handleSaveConfig} disabled={isSaving}>
-              {isSaving ? <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
-                </> : <>
-                  <Save className="h-4 w-4 mr-2" />
-                  Save Changes
-                </>}
+
+  return (
+    <div className="space-y-6 p-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold">Settings</h1>
+        {hasUnsavedChanges && (
+          <div className="flex items-center gap-2">
+            <Badge variant="outline">Unsaved changes</Badge>
+            <Button variant="outline" onClick={handleResetDefaults} disabled={isSaving}>
+              Reset to Defaults
             </Button>
-          </div>}
+          </div>
+        )}
       </div>
 
-      <Tabs defaultValue="ai-analysis" className="space-y-6">
+      <Tabs defaultValue="ai" className="space-y-6">
         <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="ai-analysis" className="flex items-center gap-2">
-            <Brain className="h-4 w-4" />
-            AI Analysis
-          </TabsTrigger>
-          <TabsTrigger value="system" className="flex items-center gap-2">
-            <SettingsIcon className="h-4 w-4" />
-            System
-          </TabsTrigger>
-          <TabsTrigger value="instructions" className="flex items-center gap-2">
-            <FileText className="h-4 w-4" />
-            AI Instructions
-          </TabsTrigger>
+          <TabsTrigger value="ai">AI Analysis</TabsTrigger>
+          <TabsTrigger value="system">System</TabsTrigger>
+          <TabsTrigger value="instructions">AI Instructions</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="ai-analysis" className="space-y-6">
+        <TabsContent value="ai" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Brain className="h-5 w-5" />
-                AI Analysis Configuration
+                AI Configuration
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label htmlFor="ai_confidence_threshold">AI Confidence Threshold</Label>
-                  <Input
-                    id="ai_confidence_threshold"
-                    type="number"
-                    min="0"
-                    max="1"
-                    step="0.1"
-                    value={localConfig.ai_confidence_threshold || '0.8'}
-                    onChange={e => handleConfigChange('ai_confidence_threshold', e.target.value)}
-                    placeholder="0.8"
-                  />
+                  <div className="space-y-3">
+                    <Slider
+                      id="ai_confidence_threshold"
+                      min={0}
+                      max={1}
+                      step={0.1}
+                      value={[parseFloat(localConfig.ai_confidence_threshold || '0.8')]}
+                      onValueChange={([value]) => handleConfigChange('ai_confidence_threshold', value.toString())}
+                      className="w-full"
+                    />
+                    <div className="text-center text-sm text-muted-foreground">
+                      {(parseFloat(localConfig.ai_confidence_threshold || '0.8') * 100).toFixed(0)}%
+                    </div>
+                  </div>
                   <p className="text-sm text-muted-foreground">
-                    Minimum confidence threshold for AI analysis (0.0 - 1.0).
+                    Minimum confidence level required for AI analysis results.
                   </p>
                 </div>
-
 
                 <div className="space-y-2">
                   <Label htmlFor="ai_reasoning_effort">AI Reasoning Effort</Label>
@@ -174,13 +168,13 @@ const Settings = () => {
                       <SelectValue placeholder="Select reasoning effort" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="low">Low - Fast responses</SelectItem>
+                      <SelectItem value="medium">Medium - Balanced performance</SelectItem>
+                      <SelectItem value="high">High - Deep analysis</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-sm text-muted-foreground">
-                    Level of reasoning effort for AI analysis.
+                    Higher effort provides more detailed analysis but takes longer.
                   </p>
                 </div>
 
@@ -323,6 +317,17 @@ const Settings = () => {
             </CardContent>
           </Card>
 
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <SettingsIcon className="h-5 w-5" />
+                Deepgram Models
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <DeepgramModelSettings />
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="instructions" className="space-y-6">
@@ -339,6 +344,163 @@ const Settings = () => {
           </Card>
         </TabsContent>
       </Tabs>
-    </div>;
+    </div>
+  );
 };
+
+// New component for Deepgram model settings
+interface Language {
+  code: string;
+  name: string;
+}
+
+const DeepgramModelSettings = () => {
+  const { 
+    deepgramNova2Languages, 
+    deepgramNova3Languages, 
+    updateDeepgramLanguages,
+    isLoading,
+    error 
+  } = useEnhancedSettingsStore();
+
+  const [localNova2, setLocalNova2] = useState<string[]>([]);
+  const [localNova3, setLocalNova3] = useState<string[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const availableLanguages: Language[] = [
+    { code: 'en', name: 'English' },
+    { code: 'es', name: 'Spanish' },
+    { code: 'fr', name: 'French' },
+    { code: 'de', name: 'German' },
+    { code: 'it', name: 'Italian' },
+    { code: 'pt', name: 'Portuguese' },
+    { code: 'ru', name: 'Russian' },
+    { code: 'zh', name: 'Chinese' },
+    { code: 'ja', name: 'Japanese' },
+    { code: 'ko', name: 'Korean' },
+    { code: 'ar', name: 'Arabic' },
+    { code: 'hi', name: 'Hindi' },
+    { code: 'nl', name: 'Dutch' },
+    { code: 'pl', name: 'Polish' },
+    { code: 'sv', name: 'Swedish' },
+  ];
+
+  useEffect(() => {
+    setLocalNova2(deepgramNova2Languages || []);
+    setLocalNova3(deepgramNova3Languages || []);
+  }, [deepgramNova2Languages, deepgramNova3Languages]);
+
+  const handleLanguageToggle = (languageCode: string, model: 'nova-2' | 'nova-3') => {
+    if (model === 'nova-2') {
+      if (localNova2.includes(languageCode)) {
+        setLocalNova2(localNova2.filter(lang => lang !== languageCode));
+      } else {
+        setLocalNova2([...localNova2, languageCode]);
+        setLocalNova3(localNova3.filter(lang => lang !== languageCode));
+      }
+    } else {
+      if (localNova3.includes(languageCode)) {
+        setLocalNova3(localNova3.filter(lang => lang !== languageCode));
+      } else {
+        setLocalNova3([...localNova3, languageCode]);
+        setLocalNova2(localNova2.filter(lang => lang !== languageCode));
+      }
+    }
+  };
+
+  const handleSave = async () => {
+    try {
+      setIsSaving(true);
+      await updateDeepgramLanguages(localNova2, localNova3);
+      toast.success('Deepgram language assignments updated successfully');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update language assignments');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const hasChanges = JSON.stringify(localNova2.sort()) !== JSON.stringify((deepgramNova2Languages || []).sort()) ||
+                     JSON.stringify(localNova3.sort()) !== JSON.stringify((deepgramNova3Languages || []).sort());
+
+  if (isLoading) {
+    return <div className="flex justify-center"><Loader2 className="h-6 w-6 animate-spin" /></div>;
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="text-sm text-muted-foreground">
+        Assign languages to Deepgram models. Each language can only be assigned to one model.
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <h4 className="font-medium">Nova-2 Languages</h4>
+            <Badge variant="secondary">{localNova2.length}</Badge>
+          </div>
+          <div className="space-y-2 max-h-60 overflow-y-auto border rounded-lg p-3">
+            {availableLanguages.map(language => (
+              <div key={`nova2-${language.code}`} className="flex items-center space-x-2">
+                <Checkbox
+                  id={`nova2-${language.code}`}
+                  checked={localNova2.includes(language.code)}
+                  onCheckedChange={() => handleLanguageToggle(language.code, 'nova-2')}
+                />
+                <Label htmlFor={`nova2-${language.code}`} className="text-sm">
+                  {language.name} ({language.code})
+                </Label>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <h4 className="font-medium">Nova-3 Languages</h4>
+            <Badge variant="secondary">{localNova3.length}</Badge>
+          </div>
+          <div className="space-y-2 max-h-60 overflow-y-auto border rounded-lg p-3">
+            {availableLanguages.map(language => (
+              <div key={`nova3-${language.code}`} className="flex items-center space-x-2">
+                <Checkbox
+                  id={`nova3-${language.code}`}
+                  checked={localNova3.includes(language.code)}
+                  onCheckedChange={() => handleLanguageToggle(language.code, 'nova-3')}
+                />
+                <Label htmlFor={`nova3-${language.code}`} className="text-sm">
+                  {language.name} ({language.code})
+                </Label>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      <div className="flex justify-end">
+        <Button onClick={handleSave} disabled={isSaving || !hasChanges}>
+          {isSaving ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Saving...
+            </>
+          ) : (
+            <>
+              <Save className="h-4 w-4 mr-2" />
+              Save Language Assignments
+            </>
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+};
+
 export default Settings;

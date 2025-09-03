@@ -53,6 +53,8 @@ export const useEnhancedSettingsStore = create<EnhancedSettingsState>((set, get)
   aiMaxTokensGpt5: 2000,
   aiMaxTokensGpt5Mini: 1000,
   signupPasscode: '',
+  deepgramNova2Languages: [],
+  deepgramNova3Languages: [],
   systemConfig: null,
   isLoading: false,
   error: null,

@@ -243,26 +243,38 @@ Deno.serve(async (req) => {
     // Prepare Deepgram request parameters
     const params = new URLSearchParams();
     
-    // Language handling and model selection
+    // Get model configuration from database for small files too
+    const { data: smallFileModelConfig } = await supabase
+      .from('system_config')
+      .select('key, value')
+      .in('key', ['deepgram_nova2_languages', 'deepgram_nova3_languages']);
+    
+    // Parse language configurations
+    const smallFilenova2Languages = smallFileModelConfig?.find(c => c.key === 'deepgram_nova2_languages')?.value || '["en"]';
+    const smallFilenova3Languages = smallFileModelConfig?.find(c => c.key === 'deepgram_nova3_languages')?.value || '["es","fr","de","it","pt","ru","zh","ja","ko","ar"]';
+    
+    const smallFilenova2List = JSON.parse(smallFilenova2Languages);
+    const smallFilenova3List = JSON.parse(smallFilenova3Languages);
+    
+    // Determine model based on language
     let finalModel = 'nova-2'; // Default model
     
     if (options.language) {
       params.append('language', options.language);
       
-      // For non-English languages, use enhanced model
-      if (options.language !== 'en') {
-        finalModel = 'general';
-        params.append('model', 'general');
-        params.append('tier', 'enhanced');
-        console.log('✅ Using enhanced model for non-English language:', options.language);
+      if (smallFilenova3List.includes(options.language)) {
+        finalModel = 'nova-3';
+        params.append('model', 'nova-3');
+        console.log('✅ Using Nova-3 model for language:', options.language);
       } else {
-        // For English, use Nova-2
+        // Use Nova-2 for all other languages (including nova2List and unlisted)
         params.append('model', 'nova-2');
-        console.log('✅ Using Nova-2 model for English language');
+        console.log('✅ Using Nova-2 model for language:', options.language);
       }
     } else {
       // Default to Nova-2 if no language specified
       params.append('model', 'nova-2');
+      console.log('✅ Using Nova-2 model (no language specified)');
     }
 
     // Core parameters
