@@ -15,6 +15,7 @@ const Upload = lazy(() => import('./pages/Upload'));
 const DialogDetail = lazy(() => import('./pages/DialogDetail'));
 const Settings = lazy(() => import('./pages/Settings'));
 const AgentManagement = lazy(() => import('./pages/AgentManagement'));
+const ChangePassword = lazy(() => import('./pages/ChangePassword'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const EmailConfirmed = lazy(() => import('./pages/EmailConfirmed'));
 
@@ -62,6 +63,12 @@ function App() {
                 <Route path="/settings" element={
                   <ProtectedRoute>
                     <Settings />
+                  </ProtectedRoute>
+                } />
+                
+                <Route path="/change-password" element={
+                  <ProtectedRoute>
+                    <ChangePassword />
                   </ProtectedRoute>
                 } />
               </Route>

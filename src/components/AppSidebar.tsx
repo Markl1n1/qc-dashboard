@@ -1,10 +1,11 @@
 
 import { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Home, Upload, Settings, LogOut, Users, BarChart3, FileText, User, Sun, Moon, Menu } from 'lucide-react';
+import { Home, Upload, Settings, LogOut, Users, BarChart3, FileText, User, Sun, Moon, Menu, Lock } from 'lucide-react';
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarTrigger, useSidebar } from './ui/sidebar';
 import { useAuthStore } from '../store/authStore';
 import { useTheme } from '../hooks/useTheme';
+import { useUserRole } from '../hooks/useUserRole';
 import { Button } from './ui/button';
 import VoiceQCLogo from './VoiceQCLogo';
 
@@ -23,7 +24,12 @@ const navigationItems = [{
 }, {
   title: 'Settings',
   url: '/settings',
-  icon: Settings
+  icon: Settings,
+  adminOnly: true
+}, {
+  title: 'Change Password',
+  url: '/change-password',
+  icon: Lock
 }];
 
 export function AppSidebar() {
@@ -31,6 +37,7 @@ export function AppSidebar() {
   const location = useLocation();
   const { logout } = useAuthStore();
   const { theme, setTheme } = useTheme();
+  const { isAdmin } = useUserRole();
   const [extendedMode, setExtendedMode] = useState(true);
   const currentPath = location.pathname;
   const collapsed = state === 'collapsed';
@@ -81,7 +88,9 @@ export function AppSidebar() {
           
           <SidebarGroupContent>
             <SidebarMenu>
-              {navigationItems.map(item => (
+              {navigationItems
+                .filter(item => !item.adminOnly || isAdmin)
+                .map(item => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
                     <NavLink to={item.url} end className={getNavCls}>
