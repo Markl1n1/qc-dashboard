@@ -14,6 +14,10 @@ interface EnhancedSettingsState {
   aiMaxTokensGpt5Mini: number;
   signupPasscode: string;
   
+  // Deepgram model language assignments
+  deepgramNova2Languages: string[];
+  deepgramNova3Languages: string[];
+  
   // System config object for easier access
   systemConfig: Record<string, string> | null;
   
@@ -36,6 +40,7 @@ interface EnhancedSettingsState {
   updateAiMaxTokensGpt5: (tokens: number) => Promise<void>;
   updateAiMaxTokensGpt5Mini: (tokens: number) => Promise<void>;
   updateSignupPasscode: (passcode: string) => Promise<void>;
+  updateDeepgramLanguages: (nova2Languages: string[], nova3Languages: string[]) => Promise<void>;
   cleanupExpiredDialogs: () => Promise<number>;
   updateDialogExpirationDates: () => Promise<number>;
   setError: (error: string | null) => void;
@@ -78,6 +83,8 @@ export const useEnhancedSettingsStore = create<EnhancedSettingsState>((set, get)
         aiMaxTokensGpt5: parseInt(config.ai_max_tokens_gpt5 || '2000'),
         aiMaxTokensGpt5Mini: parseInt(config.ai_max_tokens_gpt5_mini || '1000'),
         signupPasscode: config.signup_passcode || '',
+        deepgramNova2Languages: config.deepgram_nova2_languages ? JSON.parse(config.deepgram_nova2_languages) : ['en'],
+        deepgramNova3Languages: config.deepgram_nova3_languages ? JSON.parse(config.deepgram_nova3_languages) : ['es','fr','de','it','pt','ru','zh','ja','ko','ar'],
         systemConfig: config,
         isLoading: false
       });
@@ -290,6 +297,29 @@ export const useEnhancedSettingsStore = create<EnhancedSettingsState>((set, get)
     } catch (error) {
       console.error('Error cleaning up expired dialogs:', error);
       set({ error: error instanceof Error ? error.message : 'Failed to cleanup expired dialogs' });
+      throw error;
+    }
+  },
+
+  updateDeepgramLanguages: async (nova2Languages: string[], nova3Languages: string[]) => {
+    try {
+      set({ error: null, isLoading: true });
+      
+      // Update both language configurations
+      await databaseService.updateSystemConfig('deepgram_nova2_languages', JSON.stringify(nova2Languages));
+      await databaseService.updateSystemConfig('deepgram_nova3_languages', JSON.stringify(nova3Languages));
+      
+      set({ 
+        deepgramNova2Languages: nova2Languages,
+        deepgramNova3Languages: nova3Languages,
+        isLoading: false 
+      });
+    } catch (error) {
+      console.error('Error updating Deepgram language assignments:', error);
+      set({ 
+        error: error instanceof Error ? error.message : 'Failed to update Deepgram language assignments',
+        isLoading: false 
+      });
       throw error;
     }
   },

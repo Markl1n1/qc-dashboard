@@ -1,10 +1,16 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Keyterm prompts for manual editing
+const KEYTERM_EN = 'VoiceQC, transcription, diarization, audio analysis, quality control';
+const KEYTERM_RU = 'ВойсКЮСи, транскрипция, диаризация, анализ аудио';
+const KEYTERM_DE = 'VoiceQC, Transkription, Sprechertrennung, Audio-Analyse';
+const KEYTERM_ES = 'VoiceQC, transcripción, diarización, análisis de audio';
+const KEYTERM_FR = 'VoiceQC, transcription, diarisation, analyse audio';
 
 interface DeepgramRequest {
   audio?: string; // base64 encoded for small files
@@ -45,17 +51,20 @@ Deno.serve(async (req) => {
       isLargeFile: !!storageFile
     });
 
+    // Create Supabase client
+    const supabase = createClient(
+      'https://sahudeguwojdypmmlbkd.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNhaHVkZWd1d29qZHlwbW1sYmtkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NjExNjAwNSwiZXhwIjoyMDcxNjkyMDA1fQ.eAhxBJnG-1Fmd9lDvWe-_5tXDrS7SFKlUdqP5e1I0zM'
+    );
+
     let audioBuffer: Uint8Array;
+    let useSignedUrl = false;
 
     if (storageFile) {
       console.log('🔗 Using signed URL approach for large file:', storageFile);
-      // Create signed URL for Deepgram to access directly
-      const supabase = createClient(
-        'https://sahudeguwojdypmmlbkd.supabase.co',
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNhaHVkZWd1d29qZHlwbW1sYmtkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NjExNjAwNSwiZXhwIjoyMDcxNjkyMDA1fQ.eAhxBJnG-1Fmd9lDvWe-_5tXDrS7SFKlUdqP5e1I0zM'
-      );
+      useSignedUrl = true;
       
-      // Create signed URL (valid for 15 minutes)
+      // Create signed URL for Deepgram to access directly
       const { data: signedUrlData, error: signedUrlError } = await supabase
         .storage
         .from('audio-files')
@@ -72,166 +81,6 @@ Deno.serve(async (req) => {
       
       console.log('✅ Signed URL created successfully');
       
-      // Prepare Deepgram request parameters
-      const params = new URLSearchParams();
-      
-      // Language handling and model selection
-      let finalModel = 'nova-2'; // Default model
-      
-      if (options.language) {
-        params.append('language', options.language);
-        
-        // For non-English languages, use enhanced model
-        if (options.language !== 'en') {
-          finalModel = 'general';
-          params.append('model', 'general');
-          params.append('tier', 'enhanced');
-          console.log('✅ Using enhanced model for non-English language:', options.language);
-        } else {
-          // For English, use Nova-2
-          params.append('model', 'nova-2');
-          console.log('✅ Using Nova-2 model for English language');
-        }
-      } else {
-        // Default to Nova-2 if no language specified
-        params.append('model', 'nova-2');
-      }
-
-      // Core parameters
-      params.append('punctuate', 'true');
-      params.append('smart_format', 'false'); // Always false as requested
-      params.append('filler_words', 'true');
-
-      // Speaker diarization - CRITICAL: Ensure both parameters are set
-      if (options.diarize) {
-        params.append('diarize', 'true');
-        params.append('utterances', 'true');
-        console.log('✅ Diarization enabled: diarize=true, utterances=true');
-      }
-
-      // Additional options
-      if (options.profanity_filter) {
-        params.append('profanity_filter', 'true');
-      }
-
-      const deepgramUrl = `https://api.deepgram.com/v1/listen?${params.toString()}`;
-      
-      console.log('📡 Calling Deepgram API with signed URL and model:', finalModel);
-      console.log('📋 Full URL:', deepgramUrl);
-      console.log('📋 Parameters:', Object.fromEntries(params.entries()));
-
-      const deepgramResponse = await fetch(deepgramUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Token ${DEEPGRAM_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ url: signedUrlData.signedUrl }),
-        // Increase timeout for large files
-        signal: AbortSignal.timeout(600000) // 10 minutes timeout
-      });
-
-      if (!deepgramResponse.ok) {
-        const errorText = await deepgramResponse.text();
-        console.error('❌ Deepgram API error:', {
-          status: deepgramResponse.status,
-          statusText: deepgramResponse.statusText,
-          error: errorText,
-          model: finalModel,
-          url: deepgramUrl
-        });
-        
-        throw new Error(`Deepgram API error: ${deepgramResponse.status} ${deepgramResponse.statusText}`);
-      }
-
-      const deepgramResult = await deepgramResponse.json();
-      console.log('✅ Deepgram response received', {
-        hasResults: !!deepgramResult.results,
-        hasUtterances: !!deepgramResult.results?.utterances,
-        utteranceCount: deepgramResult.results?.utterances?.length || 0,
-        model: finalModel,
-        detectedLanguage: deepgramResult.metadata?.model_info?.language
-      });
-
-      // Process the result
-      const transcript = deepgramResult.results?.channels?.[0]?.alternatives?.[0]?.transcript || '';
-      
-      // Process speaker utterances if available
-      let speakerUtterances: any[] = [];
-      if (deepgramResult.results?.utterances) {
-        console.log('📊 Processing utterances, count:', deepgramResult.results.utterances.length);
-        
-        speakerUtterances = deepgramResult.results.utterances.map((utterance: any, index: number) => {
-          // Use actual speaker numbers from Deepgram
-          const speakerNumber = utterance.speaker !== undefined ? utterance.speaker : 0;
-          const speakerLabel = `Speaker ${speakerNumber}`;
-          
-          console.log(`🎤 Utterance ${index}: speaker=${speakerNumber}, confidence=${utterance.confidence}, text="${utterance.transcript.substring(0, 50)}..."`);
-          
-          return {
-            speaker: speakerLabel,
-            text: utterance.transcript,
-            confidence: utterance.confidence,
-            start: utterance.start,
-            end: utterance.end
-          };
-        });
-
-        // Log speaker distribution for debugging
-        const speakerDistribution = speakerUtterances.reduce((acc: any, utterance: any) => {
-          acc[utterance.speaker] = (acc[utterance.speaker] || 0) + 1;
-          return acc;
-        }, {});
-        console.log('📈 Speaker distribution:', speakerDistribution);
-      }
-
-      // Detect language if available
-      let detectedLanguage = null;
-      if (deepgramResult.metadata?.model_info?.language) {
-        detectedLanguage = {
-          language: deepgramResult.metadata.model_info.language,
-          confidence: deepgramResult.metadata.model_info.language_confidence || 0.95
-        };
-      }
-
-      const result = {
-        text: transcript,
-        speakerUtterances,
-        detectedLanguage,
-        metadata: {
-          duration: deepgramResult.metadata?.duration || 0,
-          channels: deepgramResult.metadata?.channels || 1,
-          model: finalModel
-        }
-      };
-
-      console.log('✅ Processed transcription result via signed URL', {
-        textLength: result.text.length,
-        utteranceCount: result.speakerUtterances.length,
-        hasLanguageDetection: !!result.detectedLanguage,
-        model: finalModel
-      });
-
-      // Clean up storage file if it was uploaded
-      try {
-        console.log('🗑️ Cleaning up storage file:', storageFile);
-        const { error: deleteError } = await supabase.storage
-          .from('audio-files')
-          .remove([storageFile]);
-        
-        if (deleteError) {
-          console.error('⚠️ Failed to delete storage file:', deleteError);
-        } else {
-          console.log('✅ Storage file cleaned up successfully');
-        }
-      } catch (cleanupError) {
-        console.error('⚠️ Storage cleanup error:', cleanupError);
-      }
-
-      return new Response(
-        JSON.stringify({ success: true, result }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
     } else if (audio) {
       // Convert base64 to binary for small files
       audioBuffer = Uint8Array.from(atob(audio), c => c.charCodeAt(0));
@@ -240,41 +89,80 @@ Deno.serve(async (req) => {
       throw new Error('No audio data or storage file provided');
     }
 
+    // Get model configuration from database
+    const { data: modelConfig } = await supabase
+      .from('system_config')
+      .select('key, value')
+      .in('key', ['deepgram_nova2_languages', 'deepgram_nova3_languages', 'keyterm_prompt_en', 'keyterm_prompt_ru', 'keyterm_prompt_de', 'keyterm_prompt_es', 'keyterm_prompt_fr']);
+    
+    // Parse language configurations
+    const nova2Languages = modelConfig?.find(c => c.key === 'deepgram_nova2_languages')?.value || '["en"]';
+    const nova3Languages = modelConfig?.find(c => c.key === 'deepgram_nova3_languages')?.value || '["es","fr","de","it","pt","ru","zh","ja","ko","ar"]';
+    
+    const nova2List = JSON.parse(nova2Languages);
+    const nova3List = JSON.parse(nova3Languages);
+    
+    // Get keyterm prompts from database
+    const keytermPrompts: Record<string, string> = {};
+    modelConfig?.forEach(config => {
+      if (config.key.startsWith('keyterm_prompt_')) {
+        const lang = config.key.replace('keyterm_prompt_', '');
+        keytermPrompts[lang] = config.value;
+      }
+    });
+
     // Prepare Deepgram request parameters
     const params = new URLSearchParams();
     
-    // Get model configuration from database for small files too
-    const { data: smallFileModelConfig } = await supabase
-      .from('system_config')
-      .select('key, value')
-      .in('key', ['deepgram_nova2_languages', 'deepgram_nova3_languages']);
-    
-    // Parse language configurations
-    const smallFilenova2Languages = smallFileModelConfig?.find(c => c.key === 'deepgram_nova2_languages')?.value || '["en"]';
-    const smallFilenova3Languages = smallFileModelConfig?.find(c => c.key === 'deepgram_nova3_languages')?.value || '["es","fr","de","it","pt","ru","zh","ja","ko","ar"]';
-    
-    const smallFilenova2List = JSON.parse(smallFilenova2Languages);
-    const smallFilenova3List = JSON.parse(smallFilenova3Languages);
-    
-    // Determine model based on language
+    // Determine model based on language configuration
     let finalModel = 'nova-2'; // Default model
+    let useKeyterms = false;
     
     if (options.language) {
       params.append('language', options.language);
       
-      if (smallFilenova3List.includes(options.language)) {
+      if (nova3List.includes(options.language)) {
         finalModel = 'nova-3';
         params.append('model', 'nova-3');
+        useKeyterms = true; // Nova-3 supports keyterms
         console.log('✅ Using Nova-3 model for language:', options.language);
-      } else {
-        // Use Nova-2 for all other languages (including nova2List and unlisted)
+      } else if (nova2List.includes(options.language)) {
+        finalModel = 'nova-2';
         params.append('model', 'nova-2');
         console.log('✅ Using Nova-2 model for language:', options.language);
+      } else {
+        // Fallback to Nova-2 for unlisted languages
+        finalModel = 'nova-2';
+        params.append('model', 'nova-2');
+        console.log('✅ Using Nova-2 model for unlisted language:', options.language);
       }
     } else {
       // Default to Nova-2 if no language specified
       params.append('model', 'nova-2');
       console.log('✅ Using Nova-2 model (no language specified)');
+    }
+
+    // Add keyterm parameter for Nova-3 model only
+    if (useKeyterms && options.language) {
+      const langKeyterm = keytermPrompts[options.language];
+      if (langKeyterm && langKeyterm.trim()) {
+        params.append('keyterm', langKeyterm);
+        console.log('✅ Added keyterm prompts for', options.language, ':', langKeyterm);
+      } else {
+        // Fallback to hardcoded keyterms if database value is empty
+        let fallbackKeyterm = '';
+        switch (options.language) {
+          case 'en': fallbackKeyterm = KEYTERM_EN; break;
+          case 'ru': fallbackKeyterm = KEYTERM_RU; break;
+          case 'de': fallbackKeyterm = KEYTERM_DE; break;
+          case 'es': fallbackKeyterm = KEYTERM_ES; break;
+          case 'fr': fallbackKeyterm = KEYTERM_FR; break;
+        }
+        if (fallbackKeyterm) {
+          params.append('keyterm', fallbackKeyterm);
+          console.log('✅ Added fallback keyterm prompts for', options.language, ':', fallbackKeyterm);
+        }
+      }
     }
 
     // Core parameters
@@ -300,16 +188,35 @@ Deno.serve(async (req) => {
     console.log('📋 Full URL:', deepgramUrl);
     console.log('📋 Parameters:', Object.fromEntries(params.entries()));
 
-    const deepgramResponse = await fetch(deepgramUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Token ${DEEPGRAM_API_KEY}`,
-        // Remove Content-Type header to let Deepgram auto-detect format
-      },
-      body: audioBuffer,
-      // Increase timeout for large files
-      signal: AbortSignal.timeout(600000) // 10 minutes timeout
-    });
+    let deepgramResponse: Response;
+
+    if (useSignedUrl) {
+      // Get signed URL data for large files
+      const { data: signedUrlData } = await supabase
+        .storage
+        .from('audio-files')
+        .createSignedUrl(storageFile!, 60 * 15);
+
+      deepgramResponse = await fetch(deepgramUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Token ${DEEPGRAM_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ url: signedUrlData!.signedUrl }),
+        signal: AbortSignal.timeout(600000) // 10 minutes timeout
+      });
+    } else {
+      deepgramResponse = await fetch(deepgramUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Token ${DEEPGRAM_API_KEY}`,
+          // Remove Content-Type header to let Deepgram auto-detect format
+        },
+        body: audioBuffer!,
+        signal: AbortSignal.timeout(600000) // 10 minutes timeout
+      });
+    }
 
     if (!deepgramResponse.ok) {
       const errorText = await deepgramResponse.text();
@@ -392,14 +299,10 @@ Deno.serve(async (req) => {
       model: finalModel
     });
 
-    // Clean up storage file if it was uploaded
+    // Always clean up storage file regardless of success/failure
     if (storageFile) {
       try {
         console.log('🗑️ Cleaning up storage file:', storageFile);
-        const supabase = createClient(
-          'https://sahudeguwojdypmmlbkd.supabase.co',
-          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNhaHVkZWd1d29qZHlwbW1sYmtkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NjExNjAwNSwiZXhwIjoyMDcxNjkyMDA1fQ.eAhxBJnG-1Fmd9lDvWe-_5tXDrS7SFKlUdqP5e1I0zM'
-        );
         const { error: deleteError } = await supabase.storage
           .from('audio-files')
           .remove([storageFile]);
@@ -421,6 +324,23 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('❌ Deepgram transcription error:', error);
+    
+    // Clean up storage file even on error
+    if (req.method === 'POST') {
+      try {
+        const requestData = await req.json();
+        if (requestData.storageFile) {
+          const supabase = createClient(
+            'https://sahudeguwojdypmmlbkd.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNhaHVkZWd1d29qZHlwbW1sYmtkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NjExNjAwNSwiZXhwIjoyMDcxNjkyMDA1fQ.eAhxBJnG-1Fmd9lDvWe-_5tXDrS7SFKlUdqP5e1I0zM'
+          );
+          await supabase.storage.from('audio-files').remove([requestData.storageFile]);
+          console.log('✅ Storage file cleaned up after error');
+        }
+      } catch (cleanupError) {
+        console.error('⚠️ Error cleanup failed:', cleanupError);
+      }
+    }
     
     return new Response(
       JSON.stringify({ 
