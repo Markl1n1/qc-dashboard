@@ -145,20 +145,31 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
     return mistakes.filter(mistake => {
       if (!mistake.utterance) return false;
       
-      // Clean both texts for comparison
-      const cleanUtteranceText = utteranceText.toLowerCase().replace(/\s+/g, ' ').trim();
-      const cleanMistakeText = mistake.utterance.toLowerCase().replace(/\s+/g, ' ').trim();
+      // Normalize both texts for comparison
+      const normalizeText = (text: string) => 
+        text.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
       
-      // Use more precise matching - only exact and strict substring matches
-      return (
-        // Exact match
-        cleanUtteranceText === cleanMistakeText ||
-        // Mistake text is contained in utterance (for merged utterances)
-        cleanUtteranceText.includes(cleanMistakeText) ||
-        // Utterance text is contained in mistake (rare case)
-        (cleanMistakeText.length > cleanUtteranceText.length && 
-         cleanMistakeText.includes(cleanUtteranceText))
-      );
+      const normalizedUtterance = normalizeText(utteranceText);
+      const normalizedMistake = normalizeText(mistake.utterance);
+      
+      // Prioritize exact match first
+      if (normalizedUtterance === normalizedMistake) {
+        return true;
+      }
+      
+      // Then check if mistake is contained in utterance (for merged utterances)
+      if (normalizedUtterance.includes(normalizedMistake)) {
+        return true;
+      }
+      
+      // Finally check reverse containment with length threshold
+      if (normalizedMistake.length > normalizedUtterance.length && 
+          normalizedMistake.includes(normalizedUtterance) &&
+          normalizedUtterance.length > 10) { // Only for meaningful length
+        return true;
+      }
+      
+      return false;
     });
   };
 

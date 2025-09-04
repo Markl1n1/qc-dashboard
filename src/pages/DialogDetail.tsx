@@ -57,10 +57,22 @@ const DialogDetail = () => {
           table: 'dialog_analysis',
           filter: `dialog_id=eq.${id}`
         },
-        () => {
+        async () => {
           console.log('Analysis completed, reloading dialog...');
-          loadDialog(id);
-          setCurrentTab('results');
+          await loadDialog(id);
+          
+          // Add retry mechanism to ensure analysis data is loaded
+          setTimeout(async () => {
+            const updatedDialog = await getDialog(id);
+            if (updatedDialog?.openaiEvaluation) {
+              console.log('Analysis data loaded successfully');
+              setDialog(updatedDialog);
+              setCurrentTab('results');
+            } else {
+              console.log('Retrying dialog load after analysis...');
+              await loadDialog(id);
+            }
+          }, 1000);
         }
       )
       .on(
