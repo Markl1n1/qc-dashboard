@@ -2,7 +2,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { ScrollArea } from './ui/scroll-area';
+import { ResizableScrollArea } from './ui/resizable-scroll-area';
 import { Clock, Copy, User, Users, AlertTriangle, ExternalLink } from 'lucide-react';
 import { SpeakerUtterance } from '../types';
 import { copyToClipboard, formatDialogForCopy } from '../utils/dialogFormatting';
@@ -313,7 +313,7 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
       {/* Conversation Display */}
       <Card>
         <CardContent className="p-0">
-          <ScrollArea className="h-96 w-full">
+          <ResizableScrollArea storageKey="enhanced-speaker-dialog">
             <div className="p-6 space-y-4">
               {mergedUtterances.map((utterance, index) => {
                 const style = getSpeakerStyle(utterance.speaker);
@@ -412,7 +412,7 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
                 );
               })}
             </div>
-          </ScrollArea>
+          </ResizableScrollArea>
         </CardContent>
       </Card>
     </div>

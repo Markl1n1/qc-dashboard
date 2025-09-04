@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { ScrollArea } from './ui/scroll-area';
+import { ResizableScrollArea } from './ui/resizable-scroll-area';
 import { Slider } from './ui/slider';
 import { Progress } from './ui/progress';
 import { 
@@ -213,7 +213,7 @@ const SpeakerTimelineView: React.FC<SpeakerTimelineViewProps> = ({
           </div>
 
           {/* Utterance List */}
-          <ScrollArea className="h-96 w-full">
+          <ResizableScrollArea storageKey="speaker-timeline">
             <div className="space-y-2">
               {filteredUtterances.map((utterance, index) => (
                 <div 
@@ -243,7 +243,7 @@ const SpeakerTimelineView: React.FC<SpeakerTimelineViewProps> = ({
                 </div>
               ))}
             </div>
-          </ScrollArea>
+          </ResizableScrollArea>
         </CardContent>
       </Card>
     </div>

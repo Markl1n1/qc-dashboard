@@ -10,6 +10,7 @@ import { Slider } from "@/components/ui/slider";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, FileText, Shield, Brain, Save, Loader2, Settings as SettingsIcon, Mic, Database, Trash2 } from "lucide-react";
 import AIInstructionsFileManager from "@/components/AIInstructionsFileManager";
+import DeepgramModelSettings from "@/components/DeepgramModelSettings";
 import { useEnhancedSettingsStore } from "@/store/enhancedSettingsStore";
 import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "sonner";
@@ -171,37 +172,35 @@ const Settings: React.FC = () => {
 
                 <div className="space-y-2">
                   <Label htmlFor="ai_max_tokens_gpt5">AI Max Tokens GPT-5</Label>
-                  <div className="space-y-3">
-                    <Slider
-                      id="ai_max_tokens_gpt5"
-                      min={1000}
-                      max={20000}
-                      step={1000}
-                      value={[parseInt(localConfig.ai_max_tokens_gpt5 || '12000')]}
-                      onValueChange={([value]) => handleConfigChange('ai_max_tokens_gpt5', value.toString())}
-                      className="w-full"
-                    />
-                    <div className="text-center text-sm text-muted-foreground">
-                      {parseInt(localConfig.ai_max_tokens_gpt5 || '12000').toLocaleString()} tokens
-                    </div>
+                  <Input
+                    id="ai_max_tokens_gpt5"
+                    type="number"
+                    min="1000"
+                    max="20000"
+                    step="1000"
+                    value={localConfig.ai_max_tokens_gpt5 || '12000'}
+                    onChange={(e) => handleConfigChange('ai_max_tokens_gpt5', e.target.value)}
+                    placeholder="12000"
+                  />
+                  <div className="text-xs text-muted-foreground">
+                    Range: 1,000 - 20,000 tokens
                   </div>
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="ai_max_tokens_gpt5_mini">AI Max Tokens GPT-5 Mini</Label>
-                  <div className="space-y-3">
-                    <Slider
-                      id="ai_max_tokens_gpt5_mini"
-                      min={1000}
-                      max={12000}
-                      step={1000}
-                      value={[parseInt(localConfig.ai_max_tokens_gpt5_mini || '8000')]}
-                      onValueChange={([value]) => handleConfigChange('ai_max_tokens_gpt5_mini', value.toString())}
-                      className="w-full"
-                    />
-                    <div className="text-center text-sm text-muted-foreground">
-                      {parseInt(localConfig.ai_max_tokens_gpt5_mini || '8000').toLocaleString()} tokens
-                    </div>
+                  <Input
+                    id="ai_max_tokens_gpt5_mini"
+                    type="number"
+                    min="1000"
+                    max="12000"
+                    step="1000"
+                    value={localConfig.ai_max_tokens_gpt5_mini || '8000'}
+                    onChange={(e) => handleConfigChange('ai_max_tokens_gpt5_mini', e.target.value)}
+                    placeholder="8000"
+                  />
+                  <div className="text-xs text-muted-foreground">
+                    Range: 1,000 - 12,000 tokens
                   </div>
                 </div>
               </div>
@@ -332,33 +331,7 @@ const Settings: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="deepgram" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Mic className="h-5 w-5" />
-                Deepgram Configuration
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground mb-4">
-                Model assignment and keyterm configuration will be available here.
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label>Nova-2 Languages</Label>
-                  <Badge variant="secondary">English (en)</Badge>
-                </div>
-                <div className="space-y-2">
-                  <Label>Nova-3 Languages</Label>
-                  <div className="flex flex-wrap gap-1">
-                    {['es', 'fr', 'de', 'it', 'pt', 'ru', 'zh', 'ja', 'ko', 'ar'].map(lang => (
-                      <Badge key={lang} variant="default" className="text-xs">{lang}</Badge>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <DeepgramModelSettings />
         </TabsContent>
 
         <TabsContent value="instructions" className="space-y-6">
