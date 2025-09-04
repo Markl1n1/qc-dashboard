@@ -8,7 +8,7 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  console.log('🚀 Background OpenAI evaluation function started');
+  console.log('🚀 Background AI evaluation function started');
   
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });

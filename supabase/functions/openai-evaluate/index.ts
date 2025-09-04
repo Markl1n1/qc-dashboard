@@ -13,7 +13,6 @@ serve(async (req) => {
   }
 
   try {
-    // Get OpenAI API key from Supabase secrets (not hardcoded)
     const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
     
     if (!openAIApiKey) {
