@@ -17,9 +17,9 @@ serve(async (req) => {
     const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
     
     if (!openAIApiKey) {
-      console.error('OpenAI API key not found in Supabase secrets');
+      console.error('AI API key not found in Supabase secrets');
       return new Response(
-        JSON.stringify({ error: 'OpenAI API key not configured' }),
+        JSON.stringify({ error: 'AI API key not configured' }),
         { 
           status: 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -75,12 +75,12 @@ serve(async (req) => {
       body: JSON.stringify(requestBody),
     });
 
-    console.log('📥 OpenAI response status:', openAIResponse.status);
-    console.log('📥 OpenAI response headers:', Object.fromEntries(openAIResponse.headers.entries()));
+    console.log('📥 AI response status:', openAIResponse.status);
+    console.log('📥 AI response headers:', Object.fromEntries(openAIResponse.headers.entries()));
 
     if (!openAIResponse.ok) {
       const errorText = await openAIResponse.text();
-      console.error('❌ OpenAI API error:', {
+      console.error('❌ AI API error:', {
         status: openAIResponse.status,
         statusText: openAIResponse.statusText,
         errorText,
@@ -89,7 +89,7 @@ serve(async (req) => {
       });
       return new Response(
         JSON.stringify({ 
-          error: `OpenAI API error: ${openAIResponse.status} - ${errorText}` 
+          error: `AI API error: ${openAIResponse.status} - ${errorText}` 
         }),
         { 
           status: openAIResponse.status, 
@@ -99,7 +99,7 @@ serve(async (req) => {
     }
 
     const data = await openAIResponse.json();
-    console.log('✅ OpenAI response successful');
+    console.log('✅ AI response successful');
     
     // Enhanced response analysis
     const choice = data.choices?.[0];
@@ -165,14 +165,14 @@ serve(async (req) => {
       tokenEstimation
     };
 
-    console.log('✅ OpenAI response successful, tokens used:', tokenEstimation);
+    console.log('✅ AI response successful, tokens used:', tokenEstimation);
 
     return new Response(JSON.stringify(responseData), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
-    console.error('❌ Error in openai-evaluate function:', error);
+    console.error('❌ Error in evaluate function:', error);
     console.error('❌ Error stack:', error.stack);
     return new Response(
       JSON.stringify({ 

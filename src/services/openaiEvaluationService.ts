@@ -29,8 +29,8 @@ class OpenAIEvaluationService {
       this.model = config.aiEvaluationModel;
       this.confidenceThreshold = config.aiConfidenceThreshold;
     } catch (error) {
-      logger.error('Failed to initialize OpenAI Evaluation Service', error);
-      throw new Error('Failed to initialize OpenAI Evaluation Service');
+      logger.error('Failed to initialize AI Evaluation Service', error);
+      throw new Error('Failed to initialize AI Evaluation Service');
     }
   }
 
@@ -43,7 +43,7 @@ class OpenAIEvaluationService {
     const text = utterances.map(u => `${u.speaker}: ${u.text}`).join('\n');
     
     try {
-      console.log('🚀 Starting OpenAI evaluation with model:', model);
+      console.log('🚀 Starting AI evaluation with model:', model);
       console.log('📊 Input utterances count:', utterances.length);
       
       this.progressCallback?.({ stage: 'initializing', message: 'Preparing evaluation', progress: 0 });
@@ -52,13 +52,13 @@ class OpenAIEvaluationService {
       const prompt = this.constructPrompt(text, utterances, instructions);
       console.log('📝 Generated prompt length:', prompt.length);
 
-      this.progressCallback?.({ stage: 'analyzing', message: 'Sending to OpenAI for analysis', progress: 0.1 });
+      this.progressCallback?.({ stage: 'analyzing', message: 'Sending to AI for analysis', progress: 0.1 });
 
-      console.log('📤 Calling OpenAI edge function...');
+      console.log('📤 Calling AI edge function...');
       const evaluation = await this.callOpenAIEdgeFunction(prompt, model);
       console.log('📥 Received evaluation response:', evaluation);
 
-      this.progressCallback?.({ stage: 'processing_response', message: 'Processing OpenAI response', progress: 0.6 });
+      this.progressCallback?.({ stage: 'processing_response', message: 'Processing AI response', progress: 0.6 });
 
       const parsedResult = this.parseOpenAIResponse(evaluation);
 
@@ -74,7 +74,7 @@ class OpenAIEvaluationService {
         analysisId: `analysis_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
       };
 
-      logger.info(`OpenAI evaluation completed`);
+      logger.info(`AI evaluation completed`);
       this.progressCallback?.({ stage: 'complete', message: 'Evaluation complete', progress: 1 });
 
       return finalResult;
@@ -91,7 +91,7 @@ class OpenAIEvaluationService {
 
     return {
       aiConfidenceThreshold: aiConfidenceThreshold.data?.value ? parseFloat(aiConfidenceThreshold.data.value) : 0.75,
-      aiEvaluationModel: aiEvaluationModel.data?.value || 'gpt-5-2025-08-07',
+      aiEvaluationModel: aiEvaluationModel.data?.value || 'gpt-5',
     };
   }
 
@@ -104,11 +104,11 @@ class OpenAIEvaluationService {
       const instructions = await aiInstructionsService.getLatestInstructions('evaluation') || 'Please evaluate this conversation.';
       const prompt = this.constructPrompt(text, speakerUtterances, instructions);
 
-      progressCallback({ stage: 'analyzing', message: 'Sending to OpenAI for analysis', progress: 0.1 });
+      progressCallback({ stage: 'analyzing', message: 'Sending to AI for analysis', progress: 0.1 });
 
       const evaluation = await this.callOpenAIEdgeFunction(prompt, settings.aiEvaluationModel);
 
-      progressCallback({ stage: 'processing_response', message: 'Processing OpenAI response', progress: 0.6 });
+      progressCallback({ stage: 'processing_response', message: 'Processing AI response', progress: 0.6 });
 
       const parsedResult = this.parseOpenAIResponse(evaluation);
 
@@ -123,7 +123,7 @@ class OpenAIEvaluationService {
 
       progressCallback({ stage: 'complete', message: 'Validation complete', progress: 0.9 });
 
-      logger.info(`OpenAI evaluation completed for dialog ${dialogId}`);
+      logger.info(`AI evaluation completed for dialog ${dialogId}`);
       progressCallback({ stage: 'complete', message: 'Evaluation complete', progress: 1 });
 
       return validatedResult;
@@ -179,7 +179,7 @@ class OpenAIEvaluationService {
             dialog_id: dialogId,
             analysis_type: 'openai',
             overall_score: result.score,
-            mistakes: [mistake], // Keep the original format for backward compatibility
+            mistakes: [mistake],
             category_scores: {},
             confidence: confidence,
             token_usage: tokenUsage || {},
@@ -388,13 +388,13 @@ You must respond in the following JSON format:
       });
 
       if (error) {
-        logger.error('OpenAI Edge Function error', error);
-        throw new Error(`OpenAI evaluation failed: ${error.message}`);
+        logger.error('AI Edge Function error', error);
+        throw new Error(`AI evaluation failed: ${error.message}`);
       }
 
       if (data.error) {
-        logger.error('OpenAI API error from edge function', data.error);
-        throw new Error(`OpenAI API error: ${data.error}`);
+        logger.error('AI API error from edge function', data.error);
+        throw new Error(`AI API error: ${data.error}`);
       }
 
       // Check for truncated response and retry with higher token limit
@@ -412,7 +412,7 @@ You must respond in the following JSON format:
 
       return data;
     } catch (error: any) {
-      logger.error('Error calling OpenAI edge function', error);
+      logger.error('Error calling AI edge function', error);
       throw error;
     }
   }
@@ -434,8 +434,8 @@ You must respond in the following JSON format:
   private selectHigherCapacityModel(currentModel: string): string {
     // Model upgrade path for better performance
     const modelUpgrades: Record<string, string> = {
-      'gpt-5-mini-2025-08-07': 'gpt-5-2025-08-07',
-      'gpt-5-nano-2025-08-07': 'gpt-5-mini-2025-08-07',
+      'gpt-5-mini': 'gpt-5',
+      'gpt-5-nano-2025-08-07': 'gpt-5-mini',
       'gpt-4.1-mini-2025-04-14': 'gpt-4.1-2025-04-14',
       'o4-mini-2025-04-16': 'o3-2025-04-16'
     };
@@ -611,15 +611,15 @@ You must respond in the following JSON format:
         analysisId: ''
       };
     } catch (error: any) {
-      console.error('❌ OpenAI Parsing Error:', error);
+      console.error('❌ AI Parsing Error:', error);
       console.error('❌ Error Details:', {
         message: error.message,
         response: response,
         content: response?.choices?.[0]?.message?.content?.slice(0, 500),
         finishReason: response?.choices?.[0]?.finish_reason
       });
-      logger.error('Failed to parse OpenAI response', error);
-      throw new Error(`Failed to parse OpenAI response: ${error.message}. Content preview: ${response?.choices?.[0]?.message?.content?.slice(0, 200) || 'No content'}...`);
+      logger.error('Failed to parse AI response', error);
+      throw new Error(`Failed to parse AI response: ${error.message}. Content preview: ${response?.choices?.[0]?.message?.content?.slice(0, 200) || 'No content'}...`);
     }
   }
 
@@ -878,15 +878,15 @@ You must respond in the following JSON format:
     logger.error(`OpenAI API error in ${context}`, error);
     
     if (error.message?.includes('401')) {
-      throw new Error('OpenAI API key is invalid or not configured. Please check your settings.');
+      throw new Error('AI API key is invalid or not configured. Please check your settings.');
     }
     
     if (error.message?.includes('429')) {
-      throw new Error('OpenAI API rate limit exceeded. Please try again later.');
+      throw new Error('AI API rate limit exceeded. Please try again later.');
     }
     
     if (error.message?.includes('500') || error.message?.includes('502') || error.message?.includes('503')) {
-      throw new Error('OpenAI service is temporarily unavailable. Please try again later.');
+      throw new Error('AI service is temporarily unavailable. Please try again later.');
     }
     
     throw new Error(error.message || `OpenAI evaluation failed: ${context}`);

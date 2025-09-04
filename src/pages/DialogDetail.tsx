@@ -140,7 +140,7 @@ const DialogDetail = () => {
         body: {
           dialogId: dialog.id,
           utterances: dialog.speakerTranscription,
-          modelId: 'gpt-5-mini-2025-08-07'
+          modelId: 'gpt-5-mini'
         }
       });
       if (error) {
@@ -345,7 +345,7 @@ const DialogDetail = () => {
 
         <TabsContent value="results" className="mt-6">
           <div className="space-y-6">
-            {/* OpenAI Analysis Results */}
+            {/* AI Analysis Results */}
             {dialog.openaiEvaluation ? <div className="space-y-4">
                 {/* Violation Summary Cards */}
                 {dialog.openaiEvaluation.mistakes && dialog.openaiEvaluation.mistakes.length > 0 && <AnalysisSummaryCards mistakes={dialog.openaiEvaluation.mistakes} />}

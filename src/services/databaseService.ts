@@ -501,7 +501,6 @@ class DatabaseService {
       }
     }
 
-    // Add OpenAI analysis if available - use structured format if new columns exist
     if (analyses) {
       const openaiAnalyses = analyses.filter(a => 
         a.analysis_type === 'openai' || a.analysis_type === 'openai_background'

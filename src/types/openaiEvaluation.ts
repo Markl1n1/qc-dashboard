@@ -51,7 +51,7 @@ export interface OpenAIModel {
 
 export const OPENAI_MODELS: OpenAIModel[] = [
   {
-    id: 'gpt-5-2025-08-07',
+    id: 'gpt-5',
     name: 'GPT-5',
     description: 'Flagship model with best performance',
     costPer1kTokens: 0.03,
@@ -59,26 +59,12 @@ export const OPENAI_MODELS: OpenAIModel[] = [
     recommended: true
   },
   {
-    id: 'gpt-5-mini-2025-08-07',
+    id: 'gpt-5-mini',
     name: 'GPT-5 Mini',
     description: 'Faster, more cost-efficient GPT-5',
     costPer1kTokens: 0.015,
     category: 'fast',
     recommended: true
-  },
-  {
-    id: 'gpt-5-nano-2025-08-07',
-    name: 'GPT-5 Nano',
-    description: 'Fastest, cheapest for classification',
-    costPer1kTokens: 0.005,
-    category: 'fast'
-  },
-  {
-    id: 'gpt-4.1-2025-04-14',
-    name: 'GPT-4.1',
-    description: 'Reliable GPT-4 flagship model',
-    costPer1kTokens: 0.02,
-    category: 'flagship'
   },
   {
     id: 'o3-2025-04-16',
@@ -94,27 +80,6 @@ export const OPENAI_MODELS: OpenAIModel[] = [
     costPer1kTokens: 0.01,
     category: 'reasoning',
     recommended: true
-  },
-  {
-    id: 'gpt-4.1-mini-2025-04-14',
-    name: 'GPT-4.1 Mini',
-    description: 'Economic version of GPT-4.1',
-    costPer1kTokens: 0.008,
-    category: 'economic'
-  },
-  {
-    id: 'gpt-4o-mini',
-    name: 'GPT-4o Mini (Legacy)',
-    description: 'Fast and cheap legacy model',
-    costPer1kTokens: 0.006,
-    category: 'economic'
-  },
-  {
-    id: 'gpt-4o',
-    name: 'GPT-4o (Legacy)',
-    description: 'Powerful legacy model',
-    costPer1kTokens: 0.025,
-    category: 'flagship'
   },
   {
     id: 'gpt-3.5-turbo',

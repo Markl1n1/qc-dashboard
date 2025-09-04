@@ -20,7 +20,7 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
     if (!openAIApiKey) {
-      throw new Error('OpenAI API key not configured');
+      throw new Error('AI API key not configured');
     }
 
     if (!supabaseUrl || !supabaseServiceKey) {
@@ -29,7 +29,7 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { dialogId, utterances, modelId = 'gpt-5-mini-2025-08-07' } = await req.json();
+    const { dialogId, utterances, modelId = 'gpt-5-mini' } = await req.json();
     
     if (!dialogId || !utterances) {
       throw new Error('Missing required parameters: dialogId and utterances');
@@ -63,9 +63,8 @@ serve(async (req) => {
       `${utterance.speaker}: ${utterance.text}`
     ).join('\n\n');
 
-    console.log('🤖 Calling OpenAI API...');
+    console.log('🤖 Calling AI API...');
 
-    // Call OpenAI API
     const openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -85,18 +84,18 @@ serve(async (req) => {
 
     if (!openAIResponse.ok) {
       const errorData = await openAIResponse.text();
-      console.error('❌ OpenAI API error:', errorData);
-      throw new Error(`OpenAI API error: ${openAIResponse.status} - ${errorData}`);
+      console.error('❌ AI API error:', errorData);
+      throw new Error(`AI API error: ${openAIResponse.status} - ${errorData}`);
     }
 
     const openAIData = await openAIResponse.json();
-    console.log('✅ OpenAI API response received');
-    console.log('🔍 Full OpenAI response:', JSON.stringify(openAIData, null, 2));
+    console.log('✅ AI API response received');
+    console.log('🔍 Full AI response:', JSON.stringify(openAIData, null, 2));
 
     // Check if response is valid
     if (!openAIData.choices?.[0]?.message) {
-      console.error('❌ Invalid OpenAI response structure - no message:', JSON.stringify(openAIData, null, 2));
-      throw new Error(`Invalid OpenAI response format: ${JSON.stringify(openAIData)}`);
+      console.error('❌ Invalid AI response structure - no message:', JSON.stringify(openAIData, null, 2));
+      throw new Error(`Invalid AI response format: ${JSON.stringify(openAIData)}`);
     }
 
     const messageContent = openAIData.choices[0].message.content;
@@ -105,11 +104,11 @@ serve(async (req) => {
     // Handle empty content due to token limits
     if (!messageContent || messageContent.trim() === '') {
       if (finishReason === 'length') {
-        console.error('❌ OpenAI response truncated due to token limit. Completion tokens:', openAIData.usage?.completion_tokens);
-        throw new Error('OpenAI response was truncated due to token limit. Try reducing conversation length or increasing max_completion_tokens.');
+        console.error('❌ AI response truncated due to token limit. Completion tokens:', openAIData.usage?.completion_tokens);
+        throw new Error('AI response was truncated due to token limit. Try reducing conversation length or increasing max_completion_tokens.');
       } else {
-        console.error('❌ OpenAI returned empty content:', JSON.stringify(openAIData, null, 2));
-        throw new Error(`OpenAI returned empty content with finish_reason: ${finishReason}`);
+        console.error('❌ AI returned empty content:', JSON.stringify(openAIData, null, 2));
+        throw new Error(`AI returned empty content with finish_reason: ${finishReason}`);
       }
     }
 
@@ -119,9 +118,9 @@ serve(async (req) => {
       analysisResult = JSON.parse(messageContent);
       console.log('📊 Analysis result parsed successfully');
     } catch (parseError) {
-      console.error('❌ Failed to parse OpenAI JSON response:', parseError);
+      console.error('❌ Failed to parse AI JSON response:', parseError);
       console.error('❌ Raw content:', messageContent);
-      throw new Error('Failed to parse OpenAI response as JSON');
+      throw new Error('Failed to parse AI response as JSON');
     }
 
     // Extract speaker information if present

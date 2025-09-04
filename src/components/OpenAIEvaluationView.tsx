@@ -49,7 +49,7 @@ export const OpenAIEvaluationView: React.FC<OpenAIEvaluationViewProps> = ({
   onMistakeClick,
   onTabChange
 }) => {
-  const [selectedModel, setSelectedModel] = useState('gpt-5-2025-08-07');
+  const [selectedModel, setSelectedModel] = useState('gpt-5');
   const [isRunning, setIsRunning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState('');
@@ -100,7 +100,7 @@ export const OpenAIEvaluationView: React.FC<OpenAIEvaluationViewProps> = ({
       setResult(evaluationResult);
       
       // Show success message
-      toast.success('OpenAI evaluation completed successfully!');
+      toast.success('AI evaluation completed successfully!');
       
       // Update the dialog store with the new analysis
       if (transcriptId) {
@@ -117,7 +117,7 @@ export const OpenAIEvaluationView: React.FC<OpenAIEvaluationViewProps> = ({
       }
 
     } catch (error) {
-      console.error('OpenAI evaluation failed:', error);
+      console.error('AI evaluation failed:', error);
       toast.error(error instanceof Error ? error.message : 'Unknown error occurred');
     } finally {
       setIsRunning(false);
