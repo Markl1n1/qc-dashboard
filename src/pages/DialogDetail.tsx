@@ -127,10 +127,10 @@ const DialogDetail = () => {
     setAnalysisProgress({
       stage: 'analyzing',
       progress: 10,
-      message: 'Starting background analysis...'
+      message: 'Starting AI analysis...'
     });
     try {
-      console.log('Starting background OpenAI analysis for dialog:', dialog.id);
+      console.log('Starting AI analysis for dialog:', dialog.id);
 
       // Call the background edge function
       const {
@@ -144,10 +144,10 @@ const DialogDetail = () => {
         }
       });
       if (error) {
-        throw new Error(`Background analysis failed: ${error.message}`);
+        throw new Error(`AI analysis failed: ${error.message}`);
       }
       if (!data?.success) {
-        throw new Error(data?.error || 'Background analysis failed');
+        throw new Error(data?.error || 'AI analysis failed');
       }
       setAnalysisProgress({
         stage: 'complete',

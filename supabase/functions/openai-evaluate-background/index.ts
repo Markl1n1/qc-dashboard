@@ -179,7 +179,7 @@ serve(async (req) => {
       throw updateError;
     }
 
-    console.log('✅ Background analysis completed successfully');
+    console.log('✅ AI analysis completed successfully');
 
     return new Response(
       JSON.stringify({
@@ -193,7 +193,7 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('❌ Background analysis failed:', error);
+    console.error('❌ AI analysis failed:', error);
     return new Response(
       JSON.stringify({ 
         error: error.message,
