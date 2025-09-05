@@ -39,7 +39,7 @@ export const useTranscription = () => {
 
       // Convert transcription options to Deepgram format
       const deepgramOptions = {
-        model: options.model || 'nova-2',
+        model: options.model || 'nova-2-general',
         speaker_labels: options.speakerLabels || false,
         language_detection: true,
         language: options.language,

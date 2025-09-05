@@ -1,6 +1,6 @@
 
 export interface DeepgramConfig {
-  model?: 'nova-2' | 'nova' | 'enhanced' | 'base' | 'nova-3';
+  model?: 'nova-2-general' | 'nova' | 'enhanced' | 'base' | 'nova-3-general';
   language?: string;
   detect_language?: boolean;
   diarize?: boolean;

@@ -93,7 +93,7 @@ Deno.serve(async (req) => {
     const params = new URLSearchParams();
     
     // Determine model based on language configuration with better logic
-    let finalModel = 'nova-2'; // Default model
+    let finalModel = 'nova-2-general'; // Default model
     let useKeyterms = false;
     
     if (options.language) {
@@ -101,23 +101,23 @@ Deno.serve(async (req) => {
       
       // Check if language is supported by Nova-3 first (for keyterm support)
       if (nova3List.includes(options.language)) {
-        finalModel = 'nova-3';
-        params.append('model', 'nova-3');
+        finalModel = 'nova-3-general';
+        params.append('model', 'nova-3-general');
         useKeyterms = true; // Nova-3 supports keyterms
         console.log('✅ Using Nova-3 model for language:', options.language);
       } else if (nova2List.includes(options.language)) {
-        finalModel = 'nova-2';
-        params.append('model', 'nova-2');
+        finalModel = 'nova-2-general';
+        params.append('model', 'nova-2-general');
         console.log('✅ Using Nova-2 model for language:', options.language);
       } else {
         // Language not in either list - try Nova-2 as fallback
-        finalModel = 'nova-2';
-        params.append('model', 'nova-2');
+        finalModel = 'nova-2-general';
+        params.append('model', 'nova-2-general');
         console.log('⚠️  Language not in configured lists, using Nova-2 fallback for:', options.language);
       }
     } else {
       // Default to Nova-2 if no language specified
-      params.append('model', 'nova-2');
+      params.append('model', 'nova-2-general');
       console.log('✅ Using Nova-2 model (no language specified)');
     }
 

@@ -49,7 +49,7 @@ class DeepgramService {
             storageFile: fileName,
             mimeType: audioFile.type,
             options: {
-              model: options.model || 'nova-2',
+              model: options.model || 'nova-2-general',
               language: options.language_detection ? undefined : options.language,
               detect_language: options.language_detection || false,
               diarize: options.speaker_labels || false,
@@ -90,7 +90,7 @@ class DeepgramService {
             audio: base64Audio,
             mimeType: audioFile.type,
             options: {
-              model: options.model || 'nova-2',
+              model: options.model || 'nova-2-general',
               language: options.language_detection ? undefined : options.language,
               detect_language: options.language_detection || false,
               diarize: options.speaker_labels || false,

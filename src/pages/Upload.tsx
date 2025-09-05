@@ -137,7 +137,7 @@ const Upload: React.FC<UploadProps> = () => {
 
       // Prepare Deepgram options with language selection
       const deepgramOptions: DeepgramOptions = {
-        model: 'nova-2',
+        model: 'nova-2-general',
         language: selectedLanguage,
         speaker_labels: true,
         smart_formatting: false,

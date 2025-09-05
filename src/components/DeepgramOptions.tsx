@@ -68,7 +68,7 @@ const DeepgramOptions: React.FC<DeepgramOptionsProps> = ({
               </p>
             </div>
             <Select
-              value={options.model || 'nova-2'}
+              value={options.model || 'nova-2-general'}
               onValueChange={(value) => updateOption('model', value)}
               disabled={disabled}
             >
@@ -97,7 +97,7 @@ const DeepgramOptions: React.FC<DeepgramOptionsProps> = ({
           </div>
 
           {/* Model Information */}
-          {options.model === 'nova-3' && (
+          {options.model === 'nova-3-general' && (
             <div className="p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border border-purple-200">
               <div className="flex items-center gap-2 mb-2">
                 <Zap className="h-4 w-4 text-purple-600" />
@@ -110,7 +110,7 @@ const DeepgramOptions: React.FC<DeepgramOptionsProps> = ({
             </div>
           )}
 
-          {options.model === 'nova-2' && (
+          {options.model === 'nova-2-general' && (
             <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
               <div className="flex items-center gap-2 mb-2">
                 <Sparkles className="h-4 w-4 text-blue-600" />

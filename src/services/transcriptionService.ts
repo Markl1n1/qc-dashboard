@@ -69,7 +69,7 @@ export class TranscriptionService {
           body: {
             audioUrl: urlData.publicUrl,
             options: {
-              model: options.model || 'nova-2',
+              model: options.model || 'nova-2-general',
               language: options.language || 'en',
               punctuate: options.punctuate !== false,
               diarize: options.diarize || false,
