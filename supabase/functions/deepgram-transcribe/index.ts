@@ -74,8 +74,8 @@ Deno.serve(async (req) => {
       .in('key', ['deepgram_nova2_languages', 'deepgram_nova3_languages', 'keyterm_prompt_en', 'keyterm_prompt_ru', 'keyterm_prompt_de', 'keyterm_prompt_es', 'keyterm_prompt_fr']);
     
     // Parse language configurations
-    const nova2Languages = modelConfig?.find(c => c.key === 'deepgram_nova2_languages')?.value || '["en"]';
-    const nova3Languages = modelConfig?.find(c => c.key === 'deepgram_nova3_languages')?.value || '["es","fr","de","it","pt","ru","zh","ja","ko","ar"]';
+    const nova2Languages = modelConfig?.find(c => c.key === 'deepgram_nova2_languages')?.value || '["pl","ru"]';
+    const nova3Languages = modelConfig?.find(c => c.key === 'deepgram_nova3_languages')?.value || '["es","fr","de","en"]';
     
     const nova2List = JSON.parse(nova2Languages);
     const nova3List = JSON.parse(nova3Languages);
