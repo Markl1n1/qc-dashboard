@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, FileText, Shield, Brain, Save, Loader2, Settings as SettingsIcon, Mic, Database, Trash2 } from "lucide-react";
 import AIInstructionsFileManager from "@/components/AIInstructionsFileManager";
 import DeepgramModelSettings from "@/components/DeepgramModelSettings";
+import KeytermManagement from "@/components/KeytermManagement";
 import { useEnhancedSettingsStore } from "@/store/enhancedSettingsStore";
 import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "sonner";
@@ -330,9 +331,10 @@ const Settings: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="deepgram" className="space-y-6">
-          <DeepgramModelSettings />
-        </TabsContent>
+          <TabsContent value="deepgram" className="space-y-6">
+            <DeepgramModelSettings />
+            <KeytermManagement />
+          </TabsContent>
 
         <TabsContent value="instructions" className="space-y-6">
           <Card>

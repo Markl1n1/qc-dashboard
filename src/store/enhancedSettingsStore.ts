@@ -305,17 +305,26 @@ export const useEnhancedSettingsStore = create<EnhancedSettingsState>((set, get)
     try {
       set({ error: null, isLoading: true });
       
+      console.log('🔧 Updating Deepgram language assignments:', { nova2Languages, nova3Languages });
+      
       // Update both language configurations
       await databaseService.updateSystemConfig('deepgram_nova2_languages', JSON.stringify(nova2Languages));
       await databaseService.updateSystemConfig('deepgram_nova3_languages', JSON.stringify(nova3Languages));
       
+      // Update local state
       set({ 
         deepgramNova2Languages: nova2Languages,
         deepgramNova3Languages: nova3Languages,
         isLoading: false 
       });
+      
+      // Update systemConfig to reflect changes immediately
+      const { loadSystemConfig } = get();
+      await loadSystemConfig();
+      
+      console.log('✅ Deepgram language assignments updated successfully');
     } catch (error) {
-      console.error('Error updating Deepgram language assignments:', error);
+      console.error('❌ Error updating Deepgram language assignments:', error);
       set({ 
         error: error instanceof Error ? error.message : 'Failed to update Deepgram language assignments',
         isLoading: false 

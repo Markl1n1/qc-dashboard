@@ -5,12 +5,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Keyterm prompts for manual editing
-const KEYTERM_EN = 'VoiceQC, transcription, diarization, audio analysis, quality control';
-const KEYTERM_RU = 'ВойсКЮСи, транскрипция, диаризация, анализ аудио';
-const KEYTERM_DE = 'VoiceQC, Transkription, Sprechertrennung, Audio-Analyse';
-const KEYTERM_ES = 'VoiceQC, transcripción, diarización, análisis de audio';
-const KEYTERM_FR = 'VoiceQC, transcription, diarisation, analyse audio';
+// Keyterm prompts are now fully database-driven
 
 interface DeepgramRequest {
   audio?: string; // base64 encoded for small files
@@ -97,13 +92,14 @@ Deno.serve(async (req) => {
     // Prepare Deepgram request parameters
     const params = new URLSearchParams();
     
-    // Determine model based on language configuration
+    // Determine model based on language configuration with better logic
     let finalModel = 'nova-2'; // Default model
     let useKeyterms = false;
     
     if (options.language) {
       params.append('language', options.language);
       
+      // Check if language is supported by Nova-3 first (for keyterm support)
       if (nova3List.includes(options.language)) {
         finalModel = 'nova-3';
         params.append('model', 'nova-3');
@@ -114,10 +110,10 @@ Deno.serve(async (req) => {
         params.append('model', 'nova-2');
         console.log('✅ Using Nova-2 model for language:', options.language);
       } else {
-        // Fallback to Nova-2 for unlisted languages
+        // Language not in either list - try Nova-2 as fallback
         finalModel = 'nova-2';
         params.append('model', 'nova-2');
-        console.log('✅ Using Nova-2 model for unlisted language:', options.language);
+        console.log('⚠️  Language not in configured lists, using Nova-2 fallback for:', options.language);
       }
     } else {
       // Default to Nova-2 if no language specified
@@ -125,26 +121,14 @@ Deno.serve(async (req) => {
       console.log('✅ Using Nova-2 model (no language specified)');
     }
 
-    // Add keyterm parameter for Nova-3 model only
+    // Add keyterm parameter for Nova-3 model only (fully database-driven)
     if (useKeyterms && options.language) {
       const langKeyterm = keytermPrompts[options.language];
       if (langKeyterm && langKeyterm.trim()) {
         params.append('keyterm', langKeyterm);
-        console.log('✅ Added keyterm prompts for', options.language, ':', langKeyterm);
+        console.log('✅ Added database keyterm prompts for', options.language, ':', langKeyterm);
       } else {
-        // Fallback to hardcoded keyterms if database value is empty
-        let fallbackKeyterm = '';
-        switch (options.language) {
-          case 'en': fallbackKeyterm = KEYTERM_EN; break;
-          case 'ru': fallbackKeyterm = KEYTERM_RU; break;
-          case 'de': fallbackKeyterm = KEYTERM_DE; break;
-          case 'es': fallbackKeyterm = KEYTERM_ES; break;
-          case 'fr': fallbackKeyterm = KEYTERM_FR; break;
-        }
-        if (fallbackKeyterm) {
-          params.append('keyterm', fallbackKeyterm);
-          console.log('✅ Added fallback keyterm prompts for', options.language, ':', fallbackKeyterm);
-        }
+        console.log('⚠️  No keyterm prompts found in database for', options.language);
       }
     }
 

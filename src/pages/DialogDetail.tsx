@@ -43,12 +43,12 @@ const DialogDetail = () => {
     }
   }, [id]);
 
-  // Real-time subscription for analysis updates
+  // Enhanced real-time subscription for analysis updates
   useEffect(() => {
     if (!id) return;
 
     const channel = supabase
-      .channel('dialog-analysis-updates')
+      .channel(`dialog-${id}-updates`)
       .on(
         'postgres_changes',
         {
@@ -57,22 +57,46 @@ const DialogDetail = () => {
           table: 'dialog_analysis',
           filter: `dialog_id=eq.${id}`
         },
-        async () => {
-          console.log('Analysis completed, reloading dialog...');
-          await loadDialog(id);
+        async (payload) => {
+          console.log('🔄 Analysis completed event received:', payload);
           
-          // Add retry mechanism to ensure analysis data is loaded
-          setTimeout(async () => {
-            const updatedDialog = await getDialog(id);
-            if (updatedDialog?.openaiEvaluation) {
-              console.log('Analysis data loaded successfully');
-              setDialog(updatedDialog);
-              setCurrentTab('results');
-            } else {
-              console.log('Retrying dialog load after analysis...');
-              await loadDialog(id);
+          // Multiple retry attempts with exponential backoff
+          const retryLoadDialog = async (attempt = 1, maxAttempts = 5) => {
+            try {
+              console.log(`🔄 Loading dialog attempt ${attempt}/${maxAttempts}`);
+              const updatedDialog = await getDialog(id);
+              
+              if (updatedDialog?.openaiEvaluation) {
+                console.log('✅ Analysis data loaded successfully');
+                setDialog(updatedDialog);
+                setCurrentTab('results');
+                
+                // Dispatch custom event for any other components listening
+                window.dispatchEvent(new CustomEvent('analysis-data-loaded', { 
+                  detail: { dialogId: id, analysis: updatedDialog.openaiEvaluation } 
+                }));
+                return;
+              }
+              
+              if (attempt < maxAttempts) {
+                const delay = Math.pow(2, attempt) * 500; // Exponential backoff
+                console.log(`⏳ Retrying in ${delay}ms...`);
+                setTimeout(() => retryLoadDialog(attempt + 1, maxAttempts), delay);
+              } else {
+                console.warn('⚠️ Max retry attempts reached, analysis data may not be visible');
+                // Force a final reload just in case
+                await loadDialog(id);
+              }
+            } catch (error) {
+              console.error(`❌ Error loading dialog on attempt ${attempt}:`, error);
+              if (attempt < maxAttempts) {
+                setTimeout(() => retryLoadDialog(attempt + 1, maxAttempts), 1000);
+              }
             }
-          }, 1000);
+          };
+          
+          // Start the retry process
+          retryLoadDialog();
         }
       )
       .on(
@@ -83,15 +107,29 @@ const DialogDetail = () => {
           table: 'dialogs',
           filter: `id=eq.${id}`
         },
-        () => {
-          console.log('Dialog updated, reloading...');
-          loadDialog(id);
+        async (payload) => {
+          console.log('🔄 Dialog updated event received:', payload);
+          await loadDialog(id);
         }
       )
       .subscribe();
 
+    // Listen for custom analysis complete events
+    const handleAnalysisComplete = async (event: CustomEvent) => {
+      if (event.detail.transcriptId === id) {
+        console.log('🔄 Handling analysis complete event');
+        setTimeout(async () => {
+          await loadDialog(id);
+          setCurrentTab('results');
+        }, 1000);
+      }
+    };
+
+    window.addEventListener('analysis-complete', handleAnalysisComplete as EventListener);
+
     return () => {
       supabase.removeChannel(channel);
+      window.removeEventListener('analysis-complete', handleAnalysisComplete as EventListener);
     };
   }, [id]);
   const loadDialog = async (dialogId: string) => {
@@ -156,11 +194,36 @@ const DialogDetail = () => {
       });
       toast.success('AI analysis completed successfully!');
 
-      // Reload dialog to get the updated analysis
-      await loadDialog(dialog.id);
+      // Enhanced reload with multiple attempts to ensure analysis data is visible
+      const reloadWithRetry = async (attempt = 1, maxAttempts = 3) => {
+        try {
+          console.log(`🔄 Reloading dialog after analysis completion, attempt ${attempt}/${maxAttempts}`);
+          await loadDialog(dialog.id);
+          
+          // Check if analysis data is now available
+          const reloadedDialog = await getDialog(dialog.id);
+          if (reloadedDialog?.openaiEvaluation) {
+            console.log('✅ Analysis data confirmed after reload');
+            setDialog(reloadedDialog);
+            setCurrentTab('results');
+            return;
+          }
+          
+          if (attempt < maxAttempts) {
+            setTimeout(() => reloadWithRetry(attempt + 1, maxAttempts), 1500);
+          } else {
+            console.warn('⚠️ Analysis data not immediately visible, but tab will switch');
+            setCurrentTab('results');
+          }
+        } catch (error) {
+          console.error(`❌ Error reloading dialog on attempt ${attempt}:`, error);
+          if (attempt < maxAttempts) {
+            setTimeout(() => reloadWithRetry(attempt + 1, maxAttempts), 2000);
+          }
+        }
+      };
       
-      // Auto-redirect to results tab
-      setCurrentTab('results');
+      await reloadWithRetry();
     } catch (error) {
       console.error('Error starting analysis:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';

@@ -102,18 +102,34 @@ export const OpenAIEvaluationView: React.FC<OpenAIEvaluationViewProps> = ({
       // Show success message
       toast.success('AI evaluation completed successfully!');
       
-      // Update the dialog store with the new analysis
+      // Update the dialog store with the new analysis and force refresh
       if (transcriptId) {
+        console.log('🔄 Updating dialog with analysis result:', evaluationResult);
         updateDialog(transcriptId, {
           openaiEvaluation: evaluationResult
         });
+        
+        // Force a state refresh to ensure data is visible
+        setTimeout(() => {
+          updateDialog(transcriptId, {
+            openaiEvaluation: evaluationResult
+          });
+        }, 500);
       }
 
-      // Auto-redirect to Analysis Results tab
+      // Auto-redirect to Analysis Results tab with enhanced timing
       if (onTabChange) {
         setTimeout(() => {
+          console.log('🔄 Auto-redirecting to analysis results');
           onTabChange('results');
-        }, 1000); // Delay to show completion message
+          
+          // Additional delay to ensure data is loaded
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('analysis-complete', { 
+              detail: { transcriptId, result: evaluationResult } 
+            }));
+          }, 500);
+        }, 1500); // Increased delay to ensure data propagation
       }
 
     } catch (error) {
