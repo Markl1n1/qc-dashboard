@@ -140,7 +140,7 @@ const Upload: React.FC<UploadProps> = () => {
         model: 'nova-2-general',
         language: selectedLanguage,
         speaker_labels: true,
-        smart_formatting: false,
+        smart_formatting: true,
         profanity_filter: false,
         punctuation: true
       };

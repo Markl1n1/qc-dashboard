@@ -134,7 +134,7 @@ Deno.serve(async (req) => {
 
     // Core parameters
     params.append('punctuate', 'true');
-    params.append('smart_format', 'false'); // Always false as requested
+    params.append('smart_format', 'true'); // Always false as requested
     params.append('filler_words', 'true');
 
     // Speaker diarization - CRITICAL: Ensure both parameters are set
