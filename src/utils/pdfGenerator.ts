@@ -171,7 +171,7 @@ export class PDFGenerator {
 
     // Handle line breaks for merged utterances and ensure proper wrapping
     const maxWidth = this.doc.internal.pageSize.width - (this.margin * 2) - 10; // account for indent
-    const lines = utterance.text.split('\n');
+    const lines = utterance.text.split(' ');
     
     lines.forEach((line, lineIndex) => {
       if (line.trim()) { // Only process non-empty lines
