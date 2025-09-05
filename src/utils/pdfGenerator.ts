@@ -1,12 +1,6 @@
 import jsPDF from 'jspdf';
 import { SpeakerUtterance, Dialog } from '../types';
 
-// Import converted fonts (generated with fontconverter.js)
-import notoSansNormal from '../fonts/NotoSans-Regular-normal.js';
-import notoSansBold from '../fonts/NotoSans-Bold-bold.js';
-import notoSansItalic from '../fonts/NotoSans-Italic-italic.js';
-import notoSansBoldItalic from '../fonts/NotoSans-BoldItalic-bolditalic.js';
-
 export class PDFGenerator {
   private doc: jsPDF;
   private yPosition: number = 20;
@@ -17,19 +11,7 @@ export class PDFGenerator {
 
   constructor() {
     this.doc = new jsPDF();
-
-    // Register fonts
-    this.doc.addFileToVFS('NotoSans-Regular.ttf', notoSansNormal);
-    this.doc.addFont('NotoSans-Regular.ttf', 'NotoSans', 'normal');
-    this.doc.addFileToVFS('NotoSans-Bold.ttf', notoSansBold);
-    this.doc.addFont('NotoSans-Bold.ttf', 'NotoSans', 'bold');
-    this.doc.addFileToVFS('NotoSans-Italic.ttf', notoSansItalic);
-    this.doc.addFont('NotoSans-Italic.ttf', 'NotoSans', 'italic');
-    this.doc.addFileToVFS('NotoSans-BoldItalic.ttf', notoSansBoldItalic);
-    this.doc.addFont('NotoSans-BoldItalic.ttf', 'NotoSans', 'bolditalic');
-
-    // Default font
-    this.doc.setFont('NotoSans', 'normal');
+    this.doc.setFont('Times', 'normal');
     this.pageHeight = this.doc.internal.pageSize.height;
   }
 
@@ -72,10 +54,10 @@ export class PDFGenerator {
     this.doc.setFontSize(fontSize);
 
     if (isQuote) {
-      this.doc.setFont('NotoSans', 'italic');
+      this.doc.setFont('Times', 'italic');
       this.doc.setTextColor(60, 60, 60);
     } else {
-      this.doc.setFont('NotoSans', fontWeight);
+      this.doc.setFont('Times', fontWeight);
       this.doc.setTextColor(0, 0, 0);
     }
 
@@ -124,7 +106,7 @@ export class PDFGenerator {
   private addSpeakerUtterance(utterance: SpeakerUtterance, index: number): void {
     this.checkPageBreak(this.lineHeight * 3);
     this.doc.setFontSize(12);
-    this.doc.setFont('NotoSans', 'bold');
+    this.doc.setFont('Times', 'bold');
 
     if (utterance.speaker === 'Speaker 0') {
       this.doc.setTextColor(0, 64, 128);
@@ -139,7 +121,7 @@ export class PDFGenerator {
     this.yPosition += this.lineHeight + 2;
 
     this.doc.setTextColor(0, 0, 0);
-    this.doc.setFont('NotoSans', 'normal');
+    this.doc.setFont('Times', 'normal');
     this.doc.setFontSize(10);
 
     const maxWidth = this.doc.internal.pageSize.width - (this.margin * 2) - 10;
@@ -165,7 +147,7 @@ export class PDFGenerator {
     this.yPosition += 8;
 
     this.doc.setFontSize(16);
-    this.doc.setFont('NotoSans', 'bold');
+    this.doc.setFont('Times', 'bold');
     this.doc.setTextColor(0, 0, 0);
     this.doc.text(title, this.margin, this.yPosition);
     this.yPosition += 10;
@@ -215,7 +197,7 @@ export class PDFGenerator {
       evaluation.mistakes.forEach((mistake: any, index: number) => {
         this.checkPageBreak(30);
 
-        this.doc.setFont('NotoSans', 'bold');
+        this.doc.setFont('Times', 'bold');
         this.doc.setFontSize(11);
 
         switch (mistake.rule_category) {
@@ -236,7 +218,7 @@ export class PDFGenerator {
         this.yPosition += this.lineHeight + 2;
 
         this.doc.setTextColor(0, 0, 0);
-        this.doc.setFont('NotoSans', 'normal');
+        this.doc.setFont('Times', 'normal');
         this.doc.setFontSize(10);
 
         if (mistake.comment) {
@@ -274,7 +256,7 @@ export class PDFGenerator {
     this.yPosition = 20;
 
     this.doc.setFontSize(18);
-    this.doc.setFont('NotoSans', 'bold');
+    this.doc.setFont('Times', 'bold');
     this.doc.setTextColor(0, 0, 0);
     this.doc.text('Dialog Transcription & Analysis Report', this.margin, this.yPosition);
     this.yPosition += 15;
@@ -304,7 +286,7 @@ export class PDFGenerator {
     for (let i = 1; i <= pageCount; i++) {
       this.doc.setPage(i);
       this.doc.setFontSize(8);
-      this.doc.setFont('NotoSans', 'normal');
+      this.doc.setFont('Times', 'normal');
       this.doc.setTextColor(100, 100, 100);
 
       this.doc.text(
@@ -359,7 +341,7 @@ export class PDFGenerator {
     for (let i = 1; i <= pageCount; i++) {
       this.doc.setPage(i);
       this.doc.setFontSize(8);
-      this.doc.setFont('NotoSans', 'normal');
+      this.doc.setFont('Times', 'normal');
       this.doc.setTextColor(100, 100, 100);
       this.doc.text(
         `Page ${i} of ${pageCount}`,
