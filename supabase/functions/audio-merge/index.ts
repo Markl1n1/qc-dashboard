@@ -1,5 +1,6 @@
 // supabase/functions/audio-merge/index.ts
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+// (kept std version aligned with your stack so you can confirm you're on the new build)
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.56.0";
 
 const corsHeaders = {
@@ -9,8 +10,8 @@ const corsHeaders = {
 };
 
 type MergeFromStorageRequest = {
-  paths?: string[]; // preferred
-  files?: unknown;  // legacy (base64) – only detected for diagnostics
+  paths?: string[]; // new contract
+  files?: unknown;  // legacy (for diagnostics only)
   outputFormat?: "mp3" | "wav" | "m4a" | "ogg" | "flac";
   deleteSources?: boolean;
   namePrefix?: string;
@@ -45,17 +46,19 @@ function concatStreams(streams: ReadableStream<Uint8Array>[]): ReadableStream<Ui
   });
 }
 
-// Robust request body parsing that works with JSON, text (JSON-string), URL-encoded and multipart
+// Robust body parser that never throws on empty/invalid JSON
 async function parseBody(req: Request): Promise<{ body: MergeFromStorageRequest | null; contentType: string }> {
   const contentType = req.headers.get("content-type") || "";
-  const r1 = req.clone();
   try {
     if (contentType.includes("application/json")) {
-      const json = (await r1.json()) as MergeFromStorageRequest;
-      return { body: json, contentType };
+      // Avoid await req.json() throwing on empty body
+      const raw = await req.text();
+      if (!raw) return { body: null, contentType };
+      try { return { body: JSON.parse(raw), contentType }; }
+      catch { return { body: null, contentType }; }
     }
     if (contentType.includes("multipart/form-data")) {
-      const fd = await r1.formData();
+      const fd = await req.formData();
       const p = fd.get("paths");
       const of = fd.get("outputFormat");
       const ds = fd.get("deleteSources");
@@ -76,27 +79,23 @@ async function parseBody(req: Request): Promise<{ body: MergeFromStorageRequest 
         contentType,
       };
     }
-    // Try raw text -> JSON
-    const txt = await r1.text();
-    try {
-      const parsed = JSON.parse(txt) as MergeFromStorageRequest;
-      return { body: parsed, contentType };
-    } catch {
-      // Try URLSearchParams
-      const params = new URLSearchParams(txt);
-      const p = params.get("paths");
-      let paths: string[] | undefined;
-      if (p) { try { paths = JSON.parse(p); } catch {} }
-      return {
-        body: {
-          paths,
-          outputFormat: params.get("outputFormat") as any,
-          deleteSources: params.get("deleteSources") === "true",
-          namePrefix: params.get("namePrefix") ?? undefined,
-        },
-        contentType,
-      };
-    }
+    // Fallback: read as text, try JSON, then URL-encoded
+    const raw = await req.text();
+    if (!raw) return { body: null, contentType };
+    try { return { body: JSON.parse(raw), contentType }; } catch {}
+    const params = new URLSearchParams(raw);
+    const p = params.get("paths");
+    let paths: string[] | undefined;
+    if (p) { try { paths = JSON.parse(p); } catch {} }
+    return {
+      body: {
+        paths,
+        outputFormat: params.get("outputFormat") as any,
+        deleteSources: params.get("deleteSources") === "true",
+        namePrefix: params.get("namePrefix") ?? undefined,
+      },
+      contentType,
+    };
   } catch {
     return { body: null, contentType };
   }
@@ -113,21 +112,12 @@ serve(async (req) => {
   try {
     const { body, contentType } = await parseBody(req);
     console.log("[AudioMerge] Content-Type:", contentType);
-    console.log("[AudioMerge] Raw body parsed keys:", body ? Object.keys(body) : []);
-
-    if (!body) {
-      return new Response(JSON.stringify({ error: "Invalid or unreadable request body" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    console.log("[AudioMerge] Parsed keys:", body ? Object.keys(body) : []);
+    if (body?.files && !body.paths) {
+      console.warn("[AudioMerge] Received legacy 'files'. This endpoint expects 'paths' to Storage objects.");
     }
 
-    if (body.files && !body.paths) {
-      console.warn("[AudioMerge] Received legacy 'files' field. This endpoint expects 'paths' to Storage objects.");
-    }
-
-    const paths = Array.isArray(body.paths) ? body.paths : undefined;
-    const { outputFormat, deleteSources = true, namePrefix = "merged_audio" } = body;
-
+    const paths = Array.isArray(body?.paths) ? body!.paths : undefined;
     console.log("[AudioMerge] Resolved paths length:", paths?.length ?? 0);
     console.log("[AudioMerge] paths:", paths);
 
@@ -154,9 +144,9 @@ serve(async (req) => {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    if (outputFormat && outputFormat.toLowerCase() !== firstExt) {
+    if (body?.outputFormat && body.outputFormat.toLowerCase() !== firstExt) {
       return new Response(JSON.stringify({
-        error: `Wrong audio format: requested output '${outputFormat}' doesn't match inputs '${firstExt}'`,
+        error: `Wrong audio format: requested output '${body.outputFormat}' doesn't match inputs '${firstExt}'`,
       }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
@@ -196,7 +186,7 @@ serve(async (req) => {
     const mergedStream = concatStreams(sourceStreams);
 
     const ts = Date.now();
-    const destKey = `${namePrefix}_${ts}.${firstExt}`;
+    const destKey = `${body?.namePrefix ?? "merged_audio"}_${ts}.${firstExt}`;
     const contentTypeOut =
       firstExt === "mp3" ? "audio/mpeg" :
       firstExt === "wav" ? "audio/wav" :
@@ -220,7 +210,7 @@ serve(async (req) => {
       });
     }
 
-    if (body.deleteSources ?? true) {
+    if (body?.deleteSources ?? true) {
       const { error: delErr } = await supabase.storage.from(BUCKET).remove(paths);
       if (delErr) console.warn("[AudioMerge] Merged, but failed to delete some sources:", delErr);
       else console.log(`[AudioMerge] Deleted ${paths.length} source files`);
