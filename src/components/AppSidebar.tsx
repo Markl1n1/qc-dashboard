@@ -6,6 +6,7 @@ import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGrou
 import { useAuthStore } from '../store/authStore';
 import { useTheme } from '../hooks/useTheme';
 import { useUserRole } from '../hooks/useUserRole';
+import { useUserProfile } from '../hooks/useUserProfile';
 import { Button } from './ui/button';
 import VoiceQCLogo from './VoiceQCLogo';
 
@@ -38,6 +39,7 @@ export function AppSidebar() {
   const { logout } = useAuthStore();
   const { theme, setTheme } = useTheme();
   const { isAdmin } = useUserRole();
+  const { profile, isLoading: profileLoading } = useUserProfile();
   const [extendedMode, setExtendedMode] = useState(true);
   const currentPath = location.pathname;
   const collapsed = state === 'collapsed';
@@ -83,7 +85,9 @@ export function AppSidebar() {
       <SidebarContent className="bg-sidebar">
         <SidebarGroup>
           <SidebarGroupLabel className="text-sidebar-foreground font-medium">
-            {!collapsed && extendedMode ? 'Main Navigation' : ''}
+            {!collapsed && extendedMode ? (
+              profileLoading ? 'Loading...' : (profile?.name || 'Main Navigation')
+            ) : ''}
           </SidebarGroupLabel>
           
           <SidebarGroupContent>

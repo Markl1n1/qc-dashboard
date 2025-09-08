@@ -18,7 +18,7 @@ import AgentSelector from '../components/AgentSelector';
 import DraggableFileList from '../components/DraggableFileList';
 import MultiFileTranscriptionProgress from '../components/MultiFileTranscriptionProgress';
 import LanguageSelector from '../components/LanguageSelector';
-import { audioMergingService, MergingProgress } from '../services/audioMergingService';
+import { serverAudioMergingService, ServerMergingProgress } from '../services/serverAudioMergingService';
 import { generateFileName } from '../utils/hashGenerator';
 
 interface UploadProps {}
@@ -28,7 +28,7 @@ const Upload: React.FC<UploadProps> = () => {
   const [agentName, setAgentName] = useState<string>('');
   const [selectedLanguage, setSelectedLanguage] = useState<string>('en');
   const [isMerging, setIsMerging] = useState(false);
-  const [mergingProgress, setMergingProgress] = useState<MergingProgress | null>(null);
+  const [mergingProgress, setMergingProgress] = useState<ServerMergingProgress | null>(null);
   const navigate = useNavigate();
 
   const { user } = useAuthStore();
@@ -110,25 +110,19 @@ const Upload: React.FC<UploadProps> = () => {
 
       let fileToTranscribe: File;
 
-      // If multiple files, merge them first
+      // If multiple files, merge them first using server-side merging
       if (audioFiles.length > 1) {
-        console.log('Multiple files detected, merging...');
+        console.log('Multiple files detected, merging on server...');
         
-        // Check if merging is supported
-        const mergingInfo = audioMergingService.getMergingInfo();
-        if (!mergingInfo.supported) {
-          throw new Error(mergingInfo.reason || 'Audio merging not supported');
-        }
-
         setIsMerging(true);
         setMergingProgress(null);
 
         // Set up merging progress callback
-        audioMergingService.setProgressCallback((progress) => {
+        serverAudioMergingService.setProgressCallback((progress) => {
           setMergingProgress(progress);
         });
 
-        fileToTranscribe = await audioMergingService.mergeAudioFiles(audioFiles);
+        fileToTranscribe = await serverAudioMergingService.mergeAudioFiles(audioFiles);
         setIsMerging(false);
         console.log('Files merged successfully:', fileToTranscribe.name);
       } else {
@@ -255,15 +249,15 @@ const Upload: React.FC<UploadProps> = () => {
             onRemove={handleFileRemove}
           />
 
-          {/* Merging Capability Warning */}
-          {audioFiles.length > 1 && !audioMergingService.isMergingSupported() && (
-            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+          {/* Server-side merging info */}
+          {audioFiles.length > 1 && (
+            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <div className="flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5" />
+                <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5" />
                 <div className="text-sm">
-                  <p className="font-medium text-yellow-800">Audio merging not available</p>
-                  <p className="text-yellow-700">
-                    {audioMergingService.getMergingInfo().reason}
+                  <p className="font-medium text-blue-800">Server-side audio merging</p>
+                  <p className="text-blue-700">
+                    Multiple files will be merged on the server before transcription.
                   </p>
                 </div>
               </div>
