@@ -72,6 +72,7 @@ class ServerAudioMergingService {
     const uploadedPaths: string[] = [];
 
     try {
+      // Upload each file to Storage
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const progress = 5 + Math.floor((i / files.length) * 45);
@@ -101,7 +102,10 @@ class ServerAudioMergingService {
       };
       console.log("[ServerAudioMerging] Invoking audio-merge with body:", invokeBody);
 
-      const { data, error } = await supabase.functions.invoke("audio-merge", { body: invokeBody });
+      const { data, error } = await supabase.functions.invoke("audio-merge", {
+        body: invokeBody,
+        headers: { "Content-Type": "application/json" }, // be explicit
+      });
 
       if (error) throw new Error(`Server merge failed: ${error.message}`);
       if (!data?.success) throw new Error(data?.error || "Unknown server error");

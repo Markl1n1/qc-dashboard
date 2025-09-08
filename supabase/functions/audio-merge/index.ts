@@ -1,3 +1,4 @@
+// supabase/functions/audio-merge/index.ts
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.56.0";
 
@@ -8,10 +9,8 @@ const corsHeaders = {
 };
 
 type MergeFromStorageRequest = {
-  // preferred: array of storage paths
-  paths?: string[];
-  // legacy: array of base64 files (we won't support merging those here, but we’ll detect presence)
-  files?: unknown;
+  paths?: string[]; // preferred
+  files?: unknown;  // legacy (base64) – only detected for diagnostics
   outputFormat?: "mp3" | "wav" | "m4a" | "ogg" | "flac";
   deleteSources?: boolean;
   namePrefix?: string;
@@ -46,6 +45,63 @@ function concatStreams(streams: ReadableStream<Uint8Array>[]): ReadableStream<Ui
   });
 }
 
+// Robust request body parsing that works with JSON, text (JSON-string), URL-encoded and multipart
+async function parseBody(req: Request): Promise<{ body: MergeFromStorageRequest | null; contentType: string }> {
+  const contentType = req.headers.get("content-type") || "";
+  const r1 = req.clone();
+  try {
+    if (contentType.includes("application/json")) {
+      const json = (await r1.json()) as MergeFromStorageRequest;
+      return { body: json, contentType };
+    }
+    if (contentType.includes("multipart/form-data")) {
+      const fd = await r1.formData();
+      const p = fd.get("paths");
+      const of = fd.get("outputFormat");
+      const ds = fd.get("deleteSources");
+      const np = fd.get("namePrefix");
+      let paths: string[] | undefined;
+      if (typeof p === "string") {
+        try { paths = JSON.parse(p); } catch {}
+      } else if (p && "text" in p) {
+        try { paths = JSON.parse(await (p as File).text()); } catch {}
+      }
+      return {
+        body: {
+          paths,
+          outputFormat: typeof of === "string" ? (of as any) : undefined,
+          deleteSources: typeof ds === "string" ? ds === "true" : undefined,
+          namePrefix: typeof np === "string" ? np : undefined,
+        },
+        contentType,
+      };
+    }
+    // Try raw text -> JSON
+    const txt = await r1.text();
+    try {
+      const parsed = JSON.parse(txt) as MergeFromStorageRequest;
+      return { body: parsed, contentType };
+    } catch {
+      // Try URLSearchParams
+      const params = new URLSearchParams(txt);
+      const p = params.get("paths");
+      let paths: string[] | undefined;
+      if (p) { try { paths = JSON.parse(p); } catch {} }
+      return {
+        body: {
+          paths,
+          outputFormat: params.get("outputFormat") as any,
+          deleteSources: params.get("deleteSources") === "true",
+          namePrefix: params.get("namePrefix") ?? undefined,
+        },
+        contentType,
+      };
+    }
+  } catch {
+    return { body: null, contentType };
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") {
@@ -55,29 +111,26 @@ serve(async (req) => {
   }
 
   try {
-    // ---- parse & log body (super helpful for mismatches) ----
-    let body: MergeFromStorageRequest | undefined;
-    try {
-      body = await req.json();
-    } catch (e) {
-      console.error("[AudioMerge] Failed to parse JSON body:", e);
-      return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+    const { body, contentType } = await parseBody(req);
+    console.log("[AudioMerge] Content-Type:", contentType);
+    console.log("[AudioMerge] Raw body parsed keys:", body ? Object.keys(body) : []);
+
+    if (!body) {
+      return new Response(JSON.stringify({ error: "Invalid or unreadable request body" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    console.log("[AudioMerge] Incoming body:", JSON.stringify(body));
 
-    // Prefer new contract: paths[]
-    let paths: string[] | undefined = Array.isArray(body?.paths) ? body!.paths : undefined;
-
-    // If someone accidentally sends {files: [...]}, make that obvious in logs.
-    if (!paths && body?.files) {
-      console.warn("[AudioMerge] Received 'files' field (legacy). This function expects 'paths' to Storage objects.");
+    if (body.files && !body.paths) {
+      console.warn("[AudioMerge] Received legacy 'files' field. This endpoint expects 'paths' to Storage objects.");
     }
 
-    const { outputFormat, deleteSources = true, namePrefix = "merged_audio" } = body ?? {};
+    const paths = Array.isArray(body.paths) ? body.paths : undefined;
+    const { outputFormat, deleteSources = true, namePrefix = "merged_audio" } = body;
 
-    // ---- item count validation ----
+    console.log("[AudioMerge] Resolved paths length:", paths?.length ?? 0);
+    console.log("[AudioMerge] paths:", paths);
+
     if (!Array.isArray(paths) || paths.length < 2) {
       return new Response(JSON.stringify({ error: "At least 2 files required for merging" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -89,7 +142,6 @@ serve(async (req) => {
       });
     }
 
-    // ---- format validation (same extension) ----
     const extensions = paths.map(ext);
     const firstExt = extensions[0];
     if (!firstExt) {
@@ -103,25 +155,23 @@ serve(async (req) => {
       });
     }
     if (outputFormat && outputFormat.toLowerCase() !== firstExt) {
-      return new Response(
-        JSON.stringify({ error: `Wrong audio format: requested output '${outputFormat}' doesn't match inputs '${firstExt}'` }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({
+        error: `Wrong audio format: requested output '${outputFormat}' doesn't match inputs '${firstExt}'`,
+      }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const allowed = new Set(["mp3", "wav", "ogg", "m4a", "flac"]);
     if (!allowed.has(firstExt)) {
-      return new Response(
-        JSON.stringify({ error: `Unsupported format '${firstExt}'. Only identical containers/codecs are concatenated.` }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({
+        error: `Unsupported format '${firstExt}'. Only identical containers/codecs are concatenated.`,
+      }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log(`[AudioMerge] Streaming merge of ${paths.length} *.${firstExt} files`, paths);
+    console.log(`[AudioMerge] Streaming merge of ${paths.length} *.${firstExt} files`);
 
     const sourceStreams: ReadableStream<Uint8Array>[] = [];
     let totalBytes = 0;
@@ -147,7 +197,7 @@ serve(async (req) => {
 
     const ts = Date.now();
     const destKey = `${namePrefix}_${ts}.${firstExt}`;
-    const contentType =
+    const contentTypeOut =
       firstExt === "mp3" ? "audio/mpeg" :
       firstExt === "wav" ? "audio/wav" :
       firstExt === "ogg" ? "audio/ogg" :
@@ -159,7 +209,7 @@ serve(async (req) => {
     const { data: uploadRes, error: uploadErr } = await supabase.storage
       .from(BUCKET)
       .upload(destKey, mergedStream as unknown as ReadableStream, {
-        contentType,
+        contentType: contentTypeOut,
         upsert: false,
       });
 
@@ -170,7 +220,7 @@ serve(async (req) => {
       });
     }
 
-    if (deleteSources) {
+    if (body.deleteSources ?? true) {
       const { error: delErr } = await supabase.storage.from(BUCKET).remove(paths);
       if (delErr) console.warn("[AudioMerge] Merged, but failed to delete some sources:", delErr);
       else console.log(`[AudioMerge] Deleted ${paths.length} source files`);
@@ -185,7 +235,7 @@ serve(async (req) => {
         bucket: BUCKET,
         path: destKey,
         url: publicUrl,
-        contentType,
+        contentType: contentTypeOut,
         size: totalBytes,
         format: firstExt,
       },
