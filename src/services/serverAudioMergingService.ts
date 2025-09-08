@@ -72,7 +72,7 @@ class ServerAudioMergingService {
     const uploadedPaths: string[] = [];
 
     try {
-      // 1) Upload to Storage
+      // Upload each file to Storage
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const progress = 5 + Math.floor((i / files.length) * 45);
@@ -94,7 +94,6 @@ class ServerAudioMergingService {
 
       this.updateProgress("merging", 60, "Requesting server-side merge...");
 
-      // 2) Invoke Edge Function with JSON and explicit header
       const invokeBody = {
         paths: uploadedPaths,
         outputFormat,
@@ -113,15 +112,14 @@ class ServerAudioMergingService {
 
       this.updateProgress("merging", 85, "Downloading merged file...");
 
-      // 3) Download the merged file
       const mergedUrl: string | null = data.mergedFile?.url ?? null;
       const contentType: string = data.mergedFile?.contentType || this.getContentTypeByExt(firstExt);
       if (!mergedUrl) throw new Error("Merged file URL missing");
 
       const res = await fetch(mergedUrl);
       if (!res.ok) throw new Error(`Failed to download merged file: HTTP ${res.status}`);
-
       const blob = await res.blob();
+
       this.updateProgress("merging", 95, "Finalizing merged file...");
 
       const mergedName = data.mergedFile?.path?.split("/").pop() || `merged_${mergeId}.${firstExt}`;
@@ -138,13 +136,10 @@ class ServerAudioMergingService {
       return mergedFile;
     } catch (err) {
       console.error("[ServerAudioMerging] Merge failed:", err);
-
-      // Best-effort cleanup if merge fails
       if (uploadedPaths.length > 0) {
         try { await supabase.storage.from(bucket).remove(uploadedPaths); }
         catch (cleanupErr) { console.warn("[ServerAudioMerging] Cleanup failed:", cleanupErr); }
       }
-
       this.updateProgress("error", 0, err instanceof Error ? err.message : "Audio merge failed");
       throw new Error(`Failed to merge audio files: ${err instanceof Error ? err.message : "Unknown error"}`);
     }

@@ -1,17 +1,19 @@
 // supabase/functions/audio-merge/index.ts
-// (kept std version aligned with your stack so you can confirm you're on the new build)
+// Keep std at 0.168.0 (matches your runtime); add explicit version + health GET.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.56.0";
+
+const VERSION = "audio-merge/streaming-2025-09-08-01";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
 type MergeFromStorageRequest = {
-  paths?: string[]; // new contract
-  files?: unknown;  // legacy (for diagnostics only)
+  paths?: string[];
+  files?: unknown;  // legacy field (diagnostics only)
   outputFormat?: "mp3" | "wav" | "m4a" | "ogg" | "flac";
   deleteSources?: boolean;
   namePrefix?: string;
@@ -46,29 +48,33 @@ function concatStreams(streams: ReadableStream<Uint8Array>[]): ReadableStream<Ui
   });
 }
 
-// Robust body parser that never throws on empty/invalid JSON
-async function parseBody(req: Request): Promise<{ body: MergeFromStorageRequest | null; contentType: string }> {
+// Never-throw body parser with raw echoing (for diagnostics).
+async function parseBody(req: Request): Promise<{ body: MergeFromStorageRequest | null; contentType: string; rawLen: number }> {
   const contentType = req.headers.get("content-type") || "";
-  try {
-    if (contentType.includes("application/json")) {
-      // Avoid await req.json() throwing on empty body
-      const raw = await req.text();
-      if (!raw) return { body: null, contentType };
-      try { return { body: JSON.parse(raw), contentType }; }
-      catch { return { body: null, contentType }; }
-    }
-    if (contentType.includes("multipart/form-data")) {
-      const fd = await req.formData();
+  // Read the body once as text to avoid "already read" errors.
+  let raw = "";
+  try { raw = await req.text(); } catch {}
+  const rawLen = raw.length;
+
+  // application/json → parse JSON
+  if (contentType.includes("application/json")) {
+    try { return { body: raw ? JSON.parse(raw) : null, contentType, rawLen }; }
+    catch { return { body: null, contentType, rawLen }; }
+  }
+
+  // multipart/form-data → req.formData() needs the original request, not the raw text we just consumed.
+  // Workaround: if content-type says multipart but raw is empty (as it will be), try formData() on a clone.
+  if (contentType.includes("multipart/form-data")) {
+    try {
+      const fd = await (new Request(req.url, { method: req.method, headers: req.headers, body: (await req.blob?.()) as any })).formData();
       const p = fd.get("paths");
       const of = fd.get("outputFormat");
       const ds = fd.get("deleteSources");
       const np = fd.get("namePrefix");
       let paths: string[] | undefined;
-      if (typeof p === "string") {
-        try { paths = JSON.parse(p); } catch {}
-      } else if (p && "text" in p) {
-        try { paths = JSON.parse(await (p as File).text()); } catch {}
-      }
+      if (typeof p === "string") { try { paths = JSON.parse(p); } catch {} }
+      // @ts-ignore deno types for File
+      else if (p && "text" in p) { try { paths = JSON.parse(await (p as File).text()); } catch {} }
       return {
         body: {
           paths,
@@ -77,12 +83,16 @@ async function parseBody(req: Request): Promise<{ body: MergeFromStorageRequest 
           namePrefix: typeof np === "string" ? np : undefined,
         },
         contentType,
+        rawLen,
       };
+    } catch {
+      return { body: null, contentType, rawLen };
     }
-    // Fallback: read as text, try JSON, then URL-encoded
-    const raw = await req.text();
-    if (!raw) return { body: null, contentType };
-    try { return { body: JSON.parse(raw), contentType }; } catch {}
+  }
+
+  // Fallback: try JSON first, then URL-encoded params
+  try { return { body: raw ? JSON.parse(raw) : null, contentType, rawLen }; } catch {}
+  try {
     const params = new URLSearchParams(raw);
     const p = params.get("paths");
     let paths: string[] | undefined;
@@ -95,58 +105,74 @@ async function parseBody(req: Request): Promise<{ body: MergeFromStorageRequest 
         namePrefix: params.get("namePrefix") ?? undefined,
       },
       contentType,
+      rawLen,
     };
   } catch {
-    return { body: null, contentType };
+    return { body: null, contentType, rawLen };
   }
 }
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  // Health check / version probe
+  if (req.method === "GET") {
+    console.error(`[AudioMerge] HEALTHCHECK ${VERSION}`); // error-level so it shows on "Highest"
+    return new Response(JSON.stringify({ ok: true, version: VERSION }), {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+    return new Response(JSON.stringify({ error: "Method not allowed", version: VERSION }), {
       status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
   try {
-    const { body, contentType } = await parseBody(req);
-    console.log("[AudioMerge] Content-Type:", contentType);
-    console.log("[AudioMerge] Parsed keys:", body ? Object.keys(body) : []);
+    const { body, contentType, rawLen } = await parseBody(req);
+    console.error(`[AudioMerge] INVOKE ${VERSION} ct=${contentType} rawLen=${rawLen}`);
+    console.error("[AudioMerge] Parsed keys:", body ? Object.keys(body) : []);
+
     if (body?.files && !body.paths) {
-      console.warn("[AudioMerge] Received legacy 'files'. This endpoint expects 'paths' to Storage objects.");
+      console.error("[AudioMerge] Received legacy 'files'. This endpoint expects 'paths' to Storage objects.");
     }
 
     const paths = Array.isArray(body?.paths) ? body!.paths : undefined;
-    console.log("[AudioMerge] Resolved paths length:", paths?.length ?? 0);
-    console.log("[AudioMerge] paths:", paths);
-
+    console.error("[AudioMerge] Resolved paths length:", paths?.length ?? 0);
     if (!Array.isArray(paths) || paths.length < 2) {
-      return new Response(JSON.stringify({ error: "At least 2 files required for merging" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          error: "At least 2 files required for merging",
+          version: VERSION,
+          debug: { contentType, rawLen, parsedKeys: body ? Object.keys(body) : [] },
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
     if (paths.length > MAX_FILES) {
-      return new Response(JSON.stringify({ error: `Too many files (max ${MAX_FILES})` }), {
+      return new Response(JSON.stringify({ error: `Too many files (max ${MAX_FILES})`, version: VERSION }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    // Format checks
     const extensions = paths.map(ext);
     const firstExt = extensions[0];
     if (!firstExt) {
-      return new Response(JSON.stringify({ error: "Unable to detect audio format" }), {
+      return new Response(JSON.stringify({ error: "Unable to detect audio format", version: VERSION }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     if (!extensions.every((e) => e === firstExt)) {
-      return new Response(JSON.stringify({ error: "Wrong audio format: all inputs must share the same extension/codec" }), {
+      return new Response(JSON.stringify({ error: "Wrong audio format: all inputs must share the same extension/codec", version: VERSION }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     if (body?.outputFormat && body.outputFormat.toLowerCase() !== firstExt) {
       return new Response(JSON.stringify({
         error: `Wrong audio format: requested output '${body.outputFormat}' doesn't match inputs '${firstExt}'`,
+        version: VERSION,
       }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
@@ -154,6 +180,7 @@ serve(async (req) => {
     if (!allowed.has(firstExt)) {
       return new Response(JSON.stringify({
         error: `Unsupported format '${firstExt}'. Only identical containers/codecs are concatenated.`,
+        version: VERSION,
       }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
@@ -161,8 +188,9 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log(`[AudioMerge] Streaming merge of ${paths.length} *.${firstExt} files`);
+    console.error(`[AudioMerge] START stream merge (${paths.length} *.${firstExt})`);
 
+    // Stream sources
     const sourceStreams: ReadableStream<Uint8Array>[] = [];
     let totalBytes = 0;
 
@@ -170,7 +198,7 @@ serve(async (req) => {
       const { data, error } = await supabase.storage.from(BUCKET).download(p);
       if (error || !data) {
         console.error(`[AudioMerge] Failed to open ${p}:`, error);
-        return new Response(JSON.stringify({ error: `Failed to read: ${p}` }), {
+        return new Response(JSON.stringify({ error: `Failed to read: ${p}`, version: VERSION }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
@@ -178,6 +206,7 @@ serve(async (req) => {
       if (totalBytes > MAX_TOTAL_BYTES) {
         return new Response(JSON.stringify({
           error: `Total size too large (${(totalBytes / (1024 * 1024)).toFixed(1)} MB). Max ${(MAX_TOTAL_BYTES / (1024 * 1024)).toFixed(0)} MB.`,
+          version: VERSION,
         }), { status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
       sourceStreams.push(data.stream());
@@ -194,7 +223,7 @@ serve(async (req) => {
       firstExt === "m4a" ? "audio/mp4" :
       firstExt === "flac" ? "audio/flac" : `audio/${firstExt}`;
 
-    console.log(`[AudioMerge] Uploading merged stream -> ${BUCKET}/${destKey}`);
+    console.error(`[AudioMerge] UPLOAD -> ${BUCKET}/${destKey}`);
 
     const { data: uploadRes, error: uploadErr } = await supabase.storage
       .from(BUCKET)
@@ -205,15 +234,15 @@ serve(async (req) => {
 
     if (uploadErr || !uploadRes) {
       console.error("[AudioMerge] Upload failed:", uploadErr);
-      return new Response(JSON.stringify({ error: "Failed to upload merged file" }), {
+      return new Response(JSON.stringify({ error: "Failed to upload merged file", version: VERSION }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     if (body?.deleteSources ?? true) {
       const { error: delErr } = await supabase.storage.from(BUCKET).remove(paths);
-      if (delErr) console.warn("[AudioMerge] Merged, but failed to delete some sources:", delErr);
-      else console.log(`[AudioMerge] Deleted ${paths.length} source files`);
+      if (delErr) console.error("[AudioMerge] Source delete failed:", delErr);
+      else console.error(`[AudioMerge] Deleted ${paths.length} sources`);
     }
 
     const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(destKey);
@@ -221,6 +250,7 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({
       success: true,
+      version: VERSION,
       mergedFile: {
         bucket: BUCKET,
         path: destKey,
@@ -232,9 +262,10 @@ serve(async (req) => {
     }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (err) {
-    console.error("[AudioMerge] Error:", err);
+    console.error("[AudioMerge] FATAL:", err);
     return new Response(JSON.stringify({
       error: "Audio merge failed",
+      version: VERSION,
       details: err instanceof Error ? err.message : "Unknown error",
     }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
