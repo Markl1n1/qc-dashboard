@@ -631,7 +631,7 @@ class DatabaseService {
       }
     }
     
-    return currentSpeaker; // Return original if no mapping found
+    return currentSpeaker;
   }
 
   applySpeakerNames(utterances: SpeakerUtterance[], speakersData: any[]): SpeakerUtterance[] {

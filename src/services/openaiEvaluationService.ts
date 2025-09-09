@@ -166,7 +166,6 @@ class OpenAIEvaluationService {
 
           if (mistake.comment) {
             if (typeof mistake.comment === 'object') {
-              // New format with original/russian
               comment_original = mistake.comment.original || null;
               comment_russian = mistake.comment.russian || null;
             } else {

@@ -62,8 +62,6 @@ async function parseBody(req: Request): Promise<{ body: MergeFromStorageRequest 
     catch { return { body: null, contentType, rawLen }; }
   }
 
-  // multipart/form-data → req.formData() needs the original request, not the raw text we just consumed.
-  // Workaround: if content-type says multipart but raw is empty (as it will be), try formData() on a clone.
   if (contentType.includes("multipart/form-data")) {
     try {
       const fd = await (new Request(req.url, { method: req.method, headers: req.headers, body: (await req.blob?.()) as any })).formData();

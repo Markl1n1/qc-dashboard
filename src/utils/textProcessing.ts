@@ -1,7 +1,7 @@
 
 export const extractTextSnippet = (utterances: any[], position: number, searchText: string): string => {
   if (!utterances || position < 0 || position >= utterances.length) {
-    return searchText; // fallback to original text
+    return searchText;
   }
   
   const utterance = utterances[position];
