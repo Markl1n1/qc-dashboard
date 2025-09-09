@@ -3,6 +3,7 @@ import { DeepgramOptions, DeepgramTranscriptionResult, DeepgramProgress } from '
 import { SpeakerUtterance, UnifiedTranscriptionProgress } from '../types';
 import { supabase } from '../integrations/supabase/client';
 import { logger } from './loggingService';
+import { sanitizeFilename } from '../utils/filenameSanitizer';
 
 class DeepgramService {
   private progressCallback: ((progress: UnifiedTranscriptionProgress) => void) | null = null;
@@ -32,7 +33,7 @@ class DeepgramService {
         this.updateProgress('uploading', 10, 'Uploading large file to storage...');
         
         // Upload large file to Supabase storage
-        const fileName = `audio_${Date.now()}_${audioFile.name}`;
+        const fileName = `audio_${Date.now()}_${sanitizeFilename(audioFile.name)}`;
         const { error: uploadError } = await supabase.storage
           .from('audio-files')
           .upload(fileName, audioFile);
