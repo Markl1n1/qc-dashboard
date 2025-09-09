@@ -146,25 +146,29 @@ export const useAuthStore = create<AuthStore>()(
 
       verifyPasscode: async (passcode: string) => {
         try {
-          const { data, error } = await supabase
-            .from('system_config')
-            .select('value')
-            .eq('key', 'signup_passcode')
-            .single();
+          console.log('Security Event: Passcode verification request initiated');
+          
+          // Use secure edge function for passcode verification
+          const { data, error } = await supabase.functions.invoke('verify-passcode', {
+            body: JSON.stringify({ passcode }),
+            headers: { 'Content-Type': 'application/json' }
+          });
 
           if (error) {
-            console.error('Security Event: Error fetching passcode for verification:', error.message);
+            console.error('Security Event: Error calling passcode verification function:', error.message);
             return false;
           }
 
           if (!data) {
-            console.error('Security Event: No passcode found in system config');
+            console.error('Security Event: No response from passcode verification function');
             return false;
           }
 
-          const isValid = data.value === passcode;
+          const isValid = data.valid === true;
           if (!isValid) {
             console.log('Security Event: Invalid passcode verification attempt');
+          } else {
+            console.log('Security Event: Successful passcode verification');
           }
 
           return isValid;

@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { createSafeFilenameWithMetadata } from "@/utils/filenameSanitizer";
 
 export interface ServerMergingProgress {
   stage: "uploading" | "merging" | "complete" | "error";
@@ -78,7 +79,12 @@ class ServerAudioMergingService {
         const progress = 5 + Math.floor((i / files.length) * 45);
         this.updateProgress("uploading", progress, "Uploading to storage...", file.name);
 
-        const path = `${basePath}/${file.name}`;
+        // Create safe filename for storage
+        const { filename: safeFilename, metadata } = createSafeFilenameWithMetadata(file.name);
+        const path = `${basePath}/${safeFilename}`;
+        
+        console.log(`[ServerAudioMerging] Sanitizing filename: "${file.name}" -> "${safeFilename}"`);
+        
         const { data, error } = await supabase.storage
           .from(bucket)
           .upload(path, file, {
@@ -103,8 +109,11 @@ class ServerAudioMergingService {
       console.log("[ServerAudioMerging] Invoking audio-merge with body:", invokeBody);
 
       const { data, error } = await supabase.functions.invoke("audio-merge", {
-        body: invokeBody,
-        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(invokeBody),
+        headers: { 
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
       });
 
       if (error) throw new Error(`Server merge failed: ${error.message}`);
