@@ -51,7 +51,6 @@ serve(async (req) => {
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-  // Для возможности удалить файл даже при ошибке — сохраним тело запроса в строку
   let raw = "";
   try { raw = await req.text(); } catch {}
   let payload: DeepgramRequest | null = null;
