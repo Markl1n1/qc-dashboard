@@ -8,6 +8,38 @@ export interface ServerMergingProgress {
   currentFile?: string;
 }
 
+/** Robustly extracts a string filename from createSafeFilenameWithMetadata result */
+function resolveSafeFilename(baseName: string, extraMeta: Record<string, any>): string {
+  try {
+    const res: any = createSafeFilenameWithMetadata(baseName, extraMeta);
+    if (typeof res === "string") return sanitize(res);
+    if (res && typeof res === "object") {
+      const candidate =
+        res.sanitized ??
+        res.filename ??
+        res.fileName ??
+        res.name ??
+        res.safeName ??
+        res.safeFilename ??
+        null;
+      if (typeof candidate === "string") return sanitize(candidate);
+    }
+    // fallback to sanitized baseName
+    return sanitize(baseName);
+  } catch {
+    return sanitize(baseName);
+  }
+
+  function sanitize(name: string): string {
+    // убираем слеши/управляющие и приводим к безопасному виду
+    return name
+      .replace(/[/\\]/g, "_")
+      .replace(/\s+/g, "_")
+      .replace(/[^\w.\-()]/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_+|_+$/g, "");
+  }
+}
 
 // Lightweight retry helper with exponential backoff + jitter
 async function withRetry<T>(fn: () => Promise<T>, attempts = 3, baseMs = 300): Promise<T> {
@@ -119,8 +151,8 @@ class ServerAudioMergingService {
         const progress = 5 + Math.floor((i / files.length) * 45);
         this.updateProgress("uploading", progress, "Uploading to storage...", file.name);
 
-        // Sanitize filename (optional metadata embed for traceability)
-        const safeFilename = createSafeFilenameWithMetadata(file.name, {
+        // Produce a SAFE filename string no matter what the sanitizer returns
+        const safeFilename = resolveSafeFilename(file.name, {
           mergeId,
           index: i,
           total: files.length
@@ -128,7 +160,7 @@ class ServerAudioMergingService {
 
         const path = `${basePath}/${safeFilename}`;
 
-        // (optional) metadata object only for logs
+        // (optional) metadata only for logs
         const uploadMeta = {
           original: file.name,
           sanitized: safeFilename,
@@ -177,7 +209,9 @@ class ServerAudioMergingService {
         totalSize: files.reduce((sum, f) => sum + f.size, 0)
       });
 
-      const { data, error } = await withRetry(() => supabase.functions.invoke("audio-merge", { body: invokeBody }));
+      const { data, error } = await withRetry(() =>
+        supabase.functions.invoke("audio-merge", { body: invokeBody })
+      );
 
       console.log("📋 Edge function response:", { 
         data: data ? { 
