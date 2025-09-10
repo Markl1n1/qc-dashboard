@@ -48,7 +48,7 @@ export function useEvaluateDialog() {
       }
       
       // Navigate to the Analysis Results tab
-      navigate(`/dialogs/${dialogId}?tab=results`);
+      navigate(`/dialogs/${dialogId}`);
       
       toast.success('AI analysis completed successfully!');
     },
