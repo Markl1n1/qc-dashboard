@@ -127,13 +127,17 @@ class ServerAudioMergingService {
         });
 
         const path = `${basePath}/${safeFilename}`;
-        const metadata = {
+
+        // (optional) metadata object only for logs
+        const uploadMeta = {
           original: file.name,
           sanitized: safeFilename,
           path,
-          metadata,
           fileSize: file.size,
-          fileType: file.type
+          fileType: file.type,
+          index: i,
+          total: files.length,
+          mergeId
         };
         
         const { data, error } = await supabase.storage
@@ -148,12 +152,13 @@ class ServerAudioMergingService {
             fileName: file.name,
             path,
             error: error?.message,
-            details: error
+            details: error,
+            meta: uploadMeta
           });
           throw new Error(`Upload failed for ${file.name}: ${error?.message ?? "Unknown error"}`);
         }
 
-        console.log('✅ Upload successful:', { path, data });
+        console.log('✅ Upload successful:', { path, data, ...uploadMeta });
         uploadedPaths.push(path);
       }
 
