@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Navigate } from 'react-router-dom';
+import { useParams, Navigate, useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
@@ -8,35 +8,34 @@ import { ArrowLeft, Play, Users, BarChart3, Loader2, CheckCircle, AlertCircle, F
 import { Link } from 'react-router-dom';
 import { Dialog } from '../types';
 import { useDatabaseDialogs } from '../hooks/useDatabaseDialogs';
+import { useEvaluateDialog } from '../hooks/useEvaluateDialog';
+import { useAnalysisResults } from '../hooks/useAnalysisResults';
 import { toast } from 'sonner';
 import { extractUsernameFromEmail, capitalizeStatus } from '../utils/userUtils';
 import DeepgramSpeakerDialog from '../components/DeepgramSpeakerDialog';
 import EnhancedSpeakerDialog from '../components/EnhancedSpeakerDialog';
 import EnhancedDialogDetail from '../components/EnhancedDialogDetail';
 import AnalysisSummaryCards from '../components/AnalysisSummaryCards';
-import { openaiEvaluationService } from '../services/openaiEvaluationService';
 import { OpenAIEvaluationProgress } from '../types/openaiEvaluation';
 import { supabase } from '../integrations/supabase/client';
 import { generateDialogPDF } from '../utils/pdfGenerator';
 import { useLanguageStore } from '../store/languageStore';
 
 const DialogDetail = () => {
-  const {
-    id
-  } = useParams<{
-    id: string;
-  }>();
+  const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
-  const [analysisProgress, setAnalysisProgress] = useState<OpenAIEvaluationProgress | null>(null);
-  const [currentTab, setCurrentTab] = useState('transcription');
+  const [currentTab, setCurrentTab] = useState(() => {
+    // Initialize tab from URL params or default to transcription
+    return searchParams.get('tab') || 'transcription';
+  });
   const [highlightedUtterance, setHighlightedUtterance] = useState<string | null>(null);
-  const {
-    getDialog,
-    updateDialog
-  } = useDatabaseDialogs();
+  
+  const { getDialog } = useDatabaseDialogs();
+  const evaluateDialogMutation = useEvaluateDialog();
+  const { data: analysisData, isLoading: isAnalysisLoading, isFetching: isAnalysisFetching } = useAnalysisResults(id || '');
   useEffect(() => {
     if (id) {
       loadDialog(id);
@@ -161,81 +160,13 @@ const DialogDetail = () => {
       toast.error('No transcription available for analysis');
       return;
     }
-    setIsAnalyzing(true);
-    setAnalysisProgress({
-      stage: 'analyzing',
-      progress: 10,
-      message: 'Starting AI analysis...'
+
+    // Use the new TanStack Query mutation
+    evaluateDialogMutation.mutate({
+      dialogId: dialog.id,
+      utterances: dialog.speakerTranscription,
+      modelId: 'gpt-5-mini'
     });
-    try {
-      console.log('Starting AI analysis for dialog:', dialog.id);
-
-      // Call the background edge function
-      const {
-        data,
-        error
-      } = await supabase.functions.invoke('openai-evaluate-background', {
-        body: {
-          dialogId: dialog.id,
-          utterances: dialog.speakerTranscription,
-          modelId: 'gpt-5-mini'
-        }
-      });
-      if (error) {
-        throw new Error(`AI analysis failed: ${error.message}`);
-      }
-      if (!data?.success) {
-        throw new Error(data?.error || 'AI analysis failed');
-      }
-      setAnalysisProgress({
-        stage: 'complete',
-        progress: 100,
-        message: 'Analysis completed successfully!'
-      });
-      toast.success('AI analysis completed successfully!');
-
-      // Enhanced reload with multiple attempts to ensure analysis data is visible
-      const reloadWithRetry = async (attempt = 1, maxAttempts = 3) => {
-        try {
-          console.log(`🔄 Reloading dialog after analysis completion, attempt ${attempt}/${maxAttempts}`);
-          await loadDialog(dialog.id);
-          
-          // Check if analysis data is now available
-          const reloadedDialog = await getDialog(dialog.id);
-          if (reloadedDialog?.openaiEvaluation) {
-            console.log('✅ Analysis data confirmed after reload');
-            setDialog(reloadedDialog);
-            setCurrentTab('results');
-            return;
-          }
-          
-          if (attempt < maxAttempts) {
-            setTimeout(() => reloadWithRetry(attempt + 1, maxAttempts), 1500);
-          } else {
-            console.warn('⚠️ Analysis data not immediately visible, but tab will switch');
-            setCurrentTab('results');
-          }
-        } catch (error) {
-          console.error(`❌ Error reloading dialog on attempt ${attempt}:`, error);
-          if (attempt < maxAttempts) {
-            setTimeout(() => reloadWithRetry(attempt + 1, maxAttempts), 2000);
-          }
-        }
-      };
-      
-      await reloadWithRetry();
-    } catch (error) {
-      console.error('Error starting analysis:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      toast.error(`Analysis failed: ${errorMessage}`);
-      setAnalysisProgress({
-        stage: 'error',
-        progress: 0,
-        message: `Analysis failed: ${errorMessage}`
-      });
-    } finally {
-      setIsAnalyzing(false);
-    }
   };
   const { commentLanguage } = useLanguageStore();
   
@@ -266,29 +197,19 @@ const DialogDetail = () => {
     }
   };
   const renderProgressIndicator = () => {
-    if (!analysisProgress) return null;
-    const getStageIcon = () => {
-      switch (analysisProgress.stage) {
-        case 'complete':
-          return <CheckCircle className="h-4 w-4 text-green-500" />;
-        case 'error':
-          return <AlertCircle className="h-4 w-4 text-red-500" />;
-        default:
-          return <Loader2 className="h-4 w-4 animate-spin text-blue-500" />;
-      }
-    };
-    return <div className="mt-4 p-4 border rounded-lg">
+    if (!evaluateDialogMutation.isPending) return null;
+    
+    return (
+      <div className="mt-4 p-4 border rounded-lg">
         <div className="flex items-center gap-2 mb-2">
-          {getStageIcon()}
-          <span className="font-medium">{analysisProgress.message}</span>
+          <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+          <span className="font-medium">Starting AI analysis...</span>
         </div>
-        {analysisProgress.progress > 0 && <div className="w-full bg-gray-200 rounded-full h-2">
-            <div className="bg-blue-600 h-2 rounded-full transition-all duration-300" style={{
-          width: `${analysisProgress.progress}%`
-        }} />
-          </div>}
-        {analysisProgress.currentStep && <p className="text-sm text-muted-foreground mt-2">{String(analysisProgress.currentStep)}</p>}
-      </div>;
+        <div className="w-full bg-gray-200 rounded-full h-2">
+          <div className="bg-blue-600 h-2 rounded-full transition-all duration-300 animate-pulse" style={{ width: '30%' }} />
+        </div>
+      </div>
+    );
   };
   if (isLoading) {
     return <div className="container mx-auto px-4 py-8">
@@ -387,18 +308,28 @@ const DialogDetail = () => {
               <CardTitle>AI Quality Analysis</CardTitle>
             </CardHeader>
             <CardContent>
-              <Button onClick={handleStartAnalysis} disabled={isAnalyzing || !dialog.speakerTranscription} size="lg">
-                {isAnalyzing ? <>
+              <Button 
+                onClick={handleStartAnalysis} 
+                disabled={evaluateDialogMutation.isPending || !dialog.speakerTranscription} 
+                size="lg"
+              >
+                {evaluateDialogMutation.isPending ? (
+                  <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     Analyzing...
-                  </> : <>
+                  </>
+                ) : (
+                  <>
                     <Play className="h-4 w-4 mr-2" />
                     Start AI Analysis
-                  </>}
+                  </>
+                )}
               </Button>
-              {!dialog.speakerTranscription && <p className="text-sm text-muted-foreground mt-2">
+              {!dialog.speakerTranscription && (
+                <p className="text-sm text-muted-foreground mt-2">
                   Transcription required before analysis can be performed.
-                </p>}
+                </p>
+              )}
               
               {/* Progress Indicator */}
               {renderProgressIndicator()}
@@ -409,9 +340,13 @@ const DialogDetail = () => {
         <TabsContent value="results" className="mt-6">
           <div className="space-y-6">
             {/* AI Analysis Results */}
-            {dialog.openaiEvaluation ? <div className="space-y-4">
+            {(analysisData || dialog.openaiEvaluation) ? (
+              <div className="space-y-4">
                 {/* Violation Summary Cards */}
-                {dialog.openaiEvaluation.mistakes && dialog.openaiEvaluation.mistakes.length > 0 && <AnalysisSummaryCards mistakes={dialog.openaiEvaluation.mistakes} />}
+                {(analysisData?.mistakes || dialog.openaiEvaluation?.mistakes) && 
+                 (analysisData?.mistakes || dialog.openaiEvaluation?.mistakes)?.length > 0 && (
+                  <AnalysisSummaryCards mistakes={analysisData?.mistakes || dialog.openaiEvaluation?.mistakes || []} />
+                )}
 
                 <Card>
                   <CardHeader>
@@ -422,10 +357,10 @@ const DialogDetail = () => {
                       <div>
                         
                         <div className="text-3xl font-bold text-primary">
-                          {dialog.openaiEvaluation.overallScore}
+                          {analysisData?.overallScore || dialog.openaiEvaluation?.overallScore}
                         </div>
                         <div className="text-sm text-muted-foreground mt-1">
-                          Confidence: {Math.round((dialog.openaiEvaluation.confidence || 0) * 100)}%
+                          Confidence: {Math.round(((analysisData?.confidence || dialog.openaiEvaluation?.confidence) || 0) * 100)}%
                         </div>
                       </div>
                       
@@ -435,21 +370,26 @@ const DialogDetail = () => {
                 </Card>
 
                 {/* Category Scores */}
-                {dialog.openaiEvaluation.categoryScores && Object.keys(dialog.openaiEvaluation.categoryScores).length > 0 && <Card>
+                {(analysisData?.categoryScores || dialog.openaiEvaluation?.categoryScores) && 
+                 Object.keys(analysisData?.categoryScores || dialog.openaiEvaluation?.categoryScores || {}).length > 0 && (
+                  <Card>
                     <CardHeader>
                       <CardTitle>Category Scores</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {Object.entries(dialog.openaiEvaluation.categoryScores).map(([category, score]) => <div key={category} className="p-3 border rounded">
+                        {Object.entries(analysisData?.categoryScores || dialog.openaiEvaluation?.categoryScores || {}).map(([category, score]) => (
+                          <div key={category} className="p-3 border rounded">
                             <div className="text-sm font-medium capitalize mb-1">
                               {category.replace(/_/g, ' ')}
                             </div>
                             <div className="text-2xl font-bold">{String(score)}%</div>
-                          </div>)}
+                           </div>
+                        ))}
                       </div>
                     </CardContent>
-                  </Card>}
+                  </Card>
+                )}
 
 
                 {/* Recommendations */}
@@ -496,13 +436,16 @@ const DialogDetail = () => {
                       />
                     </CardContent>
                   </Card>}
-              </div> : <Card>
+               </div>
+            ) : (
+              <Card>
                 <CardContent className="pt-6">
                   <p className="text-center text-muted-foreground">
                     No analysis results available. Run AI analysis first.
                   </p>
                 </CardContent>
-              </Card>}
+              </Card>
+            )}
           </div>
         </TabsContent>
       </Tabs>

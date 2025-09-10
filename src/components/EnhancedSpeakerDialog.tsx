@@ -145,27 +145,58 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
     return mistakes.filter(mistake => {
       if (!mistake.utterance) return false;
       
-      // Normalize both texts for comparison
+      // Normalize both texts for comparison - handle Cyrillic properly
       const normalizeText = (text: string) => 
-        text.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
+        text.toLowerCase()
+          .replace(/[^\p{L}\p{N}\s]/gu, '') // Use Unicode property escapes for proper Cyrillic support
+          .replace(/\s+/g, ' ')
+          .trim();
       
       const normalizedUtterance = normalizeText(utteranceText);
       const normalizedMistake = normalizeText(mistake.utterance);
+      
+      // Debug logging for Cyrillic issues
+      if (normalizedUtterance.match(/[\u0400-\u04FF]/) || normalizedMistake.match(/[\u0400-\u04FF]/)) {
+        console.log('🔍 Cyrillic text comparison:', {
+          utterance: normalizedUtterance.substring(0, 50),
+          mistake: normalizedMistake.substring(0, 50),
+          utteranceLength: normalizedUtterance.length,
+          mistakeLength: normalizedMistake.length
+        });
+      }
       
       // Prioritize exact match first
       if (normalizedUtterance === normalizedMistake) {
         return true;
       }
       
-      // Then check if mistake is contained in utterance (for merged utterances)
+      // For Cyrillic text, use word-based matching instead of character substring
+      if (normalizedUtterance.match(/[\u0400-\u04FF]/) || normalizedMistake.match(/[\u0400-\u04FF]/)) {
+        const utteranceWords = normalizedUtterance.split(' ').filter(w => w.length > 2);
+        const mistakeWords = normalizedMistake.split(' ').filter(w => w.length > 2);
+        
+        // Check if significant number of words overlap
+        const commonWords = utteranceWords.filter(word => 
+          mistakeWords.some(mistakeWord => 
+            word.includes(mistakeWord) || mistakeWord.includes(word)
+          )
+        );
+        
+        const minWords = Math.min(utteranceWords.length, mistakeWords.length);
+        if (minWords > 0 && commonWords.length >= Math.max(1, Math.floor(minWords * 0.6))) {
+          return true;
+        }
+      }
+      
+      // Standard substring matching for non-Cyrillic text
       if (normalizedUtterance.includes(normalizedMistake)) {
         return true;
       }
       
-      // Finally check reverse containment with length threshold
+      // Check reverse containment with length threshold
       if (normalizedMistake.length > normalizedUtterance.length && 
           normalizedMistake.includes(normalizedUtterance) &&
-          normalizedUtterance.length > 10) { // Only for meaningful length
+          normalizedUtterance.length > 10) {
         return true;
       }
       

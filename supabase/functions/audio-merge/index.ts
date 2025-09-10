@@ -260,11 +260,21 @@ serve(async (req) => {
     }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (err) {
-    console.error("[AudioMerge] FATAL:", err);
+    console.error("[AudioMerge] FATAL ERROR:", err);
+    console.error("[AudioMerge] Error Stack:", err instanceof Error ? err.stack : 'No stack trace');
+    console.error("[AudioMerge] Error Type:", typeof err);
+    console.error("[AudioMerge] Error Details:", {
+      name: err instanceof Error ? err.name : 'Unknown',
+      message: err instanceof Error ? err.message : String(err),
+      cause: err instanceof Error ? err.cause : undefined
+    });
+    
     return new Response(JSON.stringify({
       error: "Audio merge failed",
       version: VERSION,
       details: err instanceof Error ? err.message : "Unknown error",
+      errorType: err instanceof Error ? err.name : typeof err,
+      timestamp: new Date().toISOString()
     }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });

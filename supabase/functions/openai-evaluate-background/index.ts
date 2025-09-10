@@ -64,6 +64,9 @@ serve(async (req) => {
     ).join('\n\n');
 
     console.log('🤖 Calling AI API...');
+    console.log('📝 System prompt length:', systemPrompt.length, 'characters');
+    console.log('💬 Conversation text length:', conversationText.length, 'characters');
+    console.log('🎯 Using model:', modelId);
 
     const openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
