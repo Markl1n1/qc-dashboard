@@ -8,6 +8,23 @@ export interface ServerMergingProgress {
   currentFile?: string;
 }
 
+
+// Lightweight retry helper with exponential backoff + jitter
+async function withRetry<T>(fn: () => Promise<T>, attempts = 3, baseMs = 300): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      const jitter = Math.random() * 100;
+      const delay = baseMs * Math.pow(2, i) + jitter;
+      await new Promise(res => setTimeout(res, delay));
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
 class ServerAudioMergingService {
   private progressCallback?: (progress: ServerMergingProgress) => void;
 
@@ -28,8 +45,8 @@ class ServerAudioMergingService {
   }
 
   private getExtension(name: string): string {
-    const m = name.toLowerCase().match(/\.([a-z0-9]+)$/);
-    return m ? m[1] : "";
+    const dot = name.lastIndexOf(".");
+    return dot >= 0 ? name.slice(dot + 1).toLowerCase() : "";
   }
 
   private getContentTypeByExt(ext: string): string {
@@ -55,7 +72,8 @@ class ServerAudioMergingService {
     });
 
     if (files.length < 2) {
-      throw new Error("At least 2 files required for merging");
+      // Nothing to merge — return the original file
+      return files[0];
     }
 
     const exts = files.map((f) => this.getExtension(f.name));
@@ -101,18 +119,22 @@ class ServerAudioMergingService {
         const progress = 5 + Math.floor((i / files.length) * 45);
         this.updateProgress("uploading", progress, "Uploading to storage...", file.name);
 
-        // Create safe filename for storage
-        const { filename: safeFilename, metadata } = createSafeFilenameWithMetadata(file.name);
+        // Sanitize filename (optional metadata embed for traceability)
+        const safeFilename = createSafeFilenameWithMetadata(file.name, {
+          mergeId,
+          index: i,
+          total: files.length
+        });
+
         const path = `${basePath}/${safeFilename}`;
-        
-        console.log(`📤 Uploading file ${i + 1}/${files.length}:`, {
+        const metadata = {
           original: file.name,
           sanitized: safeFilename,
           path,
           metadata,
           fileSize: file.size,
           fileType: file.type
-        });
+        };
         
         const { data, error } = await supabase.storage
           .from(bucket)
@@ -126,7 +148,7 @@ class ServerAudioMergingService {
             fileName: file.name,
             path,
             error: error?.message,
-            data
+            details: error
           });
           throw new Error(`Upload failed for ${file.name}: ${error?.message ?? "Unknown error"}`);
         }
@@ -150,13 +172,7 @@ class ServerAudioMergingService {
         totalSize: files.reduce((sum, f) => sum + f.size, 0)
       });
 
-      const { data, error } = await supabase.functions.invoke("audio-merge", {
-        body: JSON.stringify(invokeBody),
-        headers: { 
-          "Content-Type": "application/json",
-          "Accept": "application/json"
-        },
-      });
+      const { data, error } = await withRetry(() => supabase.functions.invoke("audio-merge", { body: invokeBody }));
 
       console.log("📋 Edge function response:", { 
         data: data ? { 
@@ -174,7 +190,7 @@ class ServerAudioMergingService {
           details: error.details,
           hint: error.hint,
           code: error.code
-        } : null
+        } : '[NO_ERROR]'
       });
 
       if (error) {
@@ -190,34 +206,18 @@ class ServerAudioMergingService {
       this.updateProgress("merging", 85, "Downloading merged file...");
 
       const mergedUrl: string | null = data.mergedFile?.url ?? null;
-      const contentType: string = data.mergedFile?.contentType || this.getContentTypeByExt(firstExt);
-      
-      console.log('📥 Downloading merged file:', { 
-        url: mergedUrl ? '[URL_PRESENT]' : '[URL_MISSING]',
-        contentType,
-        mergedFileInfo: data.mergedFile
-      });
+      const contentType = data.mergedFile?.contentType || this.getContentTypeByExt(outputFormat);
 
       if (!mergedUrl) {
-        console.error('❌ Merged file URL missing:', data.mergedFile);
-        throw new Error("Merged file URL missing");
+        throw new Error("Merged file URL is missing in edge response");
       }
 
       const res = await fetch(mergedUrl);
-      console.log('🌐 Fetch response:', { 
-        ok: res.ok, 
-        status: res.status, 
-        statusText: res.statusText,
-        headers: Object.fromEntries(res.headers.entries())
-      });
-
       if (!res.ok) {
-        console.error('❌ Download failed:', { status: res.status, statusText: res.statusText });
-        throw new Error(`Failed to download merged file: HTTP ${res.status}`);
+        throw new Error(`Failed to download merged file: ${res.status} ${res.statusText}`);
       }
-      
+
       const blob = await res.blob();
-      console.log('📦 Downloaded blob:', { size: blob.size, type: blob.type });
 
       this.updateProgress("merging", 95, "Finalizing merged file...");
 
@@ -234,22 +234,19 @@ class ServerAudioMergingService {
         lastModified: mergedFile.lastModified
       });
 
-      this.updateProgress("complete", 100, "Audio files merged successfully");
-      console.log(
-        `🎉 ServerAudioMerging: Successfully merged ${files.length} files into ${mergedName} (${mergedFile.size} bytes)`
-      );
+      this.updateProgress("complete", 100, "Server-side merge complete");
 
       return mergedFile;
-      
+
     } catch (err) {
-      console.error("❌ ServerAudioMerging: Merge operation failed:", {
-        error: err,
-        message: err instanceof Error ? err.message : 'Unknown error',
-        stack: err instanceof Error ? err.stack : undefined,
+      console.error('💥 Merge failed:', err, {
+        mergeId,
+        basePath,
         uploadedPaths,
-        mergeId
+        stack: err instanceof Error ? err.stack : undefined,
       });
-      
+
+      // Best-effort cleanup (uploaded sources)
       if (uploadedPaths.length > 0) {
         console.log('🧹 Cleaning up uploaded files:', uploadedPaths);
         try { 
