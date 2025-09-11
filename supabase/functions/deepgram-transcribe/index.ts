@@ -184,17 +184,22 @@ Deno.serve(async (req) => {
     }
 
     if (!deepgramResponse.ok) {
-      const errorText = await deepgramResponse.text();
-      console.error('❌ Deepgram API error:', {
+      let detail: any;
+      try { detail = await deepgramResponse.json(); } catch {}
+      console.error("❌ Deepgram API error:", {
         status: deepgramResponse.status,
         statusText: deepgramResponse.statusText,
-        error: errorText,
-        model: finalModel,
-        url: deepgramUrl
+        error: detail,
       });
-      
-      throw new Error(`Deepgram API error: ${deepgramResponse.status} ${deepgramResponse.statusText}`);
+      return new Response(JSON.stringify({
+        success: false,
+        status: deepgramResponse.status,
+        statusText: deepgramResponse.statusText,
+        error: detail?.err_msg ?? "Deepgram error",
+        request_id: detail?.request_id ?? null,
+      }), { status: deepgramResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" }});
     }
+
 
     const deepgramResult = await deepgramResponse.json();
     console.log('✅ Deepgram response received', {
