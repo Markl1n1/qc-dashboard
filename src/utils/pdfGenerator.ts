@@ -1,14 +1,11 @@
 import jsPDF from 'jspdf';
 import { SpeakerUtterance, Dialog } from '../types';
+// Base64-encoded TTFs (regular/bold/italic). Provide real base64 in ../fonts/notoBase64
+import { NOTO_SANS_REGULAR_TTF, NOTO_SANS_BOLD_TTF, NOTO_SANS_ITALIC_TTF } from '../fonts/notoBase64';
 
 // ⬇️ ВАЖНО: это side-effect импорты файлов, созданных через jspdf-fontconverter.
 // Они САМИ регистрируют TTF в VFS и вызывают addFont.
 // НИЧЕГО из них импортировать как значение не нужно.
-import '../fonts/NotoSans-Regular-normal';
-import '../fonts/NotoSans-Italic-italic';
-import '../fonts/NotoSans-Bold-bold';
-import '../fonts/NotoSans-BoldItalic-bolditalic';
-
 export class PDFGenerator {
   private doc: jsPDF;
   private yPosition: number = 20;
@@ -18,8 +15,14 @@ export class PDFGenerator {
   private languagePreference: 'original' | 'russian' = 'original';
 
   constructor() {
-    this.doc = new jsPDF();
-    // после импорта шрифтов достаточно выбрать семейство:
+    this.doc = new jsPDF({ putOnlyUsedFonts: true });
+    // Регистрируем TTF напрямую в VFS, без fontconverter (нормальный Unicode)
+    this.doc.addFileToVFS('NotoSans-Regular.ttf', NOTO_SANS_REGULAR_TTF);
+    this.doc.addFileToVFS('NotoSans-Bold.ttf', NOTO_SANS_BOLD_TTF);
+    this.doc.addFileToVFS('NotoSans-Italic.ttf', NOTO_SANS_ITALIC_TTF);
+    this.doc.addFont('NotoSans-Regular.ttf', 'NotoSans', 'normal');
+    this.doc.addFont('NotoSans-Bold.ttf', 'NotoSans', 'bold');
+    this.doc.addFont('NotoSans-Italic.ttf', 'NotoSans', 'italic');
     this.doc.setFont('NotoSans', 'normal');
     this.pageHeight = this.doc.internal.pageSize.height;
   }
@@ -48,31 +51,14 @@ export class PDFGenerator {
     }
   }
 
-    private preprocessText(text: string): string {
-    // 1) normalize input type
-    let s = (text ?? '');
-
-    // 2) Heuristic: if there are many C0 control chars (common when UTF-16LE got mis-decoded),
-    //    strip them *except* TAB and LF which we'll normalize below anyway.
-    const controlDensity = (s.match(/[\u0000-\u0008\u000B-\u001F\u007F]/g) || []).length / Math.max(1, s.length);
-    if (controlDensity > 0.05) {
-      s = s.replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '');
-    }
-
-    // 3) NBSP & line breaks normalization
-    s = s
+  private preprocessText(text: string): string {
+    return (text ?? '')
+      .normalize('NFC')
       .replace(/\u00A0/g, ' ')                    // NBSP -> space
-      .replace(/[\r\n\u0085\u2028\u2029]+/g, ' '); // all kinds of breaks -> space
-
-    // 4) Unicode NFC (important for Polish diacritics etc.)
-    try { s = s.normalize('NFC'); } catch {}
-
-    // 5) Collapse whitespace & trim
-    s = s.replace(/\s+/g, ' ').trim();
-
-    return s;
+      .replace(/[\r\n\u0085\u2028\u2029]+/g, ' ') // все типы переносов -> space
+      .replace(/\s+/g, ' ')                       // схлоп пробелы
+      .trim();
   }
-
 
   // Совместимость с твоим API: теперь просто гарантируем выбранный Unicode-шрифт
   private addUnicodeFont(): void {
@@ -149,7 +135,7 @@ export class PDFGenerator {
     }
 
     const speakerText = `[${index + 1}] ${utterance.speaker}:`;
-    this.doc.text(this.preprocessText(speakerText), this.margin, this.yPosition);
+    this.doc.text(speakerText, this.margin, this.yPosition);
     this.yPosition += this.lineHeight + 2;
 
     this.doc.setTextColor(0, 0, 0);
@@ -181,7 +167,7 @@ export class PDFGenerator {
     this.doc.setFontSize(16);
     this.doc.setFont('NotoSans', 'bold');
     this.doc.setTextColor(0, 0, 0);
-    this.doc.text(this.preprocessText(title), this.margin, this.yPosition);
+    this.doc.text(title, this.margin, this.yPosition);
     this.yPosition += 10;
   }
 
@@ -246,7 +232,7 @@ export class PDFGenerator {
             this.doc.setTextColor(34, 197, 94);
         }
 
-        this.doc.text(this.preprocessText(`${index + 1}. ${(mistake.rule_category || 'GENERAL').toUpperCase()}`), this.margin, this.yPosition);
+        this.doc.text(`${index + 1}. ${(mistake.rule_category || 'GENERAL').toUpperCase()}`, this.margin, this.yPosition);
         this.yPosition += this.lineHeight + 2;
 
         this.doc.setTextColor(0, 0, 0);
@@ -290,7 +276,7 @@ export class PDFGenerator {
     this.doc.setFontSize(18);
     this.doc.setFont('NotoSans', 'bold');
     this.doc.setTextColor(0, 0, 0);
-    this.doc.text( this.preprocessText('Dialog Transcription & Analysis Report'), this.margin, this.yPosition);
+    this.doc.text('Dialog Transcription & Analysis Report', this.margin, this.yPosition);
     this.yPosition += 15;
 
     this.addText(`File: ${dialog.fileName}`, 12, 'bold');
