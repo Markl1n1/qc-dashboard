@@ -92,7 +92,7 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
       
       if (current.speaker === next.speaker) {
         // Merge with current utterance - format each utterance on a new line
-        current.text = `${current.text}\n${next.text}`;
+        current.text = `${current.text} ${next.text}`.replace(/\s+/g, ' ').trim();
         current.end = next.end; // Update end time to the latest
         current.confidence = Math.min(current.confidence, next.confidence); // Use lower confidence
       } else {
@@ -243,11 +243,7 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
                       </div>
                       
                       <div className="text-sm leading-relaxed" style={{ color: style.textColor }}>
-                        {utterance.text.split('\n').map((line, lineIndex) => (
-                          <div key={lineIndex} className="mb-1">
-                            {line}
-                          </div>
-                        ))}
+                        {utterance.text}
                       </div>
                     </div>
                   </div>
