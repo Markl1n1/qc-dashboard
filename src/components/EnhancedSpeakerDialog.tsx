@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -12,7 +12,7 @@ import { useLanguageStore } from '../store/languageStore';
 
 interface DetectedIssue {
   rule_category?: string;
-  comment?: string;
+  comment?: string | { original?: string; russian?: string };
   utterance?: string;
   category?: string;
   description?: string;
@@ -24,20 +24,9 @@ interface EnhancedSpeakerDialogProps {
   mistakes?: DetectedIssue[];
   highlightedUtterance?: string | null;
   onNavigateToAnalysis?: (issueIndex: number) => void;
-  detectedLanguage?: {
-    language: string;
-    confidence: number;
-  };
-  metadata?: {
-    duration: number;
-    model: string;
-  };
-  analysisData?: {
-    speaker_0?: string;
-    speaker_1?: string;
-    role_0?: string;
-    role_1?: string;
-  };
+  detectedLanguage?: { language: string; confidence: number };
+  metadata?: { duration: number; model: string };
+  analysisData?: { speaker_0?: string; speaker_1?: string; role_0?: string; role_1?: string };
 }
 
 const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
@@ -52,11 +41,9 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
   const { commentLanguage } = useLanguageStore();
   const { mapSpeakerName } = useSpeakerMapping(analysisData);
 
-  console.log('🗣️ EnhancedSpeakerDialog - analysisData:', analysisData);
-  console.log('🌐 EnhancedSpeakerDialog - commentLanguage:', commentLanguage);
-
-  // --- Нормализация всех типов разрывов и пробелов
-  const normalize = (t: string) =>
+  // ---------- 1) Нормализации ----------
+  // A) отображение (убираем переносы строк и NBSP, но ПУНКТУАЦИЮ не трогаем)
+  const normalizeDisplay = (t: string) =>
     (t || '')
       .replace(/<br\s*\/?>/gi, ' ')
       .replace(/[\r\n\u0085\u2028\u2029]+/g, ' ')
@@ -64,18 +51,35 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
       .replace(/\s+/g, ' ')
       .trim();
 
-  // Helper function to get comment based on language preference
+  // B) сопоставление (строгое равенство для всех языков)
+  const normalizeForMatch = (t: string) => {
+    const s = (t || '')
+      .normalize('NFKC')
+      // унификация кавычек и тире, разные дефисы → обычные
+      .replace(/[«»„“”‟"']/g, '"')
+      .replace(/[‐-‒–—−]/g, '-')
+      // переносы / NBSP
+      .replace(/<br\s*\/?>/gi, ' ')
+      .replace(/[\r\n\u0085\u2028\u2029]+/g, ' ')
+      .replace(/\u00A0/g, ' ')
+      // схлоп пробелы
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+
+    // снять внешние кавычки/точки, которые часто присылает анализ
+    const unquoted = s.replace(/^"+|"+$/g, '').replace(/^[.]+|[.]+$/g, '').trim();
+    return unquoted.length ? unquoted : s;
+  };
+
+  // ---------- 2) Служебные ----------
   const getDisplayComment = (mistake: DetectedIssue): string => {
     if (!mistake.comment) return mistake.description || '';
-    
-    if (typeof mistake.comment === 'object' && mistake.comment) {
-      const commentObj = mistake.comment as any;
-      if (commentLanguage === 'russian' && commentObj.russian) {
-        return commentObj.russian;
-      }
-      return commentObj.original || commentObj.russian || '';
+    if (typeof mistake.comment === 'object') {
+      const c = mistake.comment as any;
+      if (commentLanguage === 'russian' && c?.russian) return c.russian;
+      return c?.original || c?.russian || '';
     }
-    
     return mistake.comment || mistake.description || '';
   };
 
@@ -87,62 +91,33 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
 
   const getSpeakerStyle = (speaker: string) => {
     const speakerColors = [
-      {
-        backgroundColor: 'hsl(210, 100%, 97%)',
-        borderColor: 'hsl(210, 100%, 85%)',
-        textColor: 'hsl(210, 100%, 25%)'
-      },
-      {
-        backgroundColor: 'hsl(120, 60%, 97%)',
-        borderColor: 'hsl(120, 60%, 85%)',
-        textColor: 'hsl(120, 60%, 25%)'
-      },
-      {
-        backgroundColor: 'hsl(280, 60%, 97%)',
-        borderColor: 'hsl(280, 60%, 85%)',
-        textColor: 'hsl(280, 60%, 25%)'
-      },
-      {
-        backgroundColor: 'hsl(30, 100%, 97%)',
-        borderColor: 'hsl(30, 100%, 85%)',
-        textColor: 'hsl(30, 100%, 25%)'
-      }
+      { backgroundColor: 'hsl(210, 100%, 97%)', borderColor: 'hsl(210, 100%, 85%)', textColor: 'hsl(210, 100%, 25%)' },
+      { backgroundColor: 'hsl(120, 60%, 97%)', borderColor: 'hsl(120, 60%, 85%)', textColor: 'hsl(120, 60%, 25%)' },
+      { backgroundColor: 'hsl(280, 60%, 97%)', borderColor: 'hsl(280, 60%, 85%)', textColor: 'hsl(280, 60%, 25%)' },
+      { backgroundColor: 'hsl(30, 100%, 97%)', borderColor: 'hsl(30, 100%, 85%)', textColor: 'hsl(30, 100%, 25%)' }
     ];
-
-    const cleanSpeaker = speaker
-      .replace(/^Speaker\s+Speaker\s*/, '')
-      .replace(/^Speaker\s*/, '');
-    
-    const speakerIndex = parseInt(cleanSpeaker) || 0;
-    const colorIndex = speakerIndex % speakerColors.length;
-    return speakerColors[colorIndex];
+    const clean = speaker.replace(/^Speaker\s+Speaker\s*/, '').replace(/^Speaker\s*/, '');
+    const idx = (parseInt(clean) || 0) % speakerColors.length;
+    return speakerColors[idx];
   };
 
-  // --- Склейка последовательных реплик одного спикера (без \n)
-  const mergeConsecutiveUtterances = (utterances: SpeakerUtterance[]): SpeakerUtterance[] => {
-    if (!utterances || utterances.length === 0) return [];
-
+  // ---------- 3) Склейка соседних реплик одного спикера ----------
+  const mergeConsecutiveUtterances = (arr: SpeakerUtterance[]): SpeakerUtterance[] => {
+    if (!arr || arr.length === 0) return [];
     const merged: SpeakerUtterance[] = [];
-    let current = { 
-      ...utterances[0], 
-      speaker: utterances[0].speaker
-        .replace(/^Speaker\s+Speaker\s*/, 'Speaker ')
-        .replace(/^Speaker\s+/, 'Speaker '),
-      text: normalize(utterances[0].text),
+    let current: SpeakerUtterance = {
+      ...arr[0],
+      speaker: arr[0].speaker.replace(/^Speaker\s+Speaker\s*/, 'Speaker ').replace(/^Speaker\s+/, 'Speaker '),
+      text: normalizeDisplay(arr[0].text)
     };
-
-    for (let i = 1; i < utterances.length; i++) {
-      const next = { 
-        ...utterances[i], 
-        speaker: utterances[i].speaker
-          .replace(/^Speaker\s+Speaker\s*/, 'Speaker ')
-          .replace(/^Speaker\s+/, 'Speaker '),
-        text: normalize(utterances[i].text),
+    for (let i = 1; i < arr.length; i++) {
+      const next: SpeakerUtterance = {
+        ...arr[i],
+        speaker: arr[i].speaker.replace(/^Speaker\s+Speaker\s*/, 'Speaker ').replace(/^Speaker\s+/, 'Speaker '),
+        text: normalizeDisplay(arr[i].text)
       };
-      
       if (current.speaker === next.speaker) {
-        // единый параграф
-        current.text = normalize(`${current.text} ${next.text}`);
+        current.text = normalizeDisplay(`${current.text} ${next.text}`);
         current.end = next.end;
         current.confidence = Math.min(current.confidence, next.confidence);
       } else {
@@ -150,115 +125,66 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
         current = { ...next };
       }
     }
-    
     merged.push(current);
     return merged;
   };
 
-  const getUtteranceMistakes = (utteranceText: string) => {
-    return mistakes.filter(mistake => {
-      if (!mistake.utterance) return false;
-      
-      const normalizeText = (text: string) => 
-        text.toLowerCase()
-          .replace(/[^\p{L}\p{N}\s]/gu, '')
-          .replace(/\s+/g, ' ')
-          .trim();
-      
-      const normalizedUtterance = normalizeText(utteranceText);
-      const normalizedMistake = normalizeText(mistake.utterance);
-      
-      if (normalizedUtterance.match(/[\u0400-\u04FF]/) || normalizedMistake.match(/[\u0400-\u04FF]/)) {
-        console.log('🔍 Cyrillic text comparison:', {
-          utterance: normalizedUtterance.substring(0, 50),
-          mistake: normalizedMistake.substring(0, 50),
-          utteranceLength: normalizedUtterance.length,
-          mistakeLength: normalizedMistake.length
-        });
+  const mergedUtterances = useMemo(() => mergeConsecutiveUtterances(utterances), [utterances]);
+
+  // ---------- 4) Строгое сопоставление ошибок к репликам ----------
+  /**
+   * Возвращает Map<utteranceIndex, DetectedIssue[]>, где каждая ошибка присвоена не более одного раза.
+   * Правило: строгое равенство normalizeForMatch(mistake.utterance) === normalizeForMatch(mergedUtterance.text).
+   * Если совпадений несколько (например, «Хорошо.» встречается дважды), берём первое "свободное".
+   */
+  const assignments = useMemo(() => {
+    const map = new Map<number, DetectedIssue[]>();
+    const usedUtterance = new Set<number>(); // для коротких дубликатов по желанию можно разрешить multi, но ты просил 1 раз
+
+    // индекс → нормализованный текст
+    const utNorm = mergedUtterances.map(u => normalizeForMatch(u.text));
+
+    mistakes.forEach((m) => {
+      const mTxt = (m.utterance || '').trim();
+      if (!mTxt) return;
+      const mNorm = normalizeForMatch(mTxt);
+
+      // ищем все совпадения
+      const candidates: number[] = [];
+      for (let i = 0; i < utNorm.length; i++) {
+        if (utNorm[i] === mNorm) candidates.push(i);
       }
-      
-      if (normalizedUtterance === normalizedMistake) {
-        return true;
-      }
-      
-      if (normalizedUtterance.match(/[\u0400-\u04FF]/) || normalizedMistake.match(/[\u0400-\u04FF]/)) {
-        const utteranceWords = normalizedUtterance.split(' ').filter(w => w.length > 2);
-        const mistakeWords = normalizedMistake.split(' ').filter(w => w.length > 2);
-        const commonWords = utteranceWords.filter(word => 
-          mistakeWords.some(mistakeWord => 
-            word.includes(mistakeWord) || mistakeWord.includes(word)
-          )
-        );
-        const minWords = Math.min(utteranceWords.length, mistakeWords.length);
-        if (minWords > 0 && commonWords.length >= Math.max(1, Math.floor(minWords * 0.6))) {
-          return true;
-        }
-      }
-      
-      if (normalizedUtterance.includes(normalizedMistake)) {
-        return true;
-      }
-      
-      if (normalizedMistake.length > normalizedUtterance.length && 
-          normalizedMistake.includes(normalizedUtterance) &&
-          normalizedUtterance.length > 10) {
-        return true;
-      }
-      
-      return false;
+      if (candidates.length === 0) return; // строго — не нашли, не крепим
+
+      // выбираем первый неиспользованный; если все заняты — всё равно закрепим к первому, чтобы не терять сигнал
+      const targetIndex = candidates.find(i => !usedUtterance.has(i)) ?? candidates[0];
+      usedUtterance.add(targetIndex);
+
+      const list = map.get(targetIndex) ?? [];
+      list.push(m);
+      map.set(targetIndex, list);
     });
-  };
 
-  const checkFuzzyMatch = (text1: string, text2: string): boolean => {
-    const minLength = Math.min(text1.length, text2.length);
-    if (minLength < 20) {
-      const words1 = text1.split(' ').filter(w => w.length > 3);
-      const words2 = text2.split(' ').filter(w => w.length > 3);
-      const commonWords = words1.filter(w => words2.includes(w));
-      return commonWords.length >= Math.min(2, Math.min(words1.length, words2.length));
-    }
-    const shorter = text1.length < text2.length ? text1 : text2;
-    const longer = text1.length < text2.length ? text2 : text1;
-    const threshold = Math.floor(shorter.length * 0.7);
-    for (let i = 0; i <= shorter.length - threshold; i++) {
-      const substring = shorter.substring(i, i + threshold);
-      if (longer.includes(substring)) {
-        return true;
-      }
-    }
-    return false;
-  };
-
-  const checkWordMatch = (text1: string, text2: string): boolean => {
-    const words1 = text1.split(' ').filter(w => w.length > 2);
-    const words2 = text2.split(' ').filter(w => w.length > 2);
-    if (words1.length === 0 || words2.length === 0) return false;
-    const commonWords = words1.filter(w => words2.includes(w));
-    const minWords = Math.min(words1.length, words2.length);
-    return commonWords.length >= Math.max(1, Math.floor(minWords * 0.5));
-  };
-
-  const mergedUtterances = mergeConsecutiveUtterances(utterances);
+    return map;
+  }, [mistakes, mergedUtterances]);
 
   const handleCopyDialog = async () => {
     const formattedText = formatDialogForCopy(mergedUtterances);
     const success = await copyToClipboard(formattedText);
-    if (success) {
-      toast.success('Dialog copied to clipboard');
-    } else {
-      toast.error('Failed to copy dialog');
-    }
+    success ? toast.success('Dialog copied to clipboard') : toast.error('Failed to copy dialog');
   };
 
-  const speakerStats = mergedUtterances.reduce((acc, utterance) => {
-    const speaker = utterance.speaker;
-    if (!acc[speaker]) {
-      acc[speaker] = { count: 0, totalDuration: 0 };
-    }
-    acc[speaker].count++;
-    acc[speaker].totalDuration += utterance.end - utterance.start;
-    return acc;
-  }, {} as Record<string, { count: number; totalDuration: number }>);
+  const speakerStats = useMemo(
+    () =>
+      mergedUtterances.reduce((acc, u) => {
+        const s = u.speaker;
+        if (!acc[s]) acc[s] = { count: 0, totalDuration: 0 };
+        acc[s].count++;
+        acc[s].totalDuration += u.end - u.start;
+        return acc;
+      }, {} as Record<string, { count: number; totalDuration: number }>),
+    [mergedUtterances]
+  );
 
   return (
     <div className="space-y-4">
@@ -289,9 +215,7 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
               <div className="flex items-center gap-2">
                 <Badge variant="secondary">Language</Badge>
                 <span>{detectedLanguage.language}</span>
-                <span className="text-foreground/70">
-                  ({Math.round(detectedLanguage.confidence * 100)}% confidence)
-                </span>
+                <span className="text-foreground/70">({Math.round(detectedLanguage.confidence * 100)}% confidence)</span>
               </div>
             )}
             {metadata && (
@@ -311,25 +235,18 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
           <div className="mt-4 flex flex-wrap gap-4">
             {Object.entries(speakerStats).map(([speaker, stats]) => {
               const style = getSpeakerStyle(speaker);
-              
               return (
                 <div
                   key={speaker}
                   className="flex items-center gap-2 px-3 py-2 rounded-lg border"
-                  style={{
-                    backgroundColor: style.backgroundColor,
-                    borderColor: style.borderColor,
-                    color: style.textColor
-                  }}
+                  style={{ backgroundColor: style.backgroundColor, borderColor: style.borderColor, color: style.textColor }}
                 >
                   <User className="h-4 w-4" />
                   <span className="font-medium">{mapSpeakerName(speaker)}</span>
                   <Badge variant="outline" className="text-xs font-bold" style={{ color: style.textColor, borderColor: style.borderColor }}>
                     {stats.count} segments
                   </Badge>
-                  <span className="text-xs font-medium">
-                    {formatTime(stats.totalDuration)} talk time
-                  </span>
+                  <span className="text-xs font-medium">{formatTime(stats.totalDuration)} talk time</span>
                 </div>
               );
             })}
@@ -344,9 +261,9 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
             <div className="p-6 space-y-4">
               {mergedUtterances.map((utterance, index) => {
                 const style = getSpeakerStyle(utterance.speaker);
-                const utteranceMistakes = getUtteranceMistakes(utterance.text);
-                const isHighlighted = highlightedUtterance && utterance.text.includes(highlightedUtterance);
-                
+                const utteranceMistakes = assignments.get(index) ?? [];
+                const isHighlighted = highlightedUtterance && utterance.text.includes(highlightedUtterance || '');
+
                 return (
                   <div
                     key={index}
@@ -354,17 +271,13 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
                       isHighlighted ? 'ring-2 ring-primary shadow-lg' : ''
                     } ${utteranceMistakes.length > 0 ? 'border-red-200 bg-red-50/50' : ''}`}
                     style={{
-                      backgroundColor: isHighlighted ? 'hsl(var(--primary) / 0.1)' : 
-                                      utteranceMistakes.length > 0 ? 'hsl(var(--destructive) / 0.05)' : 
-                                      style.backgroundColor,
+                      backgroundColor:
+                        isHighlighted ? 'hsl(var(--primary) / 0.1)' : utteranceMistakes.length > 0 ? 'hsl(var(--destructive) / 0.05)' : style.backgroundColor,
                       borderLeftColor: utteranceMistakes.length > 0 ? 'hsl(var(--destructive))' : style.borderColor
                     }}
                   >
                     <div className="flex-shrink-0 flex items-start">
-                      <div
-                        className="w-8 h-8 rounded-full flex items-center justify-center relative"
-                        style={{ backgroundColor: style.borderColor }}
-                      >
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center relative" style={{ backgroundColor: style.borderColor }}>
                         <User className="h-4 w-4" style={{ color: style.textColor }} />
                         {utteranceMistakes.length > 0 && (
                           <div className="absolute -top-1 -right-1 w-4 h-4 bg-destructive rounded-full flex items-center justify-center">
@@ -373,13 +286,10 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
                         )}
                       </div>
                     </div>
-                    
+
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-2">
-                        <span 
-                          className="font-medium text-sm"
-                          style={{ color: style.textColor }}
-                        >
+                        <span className="font-medium text-sm" style={{ color: style.textColor }}>
                           {mapSpeakerName(utterance.speaker)}
                         </span>
                         <span className="text-xs text-foreground/70">
@@ -394,36 +304,31 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
                           </Badge>
                         )}
                       </div>
-                      
-                      {/* ЕДИНЫЙ ПАРАГРАФ — без split('\\n') */}
-                      <div
-                        className="text-sm leading-relaxed"
-                        style={{ color: style.textColor, whiteSpace: 'normal' }}
-                      >
+
+                      {/* единый параграф */}
+                      <div className="text-sm leading-relaxed" style={{ color: style.textColor, whiteSpace: 'normal' }}>
                         {utterance.text}
                       </div>
 
-                      {/* Show mistakes for this utterance */}
+                      {/* issues for this utterance */}
                       {utteranceMistakes.length > 0 && onNavigateToAnalysis && (
                         <div className="mt-3 pt-3 border-t border-destructive/20">
                           <div className="space-y-2">
                             {utteranceMistakes.map((mistake, mistakeIndex) => (
                               <div key={mistakeIndex} className="text-xs bg-destructive/10 p-2 rounded border border-destructive/20">
                                 <div className="font-medium">{mistake.rule_category || 'Issue'}</div>
-                                <div className="text-muted-foreground">
-                                   {getDisplayComment(mistake)}
-                                 </div>
+                                <div className="text-muted-foreground">{getDisplayComment(mistake)}</div>
                                 <Button
                                   variant="link"
                                   size="sm"
                                   className="h-auto p-0 text-xs text-destructive hover:underline mt-1"
                                   onClick={() => {
-                                    const issueIndex = mistakes.findIndex(m => 
-                                      m.utterance === mistake.utterance && m.comment === mistake.comment
+                                    const globalIndex = mistakes.findIndex(
+                                      m =>
+                                        (m.utterance || '') === (mistake.utterance || '') &&
+                                        JSON.stringify(m.comment) === JSON.stringify(mistake.comment)
                                     );
-                                    if (issueIndex !== -1) {
-                                      onNavigateToAnalysis(issueIndex);
-                                    }
+                                    if (globalIndex !== -1) onNavigateToAnalysis(globalIndex);
                                   }}
                                 >
                                   <ExternalLink className="h-3 w-3 mr-1" />
