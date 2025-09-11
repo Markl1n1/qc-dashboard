@@ -1,17 +1,15 @@
 import jsPDF from 'jspdf';
 import { SpeakerUtterance, Dialog } from '../types';
 
-// ВАЖНО: подключаем VFS-модули со шрифтами из src/fonts
-// Если TS ругается на .js — можешь добавить // @ts-ignore над каждым импортом
-// или объявить декларацию для таких модулей.
-import NotoSansRegular from '../fonts/NotoSans-Regular-normal';
-import NotoSansItalic from '../fonts/NotoSans-Italic-italic';
-import NotoSansBold from '../fonts/NotoSans-Bold-bold';
-import NotoSansBoldItalic from '../fonts/NotoSans-BoldItalic-bolditalic';
+// ⬇️ ВАЖНО: это side-effect импорты файлов, созданных через jspdf-fontconverter.
+// Они САМИ регистрируют TTF в VFS и вызывают addFont.
+// НИЧЕГО из них импортировать как значение не нужно.
+import '../fonts/NotoSans-Regular-normal';
+import '../fonts/NotoSans-Italic-italic';
+import '../fonts/NotoSans-Bold-bold';
+import '../fonts/NotoSans-BoldItalic-bolditalic';
 
 export class PDFGenerator {
-  private static fontsRegistered = false;
-
   private doc: jsPDF;
   private yPosition: number = 20;
   private pageHeight: number;
@@ -21,13 +19,8 @@ export class PDFGenerator {
 
   constructor() {
     this.doc = new jsPDF();
-
-    // Регистрируем Unicode-шрифты один раз на всё приложение
-    this.registerUnicodeFonts();
-
-    // Всегда работаем с NotoSans (полный Unicode)
+    // после импорта шрифтов достаточно выбрать семейство:
     this.doc.setFont('NotoSans', 'normal');
-
     this.pageHeight = this.doc.internal.pageSize.height;
   }
 
@@ -49,7 +42,7 @@ export class PDFGenerator {
   private checkPageBreak(additionalHeight: number = 0): void {
     if (this.yPosition + additionalHeight > this.pageHeight - this.margin) {
       this.doc.addPage();
-      // После добавления страницы нужно повторно задать шрифт
+      // НОВАЯ СТРАНИЦА — заново выбрать шрифт
       this.doc.setFont('NotoSans', 'normal');
       this.yPosition = this.margin;
     }
@@ -58,40 +51,13 @@ export class PDFGenerator {
   private preprocessText(text: string): string {
     return (text ?? '')
       .normalize('NFC')
-      .replace(/\u00A0/g, ' ')                    // NBSP -> пробел
-      .replace(/[\r\n\u0085\u2028\u2029]+/g, ' ') // все типы переносов -> пробел
-      .replace(/\s+/g, ' ')                       // схлопывание пробелов
+      .replace(/\u00A0/g, ' ')                    // NBSP -> space
+      .replace(/[\r\n\u0085\u2028\u2029]+/g, ' ') // все типы переносов -> space
+      .replace(/\s+/g, ' ')                       // схлоп пробелы
       .trim();
   }
 
-  // ——— Регистрация NotoSans (Unicode) в jsPDF VFS ———
-  private registerUnicodeFonts(): void {
-    if (PDFGenerator.fontsRegistered) return;
-
-    // Некоторые генераторы шрифтов отдают dataURI; jsPDF ждёт «чистый» base64
-    const stripDataUri = (s: string) =>
-      typeof s === 'string' && s.startsWith('data:') ? s.split(',')[1] : (s as string);
-
-    try {
-      this.doc.addFileToVFS('NotoSans-Regular.ttf', stripDataUri(NotoSansRegular as unknown as string));
-      this.doc.addFileToVFS('NotoSans-Italic.ttf', stripDataUri(NotoSansItalic as unknown as string));
-      this.doc.addFileToVFS('NotoSans-Bold.ttf', stripDataUri(NotoSansBold as unknown as string));
-      this.doc.addFileToVFS('NotoSans-BoldItalic.ttf', stripDataUri(NotoSansBoldItalic as unknown as string));
-
-      this.doc.addFont('NotoSans-Regular.ttf', 'NotoSans', 'normal');
-      this.doc.addFont('NotoSans-Italic.ttf', 'NotoSans', 'italic');
-      this.doc.addFont('NotoSans-Bold.ttf', 'NotoSans', 'bold');
-      this.doc.addFont('NotoSans-BoldItalic.ttf', 'NotoSans', 'bolditalic');
-
-      PDFGenerator.fontsRegistered = true;
-    } catch (e) {
-      // Если видишь "No unicode cmap for font" — значит модуль шрифта битый/не base64
-      // Проверь содержимое src/fonts/*.js: должно быть base64 без data: префикса
-      console.error('Failed to register NotoSans fonts for jsPDF:', e);
-    }
-  }
-
-  // Сохраняем API: этот метод теперь просто гарантирует выбор Unicode-шрифта
+  // Совместимость с твоим API: теперь просто гарантируем выбранный Unicode-шрифт
   private addUnicodeFont(): void {
     this.doc.setFont('NotoSans', 'normal');
   }
@@ -103,9 +69,7 @@ export class PDFGenerator {
     isQuote: boolean = false
   ): void {
     this.doc.setFontSize(fontSize);
-
-    // Всегда используем NotoSans (универсальный Unicode)
-    this.addUnicodeFont();
+    this.addUnicodeFont(); // всегда NotoSans
 
     if (isQuote) {
       this.doc.setFont('NotoSans', 'italic');
@@ -120,16 +84,13 @@ export class PDFGenerator {
     const leftMargin = this.margin + (isQuote ? 20 : 0);
 
     const lines = this.doc.splitTextToSize(processedText, maxWidth);
-
     lines.forEach((line: string) => {
       this.checkPageBreak(this.lineHeight);
       this.doc.text(line, leftMargin, this.yPosition);
       this.yPosition += this.lineHeight;
     });
 
-    if (isQuote) {
-      this.doc.setTextColor(0, 0, 0);
-    }
+    if (isQuote) this.doc.setTextColor(0, 0, 0);
   }
 
   private cleanSpeakerLabel(speaker: string): string {
