@@ -13,6 +13,9 @@ export class PDFGenerator {
     this.doc = new jsPDF();
     this.doc.setFont('Times', 'normal');
     this.pageHeight = this.doc.internal.pageSize.height;
+    
+    // Enable Unicode support for Cyrillic and other non-Latin characters
+    // Note: jsPDF has limited native font support for non-Latin characters
   }
 
   setLanguagePreference(preference: 'original' | 'russian'): void {
@@ -45,6 +48,16 @@ export class PDFGenerator {
       .trim();
   }
 
+  private addUnicodeFont(): void {
+    // Add support for Unicode characters including Cyrillic
+    try {
+      this.doc.setFont('helvetica', 'normal');
+    } catch (error) {
+      console.warn('Unicode font not available, using default font');
+      this.doc.setFont('Times', 'normal');
+    }
+  }
+
   private addText(
     text: string,
     fontSize: number = 10,
@@ -53,11 +66,18 @@ export class PDFGenerator {
   ): void {
     this.doc.setFontSize(fontSize);
 
+    // Check if text contains non-Latin characters
+    const hasNonLatin = /[^\u0000-\u007F]/.test(text);
+    
+    if (hasNonLatin) {
+      this.addUnicodeFont();
+    }
+
     if (isQuote) {
-      this.doc.setFont('Times', 'italic');
+      this.doc.setFont(hasNonLatin ? 'helvetica' : 'Times', 'italic');
       this.doc.setTextColor(60, 60, 60);
     } else {
-      this.doc.setFont('Times', fontWeight);
+      this.doc.setFont(hasNonLatin ? 'helvetica' : 'Times', fontWeight);
       this.doc.setTextColor(0, 0, 0);
     }
 

@@ -65,6 +65,9 @@ serve(async (req) => {
 
     console.log('🤖 Calling AI API...');
     console.log('📝 System prompt length:', systemPrompt.length, 'characters');
+    console.log('🔍 Debug - AI Instructions content length:', systemPrompt.length);
+    console.log('🔍 Debug - First 500 chars of prompt:', systemPrompt.substring(0, 500));
+    console.log('🔍 Debug - Last 200 chars of prompt:', systemPrompt.substring(Math.max(0, systemPrompt.length - 200)));
     console.log('💬 Conversation text length:', conversationText.length, 'characters');
     console.log('🎯 Using model:', modelId);
 

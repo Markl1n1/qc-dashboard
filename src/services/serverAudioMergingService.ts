@@ -11,7 +11,7 @@ export interface ServerMergingProgress {
 /** Robustly extracts a string filename from createSafeFilenameWithMetadata result */
 function resolveSafeFilename(baseName: string, extraMeta: Record<string, any>): string {
   try {
-    const res: any = createSafeFilenameWithMetadata(baseName, extraMeta);
+    const res: any = createSafeFilenameWithMetadata(baseName, JSON.stringify(extraMeta));
     if (typeof res === "string") return sanitize(res);
     if (res && typeof res === "object") {
       const candidate =

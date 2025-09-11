@@ -128,9 +128,12 @@ serve(async (req) => {
   }
 
   try {
+    console.error(`[AudioMerge] === START REQUEST DEBUG ${VERSION} ===`);
     const { body, contentType, rawLen } = await parseBody(req);
     console.error(`[AudioMerge] INVOKE ${VERSION} ct=${contentType} rawLen=${rawLen}`);
+    console.error("[AudioMerge] Raw request body sample:", typeof body === 'string' ? body.substring(0, 200) : JSON.stringify(body).substring(0, 200));
     console.error("[AudioMerge] Parsed keys:", body ? Object.keys(body) : []);
+    console.error("[AudioMerge] Parsed body full:", JSON.stringify(body, null, 2));
 
     if (body?.files && !body.paths) {
       console.error("[AudioMerge] Received legacy 'files'. This endpoint expects 'paths' to Storage objects.");
