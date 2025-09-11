@@ -33,9 +33,14 @@ const DialogDetail = () => {
   });
   const [highlightedUtterance, setHighlightedUtterance] = useState<string | null>(null);
   
+  // Early return if no ID
+  if (!id) {
+    return <Navigate to="/unified-dashboard" replace />;
+  }
+  
   const { getDialog } = useDatabaseDialogs();
   const evaluateDialogMutation = useEvaluateDialog();
-  const { data: analysisData, isLoading: isAnalysisLoading, isFetching: isAnalysisFetching } = useAnalysisResults(id || '');
+  const { data: analysisData, isLoading: isAnalysisLoading, isFetching: isAnalysisFetching } = useAnalysisResults(id);
   useEffect(() => {
     if (id) {
       loadDialog(id);
@@ -451,4 +456,27 @@ const DialogDetail = () => {
       </Tabs>
     </div>;
 };
-export default DialogDetail;
+
+// Wrap with error handling
+const SafeDialogDetail = () => {
+  try {
+    return <DialogDetail />;
+  } catch (error) {
+    console.error('DialogDetail component error:', error);
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-lg font-semibold mb-2">Dialog not found</h2>
+          <p className="text-muted-foreground mb-4">
+            The requested dialog could not be loaded.
+          </p>
+          <Link to="/unified-dashboard" className="text-primary hover:underline">
+            Return to Dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
+};
+
+export default SafeDialogDetail;

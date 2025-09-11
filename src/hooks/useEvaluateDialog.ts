@@ -47,8 +47,8 @@ export function useEvaluateDialog() {
         console.log('💾 Analysis data cached successfully');
       }
       
-      // Navigate to the Analysis Results tab
-      navigate(`/dialog/${dialogId}`);
+      // Navigate to the Analysis Results tab with tab parameter
+      navigate(`/dialog/${dialogId}?tab=results`);
       
       toast.success('AI analysis completed successfully!');
     },

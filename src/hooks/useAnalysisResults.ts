@@ -8,6 +8,10 @@ export function useAnalysisResults(dialogId: string) {
   return useQuery({
     queryKey: ['analysis', dialogId],
     queryFn: async () => {
+      // Don't fetch if dialogId is invalid
+      if (!dialogId || dialogId === 'undefined') {
+        return null;
+      }
       console.log('🔍 Fetching analysis data for dialog:', dialogId);
       const dialog = await getDialog(dialogId);
       
@@ -27,6 +31,7 @@ export function useAnalysisResults(dialogId: string) {
       }
       return cachedData;
     },
+    enabled: !!dialogId && dialogId !== 'undefined', // Only run query if we have a valid ID
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000,   // 10 minutes (was cacheTime)
   });
