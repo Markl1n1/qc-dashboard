@@ -55,6 +55,15 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
   console.log('🗣️ EnhancedSpeakerDialog - analysisData:', analysisData);
   console.log('🌐 EnhancedSpeakerDialog - commentLanguage:', commentLanguage);
 
+  // --- Нормализация всех типов разрывов и пробелов
+  const normalize = (t: string) =>
+    (t || '')
+      .replace(/<br\s*\/?>/gi, ' ')
+      .replace(/[\r\n\u0085\u2028\u2029]+/g, ' ')
+      .replace(/\u00A0/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
   // Helper function to get comment based on language preference
   const getDisplayComment = (mistake: DetectedIssue): string => {
     if (!mistake.comment) return mistake.description || '';
@@ -69,6 +78,7 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
     
     return mistake.comment || mistake.description || '';
   };
+
   const formatTime = (seconds: number): string => {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = Math.floor(seconds % 60);
@@ -108,6 +118,7 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
     return speakerColors[colorIndex];
   };
 
+  // --- Склейка последовательных реплик одного спикера (без \n)
   const mergeConsecutiveUtterances = (utterances: SpeakerUtterance[]): SpeakerUtterance[] => {
     if (!utterances || utterances.length === 0) return [];
 
@@ -116,7 +127,8 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
       ...utterances[0], 
       speaker: utterances[0].speaker
         .replace(/^Speaker\s+Speaker\s*/, 'Speaker ')
-        .replace(/^Speaker\s+/, 'Speaker ')
+        .replace(/^Speaker\s+/, 'Speaker '),
+      text: normalize(utterances[0].text),
     };
 
     for (let i = 1; i < utterances.length; i++) {
@@ -124,11 +136,13 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
         ...utterances[i], 
         speaker: utterances[i].speaker
           .replace(/^Speaker\s+Speaker\s*/, 'Speaker ')
-          .replace(/^Speaker\s+/, 'Speaker ')
+          .replace(/^Speaker\s+/, 'Speaker '),
+        text: normalize(utterances[i].text),
       };
       
       if (current.speaker === next.speaker) {
-        current.text = `${current.text}\n${next.text}`;
+        // единый параграф
+        current.text = normalize(`${current.text} ${next.text}`);
         current.end = next.end;
         current.confidence = Math.min(current.confidence, next.confidence);
       } else {
@@ -145,17 +159,15 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
     return mistakes.filter(mistake => {
       if (!mistake.utterance) return false;
       
-      // Normalize both texts for comparison - handle Cyrillic properly
       const normalizeText = (text: string) => 
         text.toLowerCase()
-          .replace(/[^\p{L}\p{N}\s]/gu, '') // Use Unicode property escapes for proper Cyrillic support
+          .replace(/[^\p{L}\p{N}\s]/gu, '')
           .replace(/\s+/g, ' ')
           .trim();
       
       const normalizedUtterance = normalizeText(utteranceText);
       const normalizedMistake = normalizeText(mistake.utterance);
       
-      // Debug logging for Cyrillic issues
       if (normalizedUtterance.match(/[\u0400-\u04FF]/) || normalizedMistake.match(/[\u0400-\u04FF]/)) {
         console.log('🔍 Cyrillic text comparison:', {
           utterance: normalizedUtterance.substring(0, 50),
@@ -165,35 +177,28 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
         });
       }
       
-      // Prioritize exact match first
       if (normalizedUtterance === normalizedMistake) {
         return true;
       }
       
-      // For Cyrillic text, use word-based matching instead of character substring
       if (normalizedUtterance.match(/[\u0400-\u04FF]/) || normalizedMistake.match(/[\u0400-\u04FF]/)) {
         const utteranceWords = normalizedUtterance.split(' ').filter(w => w.length > 2);
         const mistakeWords = normalizedMistake.split(' ').filter(w => w.length > 2);
-        
-        // Check if significant number of words overlap
         const commonWords = utteranceWords.filter(word => 
           mistakeWords.some(mistakeWord => 
             word.includes(mistakeWord) || mistakeWord.includes(word)
           )
         );
-        
         const minWords = Math.min(utteranceWords.length, mistakeWords.length);
         if (minWords > 0 && commonWords.length >= Math.max(1, Math.floor(minWords * 0.6))) {
           return true;
         }
       }
       
-      // Standard substring matching for non-Cyrillic text
       if (normalizedUtterance.includes(normalizedMistake)) {
         return true;
       }
       
-      // Check reverse containment with length threshold
       if (normalizedMistake.length > normalizedUtterance.length && 
           normalizedMistake.includes(normalizedUtterance) &&
           normalizedUtterance.length > 10) {
@@ -205,21 +210,15 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
   };
 
   const checkFuzzyMatch = (text1: string, text2: string): boolean => {
-    // For shorter mistake text, use more lenient matching
     const minLength = Math.min(text1.length, text2.length);
     if (minLength < 20) {
-      // For short texts, check if they share significant words
       const words1 = text1.split(' ').filter(w => w.length > 3);
       const words2 = text2.split(' ').filter(w => w.length > 3);
       const commonWords = words1.filter(w => words2.includes(w));
       return commonWords.length >= Math.min(2, Math.min(words1.length, words2.length));
     }
-    
-    // For longer texts, use substring matching
     const shorter = text1.length < text2.length ? text1 : text2;
     const longer = text1.length < text2.length ? text2 : text1;
-    
-    // Check if 70% of the shorter text appears in the longer text
     const threshold = Math.floor(shorter.length * 0.7);
     for (let i = 0; i <= shorter.length - threshold; i++) {
       const substring = shorter.substring(i, i + threshold);
@@ -233,11 +232,8 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
   const checkWordMatch = (text1: string, text2: string): boolean => {
     const words1 = text1.split(' ').filter(w => w.length > 2);
     const words2 = text2.split(' ').filter(w => w.length > 2);
-    
     if (words1.length === 0 || words2.length === 0) return false;
-    
     const commonWords = words1.filter(w => words2.includes(w));
-    // Require at least 50% word overlap for shorter texts
     const minWords = Math.min(words1.length, words2.length);
     return commonWords.length >= Math.max(1, Math.floor(minWords * 0.5));
   };
@@ -399,12 +395,12 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
                         )}
                       </div>
                       
-                      <div className="text-sm leading-relaxed" style={{ color: style.textColor }}>
-                        {utterance.text.split('\n').map((line, lineIndex) => (
-                          <div key={lineIndex} className="mb-1">
-                            {line}
-                          </div>
-                        ))}
+                      {/* ЕДИНЫЙ ПАРАГРАФ — без split('\\n') */}
+                      <div
+                        className="text-sm leading-relaxed"
+                        style={{ color: style.textColor, whiteSpace: 'normal' }}
+                      >
+                        {utterance.text}
                       </div>
 
                       {/* Show mistakes for this utterance */}
