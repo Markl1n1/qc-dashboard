@@ -69,12 +69,22 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
     return speakerColors[colorIndex];
   };
 
+  // Helper to normalize text: remove any hard line/paragraph breaks
+  const normalize = (t: string) =>
+    (t || '')
+      // Replace HTML <br> variants with spaces
+      .replace(/<br\s*\/?>/gi, ' ')
+      // Replace all common line terminators with spaces: \r, \n, NEL, LS, PS
+      .replace(/[\r\n\u0085\u2028\u2029]+/g, ' ')
+      // Collapse whitespace
+      .replace(/\s+/g, ' ')
+      // Normalize non-breaking spaces
+      .replace(/\u00A0/g, ' ')
+      .trim();
+
   // Merge consecutive utterances from the same speaker and clean speaker labels
   const mergeConsecutiveUtterances = (utterances: SpeakerUtterance[]): SpeakerUtterance[] => {
     if (!utterances || utterances.length === 0) return [];
-
-    const normalize = (t: string) =>
-      t.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
 
     const merged: SpeakerUtterance[] = [];
     let current = {
@@ -82,16 +92,16 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
       speaker: utterances[0].speaker
         .replace(/^Speaker\s+Speaker\s*/, 'Speaker ') // Clean "Speaker Speaker X" -> "Speaker X"
         .replace(/^Speaker\s+/, 'Speaker '), // Ensure consistent "Speaker " prefix
-      text: normalize(utterances[0].text || '')
+      text: normalize(utterances[0].text)
     };
 
     for (let i = 1; i < utterances.length; i++) {
       const next = {
         ...utterances[i],
         speaker: utterances[i].speaker
-          .replace(/^Speaker\s+Speaker\s*/, 'Speaker ') // Clean "Speaker Speaker X" -> "Speaker X"
-          .replace(/^Speaker\s+/, 'Speaker '), // Ensure consistent "Speaker " prefix
-        text: normalize(utterances[i].text || '')
+          .replace(/^Speaker\s+Speaker\s*/, 'Speaker ')
+          .replace(/^Speaker\s+/, 'Speaker '),
+        text: normalize(utterances[i].text)
       };
 
       if (current.speaker === next.speaker) {
@@ -254,7 +264,10 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
                         </Badge>
                       </div>
 
-                      <div className="text-sm leading-relaxed" style={{ color: style.textColor }}>
+                      <div
+                        className="text-sm leading-relaxed"
+                        style={{ color: style.textColor, whiteSpace: 'normal' }}
+                      >
                         {utterance.text}
                       </div>
                     </div>
