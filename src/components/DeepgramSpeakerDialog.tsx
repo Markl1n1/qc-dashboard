@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
@@ -61,10 +60,10 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
     const cleanSpeaker = speaker
       .replace(/^Speaker\s+Speaker\s*/, '') // Remove "Speaker Speaker" prefix
       .replace(/^Speaker\s*/, ''); // Remove remaining "Speaker" prefix
-    
+
     // Extract speaker number for color assignment
     const speakerIndex = parseInt(cleanSpeaker) || 0;
-    
+
     // Use modulo to cycle through colors if we have more speakers than colors
     const colorIndex = speakerIndex % speakerColors.length;
     return speakerColors[colorIndex];
@@ -74,25 +73,30 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
   const mergeConsecutiveUtterances = (utterances: SpeakerUtterance[]): SpeakerUtterance[] => {
     if (!utterances || utterances.length === 0) return [];
 
+    const normalize = (t: string) =>
+      t.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+
     const merged: SpeakerUtterance[] = [];
-    let current = { 
-      ...utterances[0], 
+    let current = {
+      ...utterances[0],
       speaker: utterances[0].speaker
         .replace(/^Speaker\s+Speaker\s*/, 'Speaker ') // Clean "Speaker Speaker X" -> "Speaker X"
-        .replace(/^Speaker\s+/, 'Speaker ') // Ensure consistent "Speaker " prefix
+        .replace(/^Speaker\s+/, 'Speaker '), // Ensure consistent "Speaker " prefix
+      text: normalize(utterances[0].text || '')
     };
 
     for (let i = 1; i < utterances.length; i++) {
-      const next = { 
-        ...utterances[i], 
+      const next = {
+        ...utterances[i],
         speaker: utterances[i].speaker
           .replace(/^Speaker\s+Speaker\s*/, 'Speaker ') // Clean "Speaker Speaker X" -> "Speaker X"
-          .replace(/^Speaker\s+/, 'Speaker ') // Ensure consistent "Speaker " prefix
+          .replace(/^Speaker\s+/, 'Speaker '), // Ensure consistent "Speaker " prefix
+        text: normalize(utterances[i].text || '')
       };
-      
+
       if (current.speaker === next.speaker) {
-        // Merge with current utterance - format each utterance on a new line
-        current.text = `${current.text} ${next.text}`.replace(/\s+/g, ' ').trim();
+        // Merge with current utterance - single continuous paragraph
+        current.text = normalize(`${current.text} ${next.text}`);
         current.end = next.end; // Update end time to the latest
         current.confidence = Math.min(current.confidence, next.confidence); // Use lower confidence
       } else {
@@ -101,7 +105,7 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
         current = { ...next };
       }
     }
-    
+
     // Add the last utterance
     merged.push(current);
     return merged;
@@ -174,7 +178,7 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
           <div className="mt-4 flex flex-wrap gap-4">
             {Object.entries(speakerStats).map(([speaker, stats]) => {
               const style = getSpeakerStyle(speaker);
-              
+
               return (
                 <div
                   key={speaker}
@@ -187,7 +191,11 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
                 >
                   <User className="h-4 w-4" />
                   <span className="font-medium">{speaker}</span>
-                  <Badge variant="outline" className="text-xs font-bold" style={{ color: style.textColor, borderColor: style.borderColor }}>
+                  <Badge
+                    variant="outline"
+                    className="text-xs font-bold"
+                    style={{ color: style.textColor, borderColor: style.borderColor }}
+                  >
                     {stats.count} segments
                   </Badge>
                   <span className="text-xs font-medium">
@@ -207,7 +215,7 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
             <div className="p-6 space-y-4">
               {mergedUtterances.map((utterance, index) => {
                 const style = getSpeakerStyle(utterance.speaker);
-                
+
                 return (
                   <div
                     key={index}
@@ -225,10 +233,10 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
                         <User className="h-4 w-4" style={{ color: style.textColor }} />
                       </div>
                     </div>
-                    
+
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-2">
-                        <span 
+                        <span
                           className="font-medium text-sm"
                           style={{ color: style.textColor }}
                         >
@@ -237,11 +245,15 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
                         <span className="text-xs text-foreground/70">
                           {formatTime(utterance.start)} - {formatTime(utterance.end)}
                         </span>
-                        <Badge variant="outline" className="text-xs font-bold" style={{ color: style.textColor, borderColor: style.borderColor }}>
+                        <Badge
+                          variant="outline"
+                          className="text-xs font-bold"
+                          style={{ color: style.textColor, borderColor: style.borderColor }}
+                        >
                           {Math.round(utterance.confidence * 100)}%
                         </Badge>
                       </div>
-                      
+
                       <div className="text-sm leading-relaxed" style={{ color: style.textColor }}>
                         {utterance.text}
                       </div>
