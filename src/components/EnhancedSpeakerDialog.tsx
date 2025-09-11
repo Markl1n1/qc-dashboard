@@ -131,42 +131,41 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
 
   const mergedUtterances = useMemo(() => mergeConsecutiveUtterances(utterances), [utterances]);
 
-  // ---------- 4) Строгое сопоставление ошибок к репликам ----------
-  /**
-   * Возвращает Map<utteranceIndex, DetectedIssue[]>, где каждая ошибка присвоена не более одного раза.
-   * Правило: строгое равенство normalizeForMatch(mistake.utterance) === normalizeForMatch(mergedUtterance.text).
-   * Если совпадений несколько (например, «Хорошо.» встречается дважды), берём первое "свободное".
-   */
-  const assignments = useMemo(() => {
-    const map = new Map<number, DetectedIssue[]>();
-    const usedUtterance = new Set<number>(); // для коротких дубликатов по желанию можно разрешить multi, но ты просил 1 раз
+  // ---------- 4) Строгое сопоставление ошибок к репликам (много ошибок на одну реплику допускается)
+const assignments = useMemo(() => {
+  const map = new Map<number, DetectedIssue[]>();
 
-    // индекс → нормализованный текст
-    const utNorm = mergedUtterances.map(u => normalizeForMatch(u.text));
+  // Предварительно нормализуем все объединённые реплики
+  const utNorm = mergedUtterances.map(u => normalizeForMatch(u.text));
 
-    mistakes.forEach((m) => {
-      const mTxt = (m.utterance || '').trim();
-      if (!mTxt) return;
-      const mNorm = normalizeForMatch(mTxt);
+  mistakes.forEach((m) => {
+    const raw = (m.utterance || '').trim();
+    if (!raw) return;
 
-      // ищем все совпадения
-      const candidates: number[] = [];
-      for (let i = 0; i < utNorm.length; i++) {
-        if (utNorm[i] === mNorm) candidates.push(i);
-      }
-      if (candidates.length === 0) return; // строго — не нашли, не крепим
+    const mNorm = normalizeForMatch(raw);
 
-      // выбираем первый неиспользованный; если все заняты — всё равно закрепим к первому, чтобы не терять сигнал
-      const targetIndex = candidates.find(i => !usedUtterance.has(i)) ?? candidates[0];
-      usedUtterance.add(targetIndex);
+    // Находим все реплики, где фрагмент встречается как ПОДСТРОКА (строгое вхождение)
+    const candidates = utNorm
+      .map((u, i) => ({ i, pos: u.indexOf(mNorm), len: u.length }))
+      .filter(x => x.pos !== -1);
 
-      const list = map.get(targetIndex) ?? [];
-      list.push(m);
-      map.set(targetIndex, list);
-    });
+    if (candidates.length === 0) {
+      // Ничего не крепим — строгий режим без «фаззи»
+      return;
+    }
 
-    return map;
-  }, [mistakes, mergedUtterances]);
+    // Выбираем лучшую реплику: самая короткая подходящая, затем по более ранней позиции
+    candidates.sort((a, b) => (a.len - b.len) || (a.pos - b.pos));
+    const targetIndex = candidates[0].i;
+
+    // Добавляем ошибку к выбранной реплике (несколько ошибок на одну реплику — ОК)
+    const list = map.get(targetIndex) ?? [];
+    list.push(m);
+    map.set(targetIndex, list);
+  });
+
+  return map;
+}, [mistakes, mergedUtterances]);
 
   const handleCopyDialog = async () => {
     const formattedText = formatDialogForCopy(mergedUtterances);
