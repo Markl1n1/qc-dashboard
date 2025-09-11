@@ -1,7 +1,15 @@
 import jsPDF from 'jspdf';
 import { SpeakerUtterance, Dialog } from '../types';
 
+// ⬇️ добавь/проверь пути к VFS-модулям шрифтов
+import NotoSansRegular from '../fonts/NotoSans-Regular-normal';
+import NotoSansItalic from '../fonts/NotoSans-Italic-italic';
+import NotoSansBold from '../fonts/NotoSans-Bold-bold';
+import NotoSansBoldItalic from '../fonts/NotoSans-BoldItalic-bolditalic';
+
 export class PDFGenerator {
+  private static fontsRegistered = false;
+
   private doc: jsPDF;
   private yPosition: number = 20;
   private pageHeight: number;
@@ -11,11 +19,9 @@ export class PDFGenerator {
 
   constructor() {
     this.doc = new jsPDF();
-    this.doc.setFont('Times', 'normal');
+    this.registerUnicodeFonts();              // ✅ регистрируем NotoSans один раз
+    this.doc.setFont('NotoSans', 'normal');   // ✅ всегда используем Unicode-шрифт
     this.pageHeight = this.doc.internal.pageSize.height;
-    
-    // Enable Unicode support for Cyrillic and other non-Latin characters
-    // Note: jsPDF has limited native font support for non-Latin characters
   }
 
   setLanguagePreference(preference: 'original' | 'russian'): void {
@@ -36,25 +42,49 @@ export class PDFGenerator {
   private checkPageBreak(additionalHeight: number = 0): void {
     if (this.yPosition + additionalHeight > this.pageHeight - this.margin) {
       this.doc.addPage();
+      // после новой страницы нужно заново установить шрифт
+      this.doc.setFont('NotoSans', 'normal');
       this.yPosition = this.margin;
     }
   }
 
   private preprocessText(text: string): string {
-    return text
+    return (text ?? '')
       .normalize('NFC')
-      .replace(/\u00A0/g, ' ')
-      .replace(/\s+/g, ' ')
+      .replace(/\u00A0/g, ' ')                    // NBSP -> пробел
+      .replace(/[\r\n\u0085\u2028\u2029]+/g, ' ') // все типы переносов -> пробел
+      .replace(/\s+/g, ' ')                       // схлопываем подряд идущие пробелы
       .trim();
   }
 
-  private addUnicodeFont(): void {
-    // Add support for Unicode characters including Cyrillic
+  // ✅ регистрируем NotoSans (Unicode)
+  private registerUnicodeFonts(): void {
+    if (PDFGenerator.fontsRegistered) return;
     try {
-      this.doc.setFont('helvetica', 'normal');
+      this.doc.addFileToVFS('NotoSans-Regular.ttf', NotoSansRegular as unknown as string);
+      this.doc.addFileToVFS('NotoSans-Italic.ttf', NotoSansItalic as unknown as string);
+      this.doc.addFileToVFS('NotoSans-Bold.ttf', NotoSansBold as unknown as string);
+      this.doc.addFileToVFS('NotoSans-BoldItalic.ttf', NotoSansBoldItalic as unknown as string);
+
+      this.doc.addFont('NotoSans-Regular.ttf', 'NotoSans', 'normal');
+      this.doc.addFont('NotoSans-Italic.ttf', 'NotoSans', 'italic');
+      this.doc.addFont('NotoSans-Bold.ttf', 'NotoSans', 'bold');
+      this.doc.addFont('NotoSans-BoldItalic.ttf', 'NotoSans', 'bolditalic');
+
+      PDFGenerator.fontsRegistered = true;
     } catch (error) {
-      console.warn('Unicode font not available, using default font');
-      this.doc.setFont('Times', 'normal');
+      console.error('Failed to register NotoSans fonts for jsPDF:', error);
+    }
+  }
+
+  // ✅ оставляем метод, но теперь он просто включает NotoSans
+  private addUnicodeFont(): void {
+    try {
+      this.doc.setFont('NotoSans', 'normal');
+    } catch (error) {
+      console.warn('NotoSans font not available, falling back to built-in font (limited Unicode)');
+      // fallback (ограниченный набор глифов, но лучше чем ничего)
+      this.doc.setFont('helvetica', 'normal');
     }
   }
 
@@ -66,18 +96,15 @@ export class PDFGenerator {
   ): void {
     this.doc.setFontSize(fontSize);
 
-    // Check if text contains non-Latin characters
-    const hasNonLatin = /[^\u0000-\u007F]/.test(text);
-    
-    if (hasNonLatin) {
-      this.addUnicodeFont();
-    }
+    // Раньше здесь была проверка hasNonLatin и переключение на helvetica.
+    // Теперь всегда используем NotoSans (универсальный Unicode-шрифт).
+    this.addUnicodeFont();
 
     if (isQuote) {
-      this.doc.setFont(hasNonLatin ? 'helvetica' : 'Times', 'italic');
+      this.doc.setFont('NotoSans', 'italic');
       this.doc.setTextColor(60, 60, 60);
     } else {
-      this.doc.setFont(hasNonLatin ? 'helvetica' : 'Times', fontWeight);
+      this.doc.setFont('NotoSans', fontWeight);
       this.doc.setTextColor(0, 0, 0);
     }
 
@@ -126,7 +153,7 @@ export class PDFGenerator {
   private addSpeakerUtterance(utterance: SpeakerUtterance, index: number): void {
     this.checkPageBreak(this.lineHeight * 3);
     this.doc.setFontSize(12);
-    this.doc.setFont('Times', 'bold');
+    this.doc.setFont('NotoSans', 'bold'); // ✅
 
     if (utterance.speaker === 'Speaker 0') {
       this.doc.setTextColor(0, 64, 128);
@@ -141,7 +168,7 @@ export class PDFGenerator {
     this.yPosition += this.lineHeight + 2;
 
     this.doc.setTextColor(0, 0, 0);
-    this.doc.setFont('Times', 'normal');
+    this.doc.setFont('NotoSans', 'normal'); // ✅
     this.doc.setFontSize(10);
 
     const maxWidth = this.doc.internal.pageSize.width - (this.margin * 2) - 10;
@@ -167,7 +194,7 @@ export class PDFGenerator {
     this.yPosition += 8;
 
     this.doc.setFontSize(16);
-    this.doc.setFont('Times', 'bold');
+    this.doc.setFont('NotoSans', 'bold'); // ✅
     this.doc.setTextColor(0, 0, 0);
     this.doc.text(title, this.margin, this.yPosition);
     this.yPosition += 10;
@@ -217,7 +244,7 @@ export class PDFGenerator {
       evaluation.mistakes.forEach((mistake: any, index: number) => {
         this.checkPageBreak(30);
 
-        this.doc.setFont('Times', 'bold');
+        this.doc.setFont('NotoSans', 'bold'); // ✅
         this.doc.setFontSize(11);
 
         switch (mistake.rule_category) {
@@ -238,7 +265,7 @@ export class PDFGenerator {
         this.yPosition += this.lineHeight + 2;
 
         this.doc.setTextColor(0, 0, 0);
-        this.doc.setFont('Times', 'normal');
+        this.doc.setFont('NotoSans', 'normal'); // ✅
         this.doc.setFontSize(10);
 
         if (mistake.comment) {
@@ -276,7 +303,7 @@ export class PDFGenerator {
     this.yPosition = 20;
 
     this.doc.setFontSize(18);
-    this.doc.setFont('Times', 'bold');
+    this.doc.setFont('NotoSans', 'bold'); // ✅
     this.doc.setTextColor(0, 0, 0);
     this.doc.text('Dialog Transcription & Analysis Report', this.margin, this.yPosition);
     this.yPosition += 15;
@@ -306,7 +333,7 @@ export class PDFGenerator {
     for (let i = 1; i <= pageCount; i++) {
       this.doc.setPage(i);
       this.doc.setFontSize(8);
-      this.doc.setFont('Times', 'normal');
+      this.doc.setFont('NotoSans', 'normal'); // ✅
       this.doc.setTextColor(100, 100, 100);
 
       this.doc.text(
@@ -361,7 +388,7 @@ export class PDFGenerator {
     for (let i = 1; i <= pageCount; i++) {
       this.doc.setPage(i);
       this.doc.setFontSize(8);
-      this.doc.setFont('Times', 'normal');
+      this.doc.setFont('NotoSans', 'normal'); // ✅
       this.doc.setTextColor(100, 100, 100);
       this.doc.text(
         `Page ${i} of ${pageCount}`,

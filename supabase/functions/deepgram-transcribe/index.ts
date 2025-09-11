@@ -30,7 +30,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const DEEPGRAM_API_KEY = 'fad53278adc2597e39856ec7ac1bf4a4d9adbe16';
+//  const DEEPGRAM_API_KEY = 'fad53278adc2597e39856ec7ac1bf4a4d9adbe16';
+    const DEEPGRAM_API_KEY = Deno.env.get('DEEPGRAM_API_KEY');
     
     if (!DEEPGRAM_API_KEY) {
       throw new Error('Deepgram API key not configured');
