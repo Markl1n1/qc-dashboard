@@ -1,188 +1,273 @@
+// supabase/functions/openai-evaluate/index.ts
+// Edge-функция с двумя режимами:
+//   A) response_format: json_schema (STRICT) — основной путь
+//   B) tool calling + принудительный tool_choice — fallback
+//
+// Возвращает "slim" ответ, совместимый с твоим парсером:
+// {
+//   choices: [{ message: { content: string }, finish_reason: string }],
+//   usage?: { prompt_tokens?: number; completion_tokens?: number },
+//   tokenEstimation?: { actualInputTokens?: number; outputTokens?: number }
+// }
 
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
+
+const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
+
+function jsonHeaders(extra?: Record<string, string>) {
+  return {
+    "content-type": "application/json; charset=utf-8",
+    ...(extra || {}),
+  };
+}
+
+function isSchemaUnsupported(errMsg: string | undefined): boolean {
+  if (!errMsg) return false;
+  const msg = errMsg.toLowerCase();
+  return (
+    msg.includes("response_format") &&
+    (msg.includes("unsupported") || msg.includes("invalid") || msg.includes("not supported"))
+  );
+}
+
+function usageToEstimation(usage: any | undefined) {
+  if (!usage) return undefined;
+  return {
+    actualInputTokens: usage.prompt_tokens ?? 0,
+    outputTokens: usage.completion_tokens ?? 0,
+  };
+}
+
+// Единая JSON-схема для обоих режимов
+const evaluationJSONSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["score", "mistakes", "speakers"],
+  properties: {
+    score: { type: "integer", minimum: 0, maximum: 100 },
+    mistakes: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["rule_category", "comment", "utterance"],
+        properties: {
+          rule_category: { type: "string", enum: ["Correct", "Acceptable", "Not Recommended", "Mistake", "Banned"] },
+          comment: {
+            type: "object",
+            additionalProperties: false,
+            required: ["original", "russian"],
+            properties: {
+              original: { type: "string", minLength: 1 },
+              russian: { type: "string", minLength: 1 },
+            },
+          },
+          utterance: { type: "string", minLength: 1 },
+        },
+      },
+    },
+    speakers: {
+      type: "object",
+      additionalProperties: false,
+      required: ["speaker_0", "role_0", "speaker_1", "role_1"],
+      properties: {
+        speaker_0: { type: "string", minLength: 1 },
+        role_0: { type: "string", enum: ["Agent", "Customer", "Unknown"] },
+        speaker_1: { type: "string", minLength: 1 },
+        role_1: { type: "string", enum: ["Agent", "Customer", "Unknown"] },
+      },
+    },
+  },
 };
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
-
   try {
-    const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
-    
-    if (!openAIApiKey) {
-      console.error('AI API key not found in Supabase secrets');
-      return new Response(
-        JSON.stringify({ error: 'AI API key not configured' }),
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      );
+    if (req.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "access-control-allow-origin": "*",
+          "access-control-allow-headers": "*",
+          "access-control-allow-methods": "POST, OPTIONS",
+        },
+      });
     }
 
-    const { model, messages, max_output_tokens, temperature, reasoning_effort } = await req.json();
+    if (req.method !== "POST") {
+      return new Response(JSON.stringify({ error: "Method not allowed" }), {
+        status: 405,
+        headers: jsonHeaders({ "access-control-allow-origin": "*" }),
+      });
+    }
 
-    // Build request body based on model type
-    const requestBody: any = {
+    const apiKey = Deno.env.get("OPENAI_API_KEY");
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: "OPENAI_API_KEY is not set" }), {
+        status: 500,
+        headers: jsonHeaders({ "access-control-allow-origin": "*" }),
+      });
+    }
+
+    // Тело запроса от приложения: { model, messages, ...доп.поля }
+    const body = await req.json();
+    const { model, messages, ...rest } = body as {
+      model: string;
+      messages: ChatMessage[];
+      [k: string]: unknown;
+    };
+
+    if (!model || !Array.isArray(messages)) {
+      return new Response(JSON.stringify({ error: "model and messages are required" }), {
+        status: 400,
+        headers: jsonHeaders({ "access-control-allow-origin": "*" }),
+      });
+    }
+
+    // Базовые параметры, присланные клиентом, оставляем как есть (temperature и т.п.),
+    // но структуру ответа контролируем здесь.
+    const basePayload: Record<string, unknown> = {
       model,
       messages,
+      ...rest,
     };
 
-    // Determine model type for parameter selection
-    const isGPT5OrNewer = model.includes('gpt-5') || model.includes('gpt-4.1') || model.includes('o3') || model.includes('o4');
-    const isReasoningModel = model.includes('o3') || model.includes('o4');
-
-    // For GPT-5 and newer models, use max_completion_tokens
-    if (isGPT5OrNewer) {
-      requestBody.max_completion_tokens = max_output_tokens;
-      if (reasoning_effort && isReasoningModel) {
-        requestBody.reasoning_effort = reasoning_effort;
-      }
-      // Note: temperature is not supported for GPT-5 and newer models
-    } else {
-      // For legacy models (gpt-4o family), use max_tokens and temperature
-      requestBody.max_tokens = max_output_tokens;
-      if (temperature !== undefined) {
-        requestBody.temperature = temperature;
-      }
-    }
-
-    // Log token limits and model configuration
-    console.log('🎛️ Model configuration:', {
-      model,
-      isGPT5OrNewer,
-      isReasoningModel,
-      tokenLimit: max_output_tokens,
-      hasReasoningEffort: !!reasoning_effort,
-      temperature: temperature
-    });
-
-    console.log('📤 Request body:', JSON.stringify(requestBody, null, 2));
-
-    const openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openAIApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-    });
-
-    console.log('📥 AI response status:', openAIResponse.status);
-    console.log('📥 AI response headers:', Object.fromEntries(openAIResponse.headers.entries()));
-
-    if (!openAIResponse.ok) {
-      const errorText = await openAIResponse.text();
-      console.error('❌ AI API error:', {
-        status: openAIResponse.status,
-        statusText: openAIResponse.statusText,
-        errorText,
-        model,
-        tokenLimit: max_output_tokens
-      });
-      return new Response(
-        JSON.stringify({ 
-          error: `AI API error: ${openAIResponse.status} - ${errorText}` 
-        }),
-        { 
-          status: openAIResponse.status, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      );
-    }
-
-    const data = await openAIResponse.json();
-    console.log('✅ AI response successful');
-    
-    // Enhanced response analysis
-    const choice = data.choices?.[0];
-    const finishReason = choice?.finish_reason;
-    const content = choice?.message?.content;
-    
-    console.log('📊 Token usage:', {
-      actualInputTokens: data.usage?.prompt_tokens,
-      outputTokens: data.usage?.completion_tokens,
-      totalTokens: data.usage?.total_tokens,
-      reasoningTokens: data.usage?.completion_tokens_details?.reasoning_tokens
-    });
-    
-    console.log('🏁 Response details:', {
-      finishReason,
-      contentLength: content?.length || 0,
-      hasContent: !!content,
-      model: data.model
-    });
-    
-    // Enhanced logging for debugging parsing issues
-    console.log('📝 RAW CONTENT START 📝');
-    console.log(content);
-    console.log('📝 RAW CONTENT END 📝');
-    
-    console.log('📝 Response content preview:', content?.substring(0, 200) + '...');
-
-    // Try to parse the JSON to see if it's valid
+    // ====== Попытка A: Structured Outputs (json_schema, strict) ======
     try {
-      const parsedContent = JSON.parse(content);
-      console.log('✅ Content is valid JSON');
-      console.log('🔍 Parsed structure:', parsedContent);
-      console.log('📊 Mistakes count:', parsedContent.mistakes?.length || 0);
-      console.log('👥 Speakers data:', parsedContent.speakers);
-    } catch (parseError) {
-      console.error('❌ Content is NOT valid JSON:', parseError);
-      console.log('🔧 Content that failed to parse:', content);
-    }
-    
-    // Warn about truncated responses
-    if (finishReason === 'length') {
-      console.warn('⚠️ RESPONSE TRUNCATED - Consider increasing token limit');
-      console.warn('🔧 Suggested fixes:', {
-        increaseTokens: 'Use higher max_completion_tokens',
-        upgradeModel: 'Consider using a more capable model',
-        optimizePrompt: 'Reduce prompt length'
+      const payloadA = {
+        ...basePayload,
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "EvaluationPayload",
+            strict: true,
+            schema: evaluationJSONSchema,
+          },
+        },
+      };
+
+      const resA = await fetch(OPENAI_URL, {
+        method: "POST",
+        headers: {
+          ...jsonHeaders(),
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(payloadA),
       });
+
+      const dataA = await resA.json();
+
+      if (!resA.ok) {
+        const errMsg = dataA?.error?.message || resA.statusText;
+        // Если явно неподдерживаемо — переключаемся на B
+        if (isSchemaUnsupported(errMsg)) throw new Error(`SCHEMA_UNSUPPORTED: ${errMsg}`);
+        // Иначе пробрасываем ошибку наверх (пусть клиент увидит причину)
+        return new Response(JSON.stringify({ error: errMsg }), {
+          status: resA.status,
+          headers: jsonHeaders({ "access-control-allow-origin": "*" }),
+        });
+      }
+
+      // Урезаем ответ до "slim"
+      const slimA = {
+        choices: [
+          {
+            message: { content: dataA?.choices?.[0]?.message?.content ?? "" },
+            finish_reason: dataA?.choices?.[0]?.finish_reason ?? "",
+          },
+        ],
+        usage: dataA?.usage
+          ? {
+            prompt_tokens: dataA.usage.prompt_tokens ?? 0,
+            completion_tokens: dataA.usage.completion_tokens ?? 0,
+          }
+          : undefined,
+        tokenEstimation: usageToEstimation(dataA?.usage),
+      };
+
+      return new Response(JSON.stringify(slimA), {
+        status: 200,
+        headers: jsonHeaders({ "access-control-allow-origin": "*" }),
+      });
+    } catch (err) {
+      // Только если ошибка — явная неподдержка json_schema, идём в B
+      if (!(err instanceof Error) || !String(err.message).startsWith("SCHEMA_UNSUPPORTED:")) {
+        // Любая другая ошибка — отдадим клиенту
+        return new Response(JSON.stringify({ error: String(err?.message ?? err) }), {
+          status: 500,
+          headers: jsonHeaders({ "access-control-allow-origin": "*" }),
+        });
+      }
+      // иначе — продолжаем к B
     }
-    
-    console.log('🔍 Full response structure:', JSON.stringify(data, null, 2));
-    
-    // Calculate token estimation for cost tracking
-    const usage = data.usage || {};
-    const tokenEstimation = {
-      actualInputTokens: usage.prompt_tokens || 0,
-      outputTokens: usage.completion_tokens || 0,
-      totalTokens: usage.total_tokens || 0
+
+    // ====== Fallback B: Tool Calling + принудительный tool_choice ======
+    const tools = [
+      {
+        type: "function",
+        function: {
+          name: "emit_evaluation",
+          description: "Return strict conversation evaluation",
+          parameters: evaluationJSONSchema,
+        },
+      },
+    ];
+
+    const payloadB = {
+      ...basePayload,
+      tools,
+      tool_choice: { type: "function", function: { name: "emit_evaluation" } },
     };
 
-    // Add token estimation to response
-    const responseData = {
-      ...data,
-      tokenEstimation
-    };
-
-    console.log('✅ AI response successful, tokens used:', tokenEstimation);
-
-    return new Response(JSON.stringify(responseData), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    const resB = await fetch(OPENAI_URL, {
+      method: "POST",
+      headers: {
+        ...jsonHeaders(),
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(payloadB),
     });
 
-  } catch (error) {
-    console.error('❌ Error in evaluate function:', error);
-    console.error('❌ Error stack:', error.stack);
-    return new Response(
-      JSON.stringify({ 
-        error: error.message,
-        details: error.stack,
-        timestamp: new Date().toISOString()
-      }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    );
+    const dataB = await resB.json();
+
+    if (!resB.ok) {
+      const errMsg = dataB?.error?.message || resB.statusText;
+      return new Response(JSON.stringify({ error: errMsg }), {
+        status: resB.status,
+        headers: jsonHeaders({ "access-control-allow-origin": "*" }),
+      });
+    }
+
+    // Достаём arguments первой tool-функции и кладём их в message.content,
+    // чтобы клиентский парсер ничего не менял.
+    const args =
+      dataB?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments ?? "";
+
+    const slimB = {
+      choices: [
+        {
+          message: { content: args },
+          finish_reason: dataB?.choices?.[0]?.finish_reason ?? "",
+        },
+      ],
+      usage: dataB?.usage
+        ? {
+          prompt_tokens: dataB.usage.prompt_tokens ?? 0,
+          completion_tokens: dataB.usage.completion_tokens ?? 0,
+        }
+        : undefined,
+      tokenEstimation: usageToEstimation(dataB?.usage),
+    };
+
+    return new Response(JSON.stringify(slimB), {
+      status: 200,
+      headers: jsonHeaders({ "access-control-allow-origin": "*" }),
+    });
+  } catch (e) {
+    return new Response(JSON.stringify({ error: String(e?.message ?? e) }), {
+      status: 500,
+      headers: jsonHeaders({ "access-control-allow-origin": "*" }),
+    });
   }
 });
