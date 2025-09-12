@@ -109,31 +109,28 @@ class ServerAudioMergingService {
     }
 
     const exts = files.map((f) => this.getExtension(f.name));
-    const uniqueExts = Array.from(new Set(exts.filter(Boolean)));
-
-    console.log('🔍 File validation:', {
-      extensions: exts,
-      uniqueExtensions: uniqueExts,
+    const firstExt = exts[0];
+    const allSame = exts.every((e) => e === firstExt);
+    
+    console.log('🔍 File validation:', { 
+      extensions: exts, 
+      firstExt, 
+      allSame,
       fileNames: files.map(f => f.name)
     });
 
-    const allowed = new Set(["mp3", "wav", "flac", "ogg", "m4a"]);
-    // Ensure every provided extension is allowed
-    for (const ext of uniqueExts) {
-      if (!allowed.has(ext)) {
-        console.error('❌ Unsupported format detected:', ext, 'Allowed:', Array.from(allowed));
-        throw new Error(`Unsupported format '${ext}'. Allowed: ${Array.from(allowed).join(", ")}`);
-      }
+    if (!firstExt || !allSame) {
+      console.error('❌ File extension validation failed:', { exts, firstExt, allSame });
+      throw new Error("Wrong audio format: all files must have the same extension");
     }
 
-    // If all files share the same extension, preserve it. If mixed, normalize to WAV on server.
-    let outputFormat: "mp3" | "wav" | "flac" | "ogg" | "m4a";
-    if (uniqueExts.length === 1) {
-      outputFormat = uniqueExts[0] as any;
-    } else {
-      console.log('🔀 Mixed input formats detected, selecting WAV as canonical output for merge', { uniqueExts });
-      outputFormat = 'wav';
+    const allowed = new Set(["mp3", "wav", "flac", "ogg", "m4a"]);
+    if (!allowed.has(firstExt)) {
+      console.error('❌ Unsupported format:', firstExt, 'Allowed:', Array.from(allowed));
+      throw new Error(`Unsupported format '${firstExt}'. Allowed: ${Array.from(allowed).join(", ")}`);
     }
+
+    const outputFormat = firstExt as "mp3" | "wav" | "flac" | "ogg" | "m4a";
 
     this.updateProgress("uploading", 5, "Preparing files for server-side merging...");
 
@@ -175,11 +172,10 @@ class ServerAudioMergingService {
           mergeId
         };
         
-        const fileExt = this.getExtension(file.name);
         const { data, error } = await supabase.storage
           .from(bucket)
           .upload(path, file, {
-            contentType: file.type || this.getContentTypeByExt(fileExt),
+            contentType: file.type || this.getContentTypeByExt(firstExt),
             upsert: false,
           });
 
@@ -213,23 +209,9 @@ class ServerAudioMergingService {
         totalSize: files.reduce((sum, f) => sum + f.size, 0)
       });
 
-      // Call the server-side ffmpeg endpoint (Vercel function) instead of Supabase edge function
-      const invokeRes = await withRetry(async () => {
-        const resp = await fetch('/api/audio-merge', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(invokeBody),
-        });
-        const json = await resp.json();
-        if (!resp.ok) {
-          const err = new Error(json?.error || `HTTP ${resp.status}`);
-          (err as any).details = json;
-          throw err;
-        }
-        return json;
-      });
-      const data = invokeRes;
-      const error = null;
+      const { data, error } = await withRetry(() =>
+        supabase.functions.invoke("audio-merge", { body: invokeBody })
+      );
 
       console.log("📋 Edge function response:", { 
         data: data ? { 
@@ -278,7 +260,7 @@ class ServerAudioMergingService {
 
       this.updateProgress("merging", 95, "Finalizing merged file...");
 
-  const mergedName = data.mergedFile?.path?.split("/").pop() || `merged_${mergeId}.${outputFormat}`;
+      const mergedName = data.mergedFile?.path?.split("/").pop() || `merged_${mergeId}.${firstExt}`;
       const mergedFile = new File([blob], mergedName, {
         type: contentType,
         lastModified: Date.now(),
