@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -18,6 +18,7 @@ interface EvaluationResult {
 export function useEvaluateDialog() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
 
   return useMutation({
     mutationFn: async (payload: EvaluationPayload): Promise<EvaluationResult> => {
@@ -47,10 +48,14 @@ export function useEvaluateDialog() {
         console.log('💾 Analysis data cached successfully');
       }
       
-      // Navigate to the Analysis Results tab with tab parameter
-      navigate(`/dialog/${dialogId}?tab=results`);
-      
-      toast.success('AI analysis completed successfully!');
+      // Only navigate if user is still on the same dialog page
+      const currentPath = location.pathname;
+      if (currentPath.includes(`/dialog/${dialogId}`)) {
+        navigate(`/dialog/${dialogId}?tab=results`);
+        toast.success('AI analysis completed successfully!');
+      } else {
+        toast.success(`AI analysis completed for dialog ${dialogId}!`);
+      }
     },
     onError: (error: Error) => {
       console.error('❌ Analysis failed:', error);

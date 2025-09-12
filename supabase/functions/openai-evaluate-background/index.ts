@@ -129,12 +129,13 @@ serve(async (req) => {
       throw new Error('Failed to parse AI response as JSON');
     }
 
-    // Extract speaker information if present
+    // Extract speaker information correctly - no duplication
     const speakers = analysisResult.speakers || [];
-    const speaker_0 = speakers.length > 0 ? speakers[0]?.speaker_0 || null : null;
-    const role_0 = speakers.length > 0 ? speakers[0]?.role_0 || null : null;
-    const speaker_1 = speakers.length > 1 ? speakers[1]?.speaker_1 || speakers[0]?.speaker_1 || null : null;
-    const role_1 = speakers.length > 1 ? speakers[1]?.role_1 || speakers[0]?.role_1 || null : null;
+    const speakerData = speakers[0] || {};
+    const speaker_0 = speakerData.speaker_0 || null;
+    const role_0 = speakerData.role_0 || null;
+    const speaker_1 = speakerData.speaker_1 || null;
+    const role_1 = speakerData.role_1 || null;
 
     console.log('👥 Speaker data extracted:', { speaker_0, role_0, speaker_1, role_1 });
 

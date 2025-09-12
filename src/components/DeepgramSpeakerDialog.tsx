@@ -7,6 +7,7 @@ import { Clock, Copy, User, Users } from 'lucide-react';
 import { SpeakerUtterance } from '../types';
 import { copyToClipboard, formatDialogForCopy } from '../utils/dialogFormatting';
 import { toast } from 'sonner';
+import { useSpeakerMapping } from '../hooks/useSpeakerMapping';
 
 interface DeepgramSpeakerDialogProps {
   utterances: SpeakerUtterance[];
@@ -18,13 +19,22 @@ interface DeepgramSpeakerDialogProps {
     duration: number;
     model: string;
   };
+  analysisData?: {
+    speaker_0?: string;
+    speaker_1?: string;
+    role_0?: string;
+    role_1?: string;
+  };
 }
 
 const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
   utterances,
   detectedLanguage,
-  metadata
+  metadata,
+  analysisData
 }) => {
+  const { mapSpeakerName } = useSpeakerMapping(analysisData || null);
+  
   const formatTime = (seconds: number): string => {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = Math.floor(seconds % 60);
@@ -56,13 +66,8 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
       }
     ];
 
-    // Clean speaker label to extract number - handle "Speaker Speaker 0" -> "0"
-    const cleanSpeaker = speaker
-      .replace(/^Speaker\s+Speaker\s*/, '') // Remove "Speaker Speaker" prefix
-      .replace(/^Speaker\s*/, ''); // Remove remaining "Speaker" prefix
-
-    // Extract speaker number for color assignment
-    const speakerIndex = parseInt(cleanSpeaker) || 0;
+    // Extract speaker number for color assignment (no more duplication cleanup needed)
+    const speakerIndex = parseInt(speaker.replace(/\D/g, '')) || 0;
 
     // Use modulo to cycle through colors if we have more speakers than colors
     const colorIndex = speakerIndex % speakerColors.length;
@@ -82,25 +87,19 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
       .replace(/\u00A0/g, ' ')
       .trim();
 
-  // Merge consecutive utterances from the same speaker and clean speaker labels
+  // Merge consecutive utterances from the same speaker (no more duplication cleanup)
   const mergeConsecutiveUtterances = (utterances: SpeakerUtterance[]): SpeakerUtterance[] => {
     if (!utterances || utterances.length === 0) return [];
 
     const merged: SpeakerUtterance[] = [];
     let current = {
       ...utterances[0],
-      speaker: utterances[0].speaker
-        .replace(/^Speaker\s+Speaker\s*/, 'Speaker ') // Clean "Speaker Speaker X" -> "Speaker X"
-        .replace(/^Speaker\s+/, 'Speaker '), // Ensure consistent "Speaker " prefix
       text: normalize(utterances[0].text)
     };
 
     for (let i = 1; i < utterances.length; i++) {
       const next = {
         ...utterances[i],
-        speaker: utterances[i].speaker
-          .replace(/^Speaker\s+Speaker\s*/, 'Speaker ')
-          .replace(/^Speaker\s+/, 'Speaker '),
         text: normalize(utterances[i].text)
       };
 
@@ -200,7 +199,7 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
                   }}
                 >
                   <User className="h-4 w-4" />
-                  <span className="font-medium">{speaker}</span>
+                  <span className="font-medium">{mapSpeakerName(speaker)}</span>
                   <Badge
                     variant="outline"
                     className="text-xs font-bold"
@@ -250,7 +249,7 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
                           className="font-medium text-sm"
                           style={{ color: style.textColor }}
                         >
-                          {utterance.speaker}
+                          {mapSpeakerName(utterance.speaker)}
                         </span>
                         <span className="text-xs text-foreground/70">
                           {formatTime(utterance.start)} - {formatTime(utterance.end)}

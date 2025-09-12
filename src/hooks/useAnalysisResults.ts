@@ -34,5 +34,7 @@ export function useAnalysisResults(dialogId: string) {
     enabled: !!dialogId && dialogId !== 'undefined', // Only run query if we have a valid ID
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000,   // 10 minutes (was cacheTime)
+    refetchOnMount: true,     // Always refetch on mount to ensure fresh data
+    refetchOnWindowFocus: false // Don't refetch on window focus to avoid interruptions
   });
 }

@@ -96,8 +96,7 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
       { backgroundColor: 'hsl(280, 60%, 97%)', borderColor: 'hsl(280, 60%, 85%)', textColor: 'hsl(280, 60%, 25%)' },
       { backgroundColor: 'hsl(30, 100%, 97%)', borderColor: 'hsl(30, 100%, 85%)', textColor: 'hsl(30, 100%, 25%)' }
     ];
-    const clean = speaker.replace(/^Speaker\s+Speaker\s*/, '').replace(/^Speaker\s*/, '');
-    const idx = (parseInt(clean) || 0) % speakerColors.length;
+    const idx = (parseInt(speaker.replace(/\D/g, '')) || 0) % speakerColors.length;
     return speakerColors[idx];
   };
 
@@ -107,13 +106,11 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
     const merged: SpeakerUtterance[] = [];
     let current: SpeakerUtterance = {
       ...arr[0],
-      speaker: arr[0].speaker.replace(/^Speaker\s+Speaker\s*/, 'Speaker ').replace(/^Speaker\s+/, 'Speaker '),
       text: normalizeDisplay(arr[0].text)
     };
     for (let i = 1; i < arr.length; i++) {
       const next: SpeakerUtterance = {
         ...arr[i],
-        speaker: arr[i].speaker.replace(/^Speaker\s+Speaker\s*/, 'Speaker ').replace(/^Speaker\s+/, 'Speaker '),
         text: normalizeDisplay(arr[i].text)
       };
       if (current.speaker === next.speaker) {
