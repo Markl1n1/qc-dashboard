@@ -5,10 +5,9 @@
 import { mergeAudioFilesTo8kWav } from "@/lib/merge-audio-to-wav";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-// Optional: create a client if env vars exist (used for the WAV server path)
+// Optional: create a default Supabase client for the WAV server path
 let defaultSupabase: SupabaseClient | undefined;
 try {
-  // Lazy-import to avoid breaking environments without Supabase
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (url && anon) {
@@ -35,7 +34,7 @@ export type ProgressEvent = {
   message?: string;
 };
 
-// 👉 This matches what Upload.tsx imports as ServerMergingProgress
+// Kept for Upload.tsx imports
 export type ServerMergingProgress = ProgressEvent;
 
 export type ProgressUpdater = (evt: ProgressEvent) => void;
@@ -67,6 +66,11 @@ export class ServerAudioMergingService {
       outputSampleRate: options?.outputSampleRate ?? 8000,
       normalizePeak: options?.normalizePeak ?? false,
     };
+  }
+
+  // 🔁 Restored to maintain backward compatibility with Upload.tsx
+  public setProgressCallback(cb?: ProgressUpdater) {
+    this.opts = { ...this.opts, onProgress: cb ?? (() => void 0) };
   }
 
   private updateProgress(stage: Stage, progress: number, message?: string) {
@@ -245,8 +249,8 @@ export class ServerAudioMergingService {
   }
 }
 
-// Default class export still available
+// Default class export
 export default ServerAudioMergingService;
 
-// 👉 Named export expected by your Upload.tsx
+// Named instance + types used by Upload.tsx
 export const serverAudioMergingService = new ServerAudioMergingService(defaultSupabase);
