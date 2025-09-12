@@ -173,9 +173,8 @@ class DeepgramService {
     }
 
     const processedUtterances = utterances.map((utterance: any, index: number) => {
-      // Use RAW speaker numbers - no intelligent detection
-      const speakerNumber = utterance.speaker !== undefined ? utterance.speaker : 0;
-      const speakerLabel = `Speaker ${speakerNumber}`;
+      // Use the speaker label directly from the edge function (already formatted as "Speaker X")
+      const speakerLabel = utterance.speaker || 'Speaker 0';
       
       return {
         speaker: speakerLabel,
