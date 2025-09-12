@@ -1,313 +1,310 @@
-import { supabase } from "@/integrations/supabase/client";
-import { createSafeFilenameWithMetadata } from "@/utils/filenameSanitizer";
+// src/services/serverAudioMergingService.ts
 
-export interface ServerMergingProgress {
-  stage: "uploading" | "merging" | "complete" | "error";
-  progress: number;
-  message: string;
-  currentFile?: string;
-}
+/* eslint-disable no-console */
 
-/** Robustly extracts a string filename from createSafeFilenameWithMetadata result */
-function resolveSafeFilename(baseName: string, extraMeta: Record<string, any>): string {
-  try {
-    const res: any = createSafeFilenameWithMetadata(baseName, JSON.stringify(extraMeta));
-    if (typeof res === "string") return sanitize(res);
-    if (res && typeof res === "object") {
-      const candidate =
-        res.sanitized ??
-        res.filename ??
-        res.fileName ??
-        res.name ??
-        res.safeName ??
-        res.safeFilename ??
-        null;
-      if (typeof candidate === "string") return sanitize(candidate);
-    }
-    // fallback to sanitized baseName
-    return sanitize(baseName);
-  } catch {
-    return sanitize(baseName);
-  }
+import { mergeAudioFilesTo8kWav } from "@/lib/merge-audio-to-wav";
 
-  function sanitize(name: string): string {
-    // убираем слеши/управляющие и приводим к безопасному виду
-    return name
-      .replace(/[/\\]/g, "_")
-      .replace(/\s+/g, "_")
-      .replace(/[^\w.\-()]/g, "_")
-      .replace(/_+/g, "_")
-      .replace(/^_+|_+$/g, "");
-  }
-}
+// If you use Supabase elsewhere, keep this import.
+// Remove it if you inject a different client.
+import type { SupabaseClient } from "@supabase/supabase-js";
 
-// Lightweight retry helper with exponential backoff + jitter
-async function withRetry<T>(fn: () => Promise<T>, attempts = 3, baseMs = 300): Promise<T> {
-  let lastErr: unknown;
-  for (let i = 0; i < attempts; i++) {
-    try {
-      return await fn();
-    } catch (e) {
-      lastErr = e;
-      const jitter = Math.random() * 100;
-      const delay = baseMs * Math.pow(2, i) + jitter;
-      await new Promise(res => setTimeout(res, delay));
-    }
-  }
-  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
-}
+type Stage = "idle" | "validating" | "uploading" | "merging" | "downloading" | "complete" | "error";
 
-class ServerAudioMergingService {
-  private progressCallback?: (progress: ServerMergingProgress) => void;
+export type ProgressEvent = {
+  stage: Stage;
+  progress: number; // 0..100
+  message?: string;
+};
 
-  setProgressCallback(callback: (progress: ServerMergingProgress) => void) {
-    this.progressCallback = callback;
-  }
+export type ProgressUpdater = (evt: ProgressEvent) => void;
 
-  private updateProgress(
-    stage: ServerMergingProgress["stage"],
-    progress: number,
-    message: string,
-    currentFile?: string
+export type ServerAudioMergingServiceOptions = {
+  /**
+   * Called whenever we have a user-visible progress update.
+   */
+  onProgress?: ProgressUpdater;
+
+  /**
+   * Public HTTP endpoint of your edge function (no trailing slash),
+   * e.g. `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/audio-merge`
+   *
+   * If you prefer to call via supabase.functions.invoke, leave this undefined
+   * and set `useSupabaseFunctionsInvoke: true`.
+   */
+  edgeMergeUrl?: string;
+
+  /**
+   * Use supabase.functions.invoke("audio-merge") instead of raw fetch.
+   * Default: false
+   */
+  useSupabaseFunctionsInvoke?: boolean;
+
+  /**
+   * Temporary storage bucket for uploads when using the server WAV path.
+   * Must be publicly readable (or your edge fn must use service key to read).
+   */
+  tempBucket?: string; // default "tmp-audio"
+
+  /**
+   * Desired output sample rate for server WAV merges.
+   * Your edge merge currently concatenates WAVs; this is kept for parity.
+   */
+  outputSampleRate?: number; // default 8000
+
+  /**
+   * Whether to normalize client-side merge peak to -1..1 prior to encode.
+   * Keeps previous behavior default: false
+   */
+  normalizePeak?: boolean; // default false
+};
+
+export class ServerAudioMergingService {
+  private supabase?: SupabaseClient;
+  private opts: Required<ServerAudioMergingServiceOptions>;
+
+  constructor(
+    supabaseClient?: SupabaseClient,
+    options?: ServerAudioMergingServiceOptions,
   ) {
-    this.progressCallback?.({ stage, progress, message, currentFile });
-    console.log(
-      `[ServerAudioMerging] ${stage}: ${progress}% - ${message}${currentFile ? ` (${currentFile})` : ""}`
-    );
+    this.supabase = supabaseClient;
+
+    this.opts = {
+      onProgress: options?.onProgress ?? (() => void 0),
+      edgeMergeUrl: options?.edgeMergeUrl ?? "",
+      useSupabaseFunctionsInvoke: options?.useSupabaseFunctionsInvoke ?? false,
+      tempBucket: options?.tempBucket ?? "tmp-audio",
+      outputSampleRate: options?.outputSampleRate ?? 8000,
+      normalizePeak: options?.normalizePeak ?? false,
+    };
   }
 
-  private getExtension(name: string): string {
-    const dot = name.lastIndexOf(".");
-    return dot >= 0 ? name.slice(dot + 1).toLowerCase() : "";
+  private updateProgress(stage: Stage, progress: number, message?: string) {
+    this.opts.onProgress?.({ stage, progress, message });
   }
 
-  private getContentTypeByExt(ext: string): string {
-    switch (ext) {
-      case "mp3": return "audio/mpeg";
-      case "wav": return "audio/wav";
-      case "ogg": return "audio/ogg";
-      case "m4a": return "audio/mp4";
-      case "flac": return "audio/flac";
-      default: return `audio/${ext}`;
-    }
-  }
-
+  /**
+   * Main entry: merges a batch of audio Files.
+   * - If the batch is WAV-only → server path (fast concat, no re-encode).
+   * - Otherwise (mp3/flac/m4a/ogg/… ) → client path → returns a single WAV.
+   */
   async mergeAudioFiles(files: File[]): Promise<File> {
-    console.log('🔀 ServerAudioMergingService: Starting merge process', {
-      fileCount: files.length,
-      files: files.map(f => ({ 
-        name: f.name, 
-        size: f.size, 
-        type: f.type,
-        lastModified: f.lastModified 
-      }))
-    });
+    this.updateProgress("validating", 5, "Validating audio files...");
 
-    if (files.length < 2) {
-      // Nothing to merge — return the original file
+    if (!files || files.length === 0) {
+      throw new Error("No files provided for merging.");
+    }
+    if (files.length === 1) {
+      // Nothing to merge.
       return files[0];
     }
 
-    const exts = files.map((f) => this.getExtension(f.name));
+    const exts = files.map((f) => this.extOf(f.name));
     const firstExt = exts[0];
     const allSame = exts.every((e) => e === firstExt);
-    
-    console.log('🔍 File validation:', { 
-      extensions: exts, 
-      firstExt, 
-      allSame,
-      fileNames: files.map(f => f.name)
+
+    if (!allSame) {
+      // Keep your previous constraint.
+      throw new Error("Wrong audio format: all files must have the same extension.");
+    }
+
+    const allowed = new Set(["mp3", "wav", "flac", "ogg", "m4a", "aac", "webm"]);
+    if (!allowed.has(firstExt)) {
+      throw new Error(
+        `Unsupported format '${firstExt}'. Allowed: ${Array.from(allowed).join(", ")}`
+      );
+    }
+
+    // ✅ NEW: If not WAV, merge client-side (decode → resample mono 8k → WAV)
+    if (firstExt !== "wav") {
+      return await this.mergeClientSideToWav(files);
+    }
+
+    // ✅ WAV-only: keep your server fast-path
+    return await this.mergeServerSideWav(files);
+  }
+
+  // ---------------------------
+  // Client-side (non-WAV) path
+  // ---------------------------
+
+  private async mergeClientSideToWav(files: File[]): Promise<File> {
+    this.updateProgress("merging", 10, "Merging in browser (converting to 8 kHz WAV)...");
+
+    const { blob, durationSec, sampleRate, channels } = await mergeAudioFilesTo8kWav(files, {
+      onProgress: (stage, i, n) => {
+        const stageBase: Record<string, number> = {
+          decoding: 20,
+          resampling: 40,
+          concatenating: 60,
+          encoding: 80,
+        };
+        const base = stageBase[stage] ?? 20;
+        const pct = base + Math.floor(((i ?? 0) / Math.max(1, n ?? files.length)) * 15);
+        this.updateProgress("merging", Math.min(95, pct), `Merging (${stage})...`);
+      },
+      normalizePeak: this.opts.normalizePeak,
+      targetSampleRate: 8000,
+      targetChannels: 1,
     });
 
-    if (!firstExt || !allSame) {
-      console.error('❌ File extension validation failed:', { exts, firstExt, allSame });
-      throw new Error("Wrong audio format: all files must have the same extension");
+    const mergedName = `merged_${Date.now()}.wav`;
+    const mergedFile = new File([blob], mergedName, {
+      type: "audio/wav",
+      lastModified: Date.now(),
+    });
+
+    console.log("✅ Client-side merge complete:", {
+      mergedName,
+      durationSec,
+      sampleRate,
+      channels,
+      size: mergedFile.size,
+    });
+
+    this.updateProgress("complete", 100, "Merge complete.");
+    return mergedFile;
+  }
+
+  // ---------------------------
+  // Server-side WAV→WAV path
+  // ---------------------------
+
+  private async mergeServerSideWav(files: File[]): Promise<File> {
+    if (!this.supabase) {
+      throw new Error(
+        "Supabase client not available. Provide it to use the server-side WAV merge."
+      );
     }
 
-    const allowed = new Set(["mp3", "wav", "flac", "ogg", "m4a"]);
-    if (!allowed.has(firstExt)) {
-      console.error('❌ Unsupported format:', firstExt, 'Allowed:', Array.from(allowed));
-      throw new Error(`Unsupported format '${firstExt}'. Allowed: ${Array.from(allowed).join(", ")}`);
-    }
+    // 1) Upload all WAV files to a temp folder in the bucket
+    const batchId = `merge_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const bucket = this.opts.tempBucket;
 
-    const outputFormat = firstExt as "mp3" | "wav" | "flac" | "ogg" | "m4a";
-
-    this.updateProgress("uploading", 5, "Preparing files for server-side merging...");
-
-    const mergeId = typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const bucket = "audio-files";
-    const basePath = `temp-merge/${mergeId}`;
-
-    console.log('📋 Merge session info:', { mergeId, bucket, basePath, outputFormat });
+    this.updateProgress("uploading", 10, "Uploading WAV files...");
 
     const uploadedPaths: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const path = `${batchId}/${i.toString().padStart(3, "0")}_${this.safeName(f.name)}`;
 
-    try {
-      // Upload each file to Storage
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const progress = 5 + Math.floor((i / files.length) * 45);
-        this.updateProgress("uploading", progress, "Uploading to storage...", file.name);
-
-        // Produce a SAFE filename string no matter what the sanitizer returns
-        const safeFilename = resolveSafeFilename(file.name, {
-          mergeId,
-          index: i,
-          total: files.length
+      const { error: upErr } = await this.supabase
+        .storage
+        .from(bucket)
+        .upload(path, f, {
+          cacheControl: "3600",
+          contentType: "audio/wav",
+          upsert: false,
         });
 
-        const path = `${basePath}/${safeFilename}`;
-
-        // (optional) metadata only for logs
-        const uploadMeta = {
-          original: file.name,
-          sanitized: safeFilename,
-          path,
-          fileSize: file.size,
-          fileType: file.type,
-          index: i,
-          total: files.length,
-          mergeId
-        };
-        
-        const { data, error } = await supabase.storage
-          .from(bucket)
-          .upload(path, file, {
-            contentType: file.type || this.getContentTypeByExt(firstExt),
-            upsert: false,
-          });
-
-        if (error || !data) {
-          console.error('❌ Upload failed:', {
-            fileName: file.name,
-            path,
-            error: error?.message,
-            details: error,
-            meta: uploadMeta
-          });
-          throw new Error(`Upload failed for ${file.name}: ${error?.message ?? "Unknown error"}`);
-        }
-
-        console.log('✅ Upload successful:', { path, data, ...uploadMeta });
-        uploadedPaths.push(path);
+      if (upErr) {
+        this.updateProgress("error", 100, "Upload failed.");
+        throw new Error(`Failed to upload ${f.name}: ${upErr.message}`);
       }
 
-      this.updateProgress("merging", 60, "Requesting server-side merge...");
+      uploadedPaths.push(path);
+      const pct = 10 + Math.floor(((i + 1) / files.length) * 30); // to 40%
+      this.updateProgress("uploading", pct, `Uploaded ${i + 1}/${files.length}...`);
+    }
 
-      const invokeBody = {
-        paths: uploadedPaths,
-        outputFormat,
-        deleteSources: true,
-        namePrefix: `merged_${mergeId}`,
-      };
-      
-      console.log("🔄 Invoking audio-merge edge function:", {
-        body: invokeBody,
-        pathsCount: uploadedPaths.length,
-        totalSize: files.reduce((sum, f) => sum + f.size, 0)
-      });
+    // 2) Invoke edge function to merge (concatenate) WAVs
+    this.updateProgress("merging", 45, "Merging on server...");
 
-      const { data, error } = await withRetry(() =>
-        supabase.functions.invoke("audio-merge", { body: invokeBody })
-      );
+    // We’ll ask the edge fn to return the merged WAV bytes directly.
+    // If your function writes to storage instead, adapt below to download from that path.
+    const body = {
+      bucket,
+      inputPaths: uploadedPaths,
+      // keep your previous behavior (concat @ 8k mono)
+      outputSampleRate: this.opts.outputSampleRate,
+      outputChannels: 1,
+      // make sure the edge fn knows it’s WAV-only
+      outputFormat: "wav",
+      // optional: if your fn can normalize / trim, pass flags here
+    };
 
-      console.log("📋 Edge function response:", { 
-        data: data ? { 
-          success: data.success, 
-          error: data.error,
-          mergedFile: data.mergedFile ? {
-            path: data.mergedFile.path,
-            url: data.mergedFile.url ? '[URL_PRESENT]' : '[URL_MISSING]',
-            contentType: data.mergedFile.contentType,
-            size: data.mergedFile.size
-          } : '[MISSING]'
-        } : '[NO_DATA]',
-        error: error ? {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code
-        } : '[NO_ERROR]'
+    let mergedArrayBuffer: ArrayBuffer | null = null;
+
+    if (this.opts.useSupabaseFunctionsInvoke) {
+      // @ts-ignore - invoke typing lives on Supabase client
+      const { data, error } = await this.supabase.functions.invoke("audio-merge", {
+        body,
       });
 
       if (error) {
-        console.error('❌ Edge function error:', error);
-        throw new Error(`Server merge failed: ${error.message}`);
-      }
-      
-      if (!data?.success) {
-        console.error('❌ Edge function returned failure:', data);
-        throw new Error(data?.error || "Unknown server error");
+        this.updateProgress("error", 100, "Server merge failed.");
+        throw new Error(`Edge merge error: ${error.message}`);
       }
 
-      this.updateProgress("merging", 85, "Downloading merged file...");
-
-      const mergedUrl: string | null = data.mergedFile?.url ?? null;
-      const contentType = data.mergedFile?.contentType || this.getContentTypeByExt(outputFormat);
-
-      if (!mergedUrl) {
-        throw new Error("Merged file URL is missing in edge response");
-      }
-
-      const res = await fetch(mergedUrl);
-      if (!res.ok) {
-        throw new Error(`Failed to download merged file: ${res.status} ${res.statusText}`);
-      }
-
-      const blob = await res.blob();
-
-      this.updateProgress("merging", 95, "Finalizing merged file...");
-
-      const mergedName = data.mergedFile?.path?.split("/").pop() || `merged_${mergeId}.${firstExt}`;
-      const mergedFile = new File([blob], mergedName, {
-        type: contentType,
-        lastModified: Date.now(),
-      });
-
-      console.log('✅ Final merged file created:', {
-        name: mergedFile.name,
-        size: mergedFile.size,
-        type: mergedFile.type,
-        lastModified: mergedFile.lastModified
-      });
-
-      this.updateProgress("complete", 100, "Server-side merge complete");
-
-      return mergedFile;
-
-    } catch (err) {
-      console.error('💥 Merge failed:', err, {
-        mergeId,
-        basePath,
-        uploadedPaths,
-        stack: err instanceof Error ? err.stack : undefined,
-      });
-
-      // Best-effort cleanup (uploaded sources)
-      if (uploadedPaths.length > 0) {
-        console.log('🧹 Cleaning up uploaded files:', uploadedPaths);
-        try { 
-          const { error: cleanupError } = await supabase.storage.from(bucket).remove(uploadedPaths);
-          if (cleanupError) {
-            console.error('❌ Cleanup failed:', cleanupError);
-          } else {
-            console.log('✅ Cleanup successful');
-          }
+      // `data` might be ArrayBuffer or { ok: true, url: "..." }
+      if (data instanceof ArrayBuffer) {
+        mergedArrayBuffer = data;
+      } else if (data?.url) {
+        // If your edge fn gives a URL, fetch it now:
+        const r = await fetch(data.url);
+        if (!r.ok) {
+          throw new Error(`Failed to download merged file from URL (status ${r.status}).`);
         }
-        catch (cleanupErr) { 
-          console.error('❌ Cleanup exception:', cleanupErr);
-        }
+        mergedArrayBuffer = await r.arrayBuffer();
+      } else if (data?.bytes) {
+        // Some setups return { bytes: number[] }
+        mergedArrayBuffer = new Uint8Array(data.bytes).buffer;
+      } else {
+        throw new Error("Unexpected edge function response for merged data.");
       }
-      
-      this.updateProgress("error", 0, err instanceof Error ? err.message : "Audio merge failed");
-      throw new Error(`Failed to merge audio files: ${err instanceof Error ? err.message : "Unknown error"}`);
+    } else {
+      // Raw fetch to a public function URL
+      if (!this.opts.edgeMergeUrl) {
+        throw new Error(
+          "edgeMergeUrl not configured. Set edgeMergeUrl or enable useSupabaseFunctionsInvoke."
+        );
+      }
+      const r = await fetch(this.opts.edgeMergeUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!r.ok) {
+        const text = await r.text().catch(() => "");
+        this.updateProgress("error", 100, "Server merge failed.");
+        throw new Error(`Edge merge request failed (${r.status}): ${text || r.statusText}`);
+      }
+
+      // Assume the function returns binary WAV
+      mergedArrayBuffer = await r.arrayBuffer();
     }
+
+    this.updateProgress("downloading", 85, "Preparing merged file...");
+
+    if (!mergedArrayBuffer) {
+      this.updateProgress("error", 100, "No merged data received.");
+      throw new Error("No merged data received from edge function.");
+    }
+
+    // 3) Build the final File from bytes
+    const mergedBlob = new Blob([mergedArrayBuffer], { type: "audio/wav" });
+    const mergedName = `merged_${batchId}.wav`;
+    const mergedFile = new File([mergedBlob], mergedName, {
+      type: "audio/wav",
+      lastModified: Date.now(),
+    });
+
+    this.updateProgress("complete", 100, "Merge complete.");
+    return mergedFile;
   }
 
-  isMergingSupported(): boolean { return true; }
-  getMergingInfo(): { supported: boolean; reason?: string } { return { supported: true }; }
+  // ---------------------------
+  // Helpers
+  // ---------------------------
+
+  private extOf(name: string): string {
+    const dot = name.lastIndexOf(".");
+    return dot >= 0 ? name.slice(dot + 1).toLowerCase() : "";
+    }
+
+  private safeName(name: string): string {
+    return name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  }
 }
 
-export const serverAudioMergingService = new ServerAudioMergingService();
+export default ServerAudioMergingService;
