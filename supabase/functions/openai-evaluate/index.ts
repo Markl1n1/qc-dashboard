@@ -73,12 +73,11 @@ const evaluationJSONSchema = {
       additionalProperties: false,
       required: ["speaker_0", "role_0", "speaker_1", "role_1"],
       properties: {
-        // ПУСТАЯ СТРОКА ДОПУСТИМА, если имя не определено.
-        speaker_0: { type: "string" },
-        role_0:    { type: "string", enum: ["Agent", "Customer"] },
-        speaker_1: { type: "string" },
-        role_1:    { type: "string", enum: ["Agent", "Customer"] },
-     },
+        speaker_0: { type: "string", minLength: 1 },
+        role_0: { type: "string", enum: ["Agent", "Customer", "Unknown"] },
+        speaker_1: { type: "string", minLength: 1 },
+        role_1: { type: "string", enum: ["Agent", "Customer", "Unknown"] },
+      },
     },
   },
 };
