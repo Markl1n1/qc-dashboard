@@ -2,6 +2,8 @@
 // Audio merge Edge Function – WAV-aware (streaming safe)
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.56.0";
+// ffmpeg.wasm for in-function transcoding of mixed audio formats
+import { createFFmpeg, fetchFile } from "https://esm.sh/@ffmpeg/ffmpeg@0.11.4";
 
 const VERSION = "audio-merge/wavmerge-2025-09-11-01";
 
@@ -160,22 +162,12 @@ serve(async (req) => {
       );
     }
 
-    const extensions = paths.map(ext);
-    const firstExt = extensions[0];
-    if (!extensions.every((e) => e === firstExt)) {
-      return new Response(
-        JSON.stringify({ error: "All inputs must share same extension", version: VERSION }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
+  const extensions = paths.map(ext);
+  const uniqueExts = Array.from(new Set(extensions.filter(Boolean)));
 
-    // Only WAV merge supported
-    if (firstExt !== "wav") {
-      return new Response(
-        JSON.stringify({ error: "Merging supported only for WAV", version: VERSION }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
+  // If all inputs are WAV and share identical fmt, we will use the fast concatenation path below.
+  // Otherwise, fall back to transcoding each input to a canonical WAV (PCM16 mono 8000 Hz) using ffmpeg.wasm
+  let needTranscode = !(uniqueExts.length === 1 && uniqueExts[0] === 'wav');
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -187,39 +179,100 @@ serve(async (req) => {
     let totalBytes = 0;
     let totalPcm = 0;
 
-    for (const p of paths) {
-      const { data, error } = await supabase.storage.from(BUCKET).download(p);
-      if (error || !data) {
-        return new Response(
-          JSON.stringify({ error: `Failed to read: ${p}`, version: VERSION }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+    // Fast path: if all inputs are WAV, try to parse headers and ensure identical format
+    if (!needTranscode) {
+      for (const p of paths) {
+        const { data, error } = await supabase.storage.from(BUCKET).download(p);
+        if (error || !data) {
+          return new Response(
+            JSON.stringify({ error: `Failed to read: ${p}`, version: VERSION }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+        totalBytes += data.size;
+        if (totalBytes > MAX_TOTAL_BYTES) {
+          return new Response(
+            JSON.stringify({ error: "Total size too large", version: VERSION }),
+            { status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+        const head = new Uint8Array(await data.slice(0, 4096).arrayBuffer());
+        const { fmt, dataOffset, dataBytes } = parseHead(head);
+        if (!common) common = fmt;
+        const same =
+          fmt.audioFormat === common.audioFormat &&
+          fmt.numChannels === common.numChannels &&
+          fmt.sampleRate === common.sampleRate &&
+          fmt.bitsPerSample === common.bitsPerSample &&
+          fmt.blockAlign === common.blockAlign &&
+          fmt.byteRate === common.byteRate;
+        if (!same) {
+          // fallback to transcode path if formats differ
+          needTranscode = true;
+          break;
+        }
+        totalPcm += dataBytes;
+        parts.push({ blob: data, dataOffset, dataBytes, fmt });
       }
-      totalBytes += data.size;
-      if (totalBytes > MAX_TOTAL_BYTES) {
-        return new Response(
-          JSON.stringify({ error: "Total size too large", version: VERSION }),
-          { status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+    }
+
+    // Transcode path: use ffmpeg.wasm to convert each file to WAV PCM16 mono 8000Hz
+    if (needTranscode) {
+      // initialize ffmpeg
+      const ffmpeg = createFFmpeg({ log: false });
+      if (!ffmpeg.isLoaded()) {
+        await ffmpeg.load();
       }
-      const head = new Uint8Array(await data.slice(0, 4096).arrayBuffer());
-      const { fmt, dataOffset, dataBytes } = parseHead(head);
-      if (!common) common = fmt;
-      const same =
-        fmt.audioFormat === common.audioFormat &&
-        fmt.numChannels === common.numChannels &&
-        fmt.sampleRate === common.sampleRate &&
-        fmt.bitsPerSample === common.bitsPerSample &&
-        fmt.blockAlign === common.blockAlign &&
-        fmt.byteRate === common.byteRate;
-      if (!same) {
-        return new Response(
-          JSON.stringify({ error: "All WAVs must share identical format", version: VERSION }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+
+      // Process each file sequentially (memory/time heavy; limit file count/size above)
+      for (let i = 0; i < paths.length; i++) {
+        const p = paths[i];
+        const { data, error } = await supabase.storage.from(BUCKET).download(p);
+        if (error || !data) {
+          return new Response(
+            JSON.stringify({ error: `Failed to read: ${p}`, version: VERSION }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+        totalBytes += data.size;
+        if (totalBytes > MAX_TOTAL_BYTES) {
+          return new Response(
+            JSON.stringify({ error: "Total size too large", version: VERSION }),
+            { status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+
+        const inName = `in_${i}` + `.${ext(p) || 'bin'}`;
+        const outName = `out_${i}.wav`;
+
+        // Write the file to ffmpeg FS
+        const arr = new Uint8Array(await data.arrayBuffer());
+        ffmpeg.FS('writeFile', inName, arr);
+
+        // Convert to canonical WAV 16-bit PCM mono @ 8000 Hz
+        try {
+          await ffmpeg.run('-i', inName, '-ac', '1', '-ar', '8000', '-f', 'wav', outName);
+        } catch (e) {
+          return new Response(
+            JSON.stringify({ error: `Transcode failed for: ${p}`, details: String(e), version: VERSION }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+
+        const outData = ffmpeg.FS('readFile', outName);
+        const blob = new Blob([outData.buffer], { type: 'audio/wav' });
+
+        // parse header and push part
+        const head = new Uint8Array(await blob.slice(0, 4096).arrayBuffer());
+        const { fmt, dataOffset, dataBytes } = parseHead(head);
+        if (!common) common = fmt;
+        totalPcm += dataBytes;
+        parts.push({ blob, dataOffset, dataBytes, fmt });
+
+        // cleanup ffmpeg FS entries to free memory
+        try { ffmpeg.FS('unlink', inName); } catch {};
+        try { ffmpeg.FS('unlink', outName); } catch {};
       }
-      totalPcm += dataBytes;
-      parts.push({ blob: data, dataOffset, dataBytes, fmt });
     }
 
     const header = wavHeader(totalPcm, common!);
