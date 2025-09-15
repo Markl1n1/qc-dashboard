@@ -165,8 +165,8 @@ export class TranscriptionService {
       throw new Error('File is required for transcription');
     }
 
-    if (file.size > 100 * 1024 * 1024) { // 100MB limit
-      throw new Error('File size exceeds maximum limit of 100MB');
+    if (file.size > 750 * 1024 * 1024) { // 100MB limit
+      throw new Error('File size exceeds maximum limit of 750MB');
     }
 
     const allowedTypes = ['audio/wav', 'audio/mp3', 'audio/mpeg', 'audio/mp4', 'audio/m4a'];

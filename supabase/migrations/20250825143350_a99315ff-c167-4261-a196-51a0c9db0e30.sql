@@ -71,7 +71,7 @@ CREATE TABLE public.dialog_analysis (
 INSERT INTO public.system_config (key, value, description) 
 VALUES 
   ('data_retention_days', '30', 'Number of days to retain dialog data before automatic deletion'),
-  ('max_file_size_mb', '100', 'Maximum file size allowed for upload in MB'),
+  ('max_file_size_mb', '750', 'Maximum file size allowed for upload in MB'),
   ('max_concurrent_transcriptions', '5', 'Maximum number of concurrent transcription processes'),
   ('auto_delete_enabled', 'true', 'Enable automatic deletion of expired dialogs')
 ON CONFLICT (key) DO NOTHING;
