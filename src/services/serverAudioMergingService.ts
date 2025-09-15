@@ -146,8 +146,6 @@ export class ServerAudioMergingService {
         this.updateProgress("merging", Math.min(95, pct), `Merging (${stage})...`);
       },
       normalizePeak: this.opts.normalizePeak,
-      targetSampleRate: 8000,
-      targetChannels: 1,
     });
 
     const mergedName = `merged_${Date.now()}.wav`;

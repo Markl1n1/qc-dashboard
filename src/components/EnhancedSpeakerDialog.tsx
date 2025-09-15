@@ -96,8 +96,13 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
       { backgroundColor: 'hsl(280, 60%, 97%)', borderColor: 'hsl(280, 60%, 85%)', textColor: 'hsl(280, 60%, 25%)' },
       { backgroundColor: 'hsl(30, 100%, 97%)', borderColor: 'hsl(30, 100%, 85%)', textColor: 'hsl(30, 100%, 25%)' }
     ];
-    const idx = (parseInt(speaker.replace(/\D/g, '')) || 0) % speakerColors.length;
-    return speakerColors[idx];
+    
+    // Use stable mapping based on mapped speaker names
+    const uniqueSpeakers = Array.from(new Set(mergedUtterances.map(u => mapSpeakerName(u.speaker))));
+    const speakerIndex = uniqueSpeakers.indexOf(mapSpeakerName(speaker));
+    const colorIndex = speakerIndex >= 0 ? speakerIndex % speakerColors.length : 0;
+    
+    return speakerColors[colorIndex];
   };
 
   // ---------- 3) Склейка соседних реплик одного спикера ----------

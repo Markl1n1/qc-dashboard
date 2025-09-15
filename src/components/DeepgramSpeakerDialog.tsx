@@ -42,7 +42,7 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
   };
 
   const getSpeakerStyle = (speaker: string) => {
-    // Color scheme for different speakers using numeric assignment
+    // Color scheme for different speakers using stable mapping
     const speakerColors = [
       {
         backgroundColor: 'hsl(210, 100%, 97%)', // Light blue
@@ -66,11 +66,11 @@ const DeepgramSpeakerDialog: React.FC<DeepgramSpeakerDialogProps> = ({
       }
     ];
 
-    // Extract speaker number for color assignment (no more duplication cleanup needed)
-    const speakerIndex = parseInt(speaker.replace(/\D/g, '')) || 0;
-
-    // Use modulo to cycle through colors if we have more speakers than colors
-    const colorIndex = speakerIndex % speakerColors.length;
+    // Use stable mapping based on mapped speaker names
+    const uniqueSpeakers = Array.from(new Set(mergedUtterances.map(u => mapSpeakerName(u.speaker))));
+    const speakerIndex = uniqueSpeakers.indexOf(mapSpeakerName(speaker));
+    const colorIndex = speakerIndex >= 0 ? speakerIndex % speakerColors.length : 0;
+    
     return speakerColors[colorIndex];
   };
 

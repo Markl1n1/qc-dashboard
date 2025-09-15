@@ -285,9 +285,6 @@ const Upload: React.FC<UploadProps> = () => {
           </CardHeader>
           <CardContent>
             <p>{mergingProgress.message}</p>
-            {mergingProgress.currentFile && (
-              <p className="text-sm text-muted-foreground">Processing: {mergingProgress.currentFile}</p>
-            )}
             <Progress value={mergingProgress.progress} />
           </CardContent>
         </Card>
