@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
     // Create Supabase client
     const supabase = createClient(
       'https://sahudeguwojdypmmlbkd.supabase.co',
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNhaHVkZWd1d29qZHlwbW1sYmtkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NjExNjAwNSwiZXhwIjoyMDcxNjkyMDA1fQ.eAhxBJnG-1Fmd9lDvWe-_5tXDrS7SFKlUdqP5e1I0zM'
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
     let audioBuffer: Uint8Array;
@@ -302,7 +302,7 @@ Deno.serve(async (req) => {
         if (requestData.storageFile) {
           const supabase = createClient(
             'https://sahudeguwojdypmmlbkd.supabase.co',
-            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNhaHVkZWd1d29qZHlwbW1sYmtkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NjExNjAwNSwiZXhwIjoyMDcxNjkyMDA1fQ.eAhxBJnG-1Fmd9lDvWe-_5tXDrS7SFKlUdqP5e1I0zM'
+            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
           );
           await supabase.storage.from('audio-files').remove([requestData.storageFile]);
           console.log('✅ Storage file cleaned up after error');
