@@ -232,7 +232,7 @@ class ReportService {
       content += `|-------|---------|-------------------|\n`;
       
       agentStats.forEach(stats => {
-        content += `| ${stats.agentName} | ${stats.dialogCount} | ${stats.averageQualityScore}/100 | ${stats.totalMinutes} | ${stats.successRate}% |\n`;
+        content += `| ${stats.agentName} | ${stats.dialogCount} | ${stats.averageQualityScore}/100 |\n`;
       });
     } else {
       content += `No agent data available for the selected period.\n`;
