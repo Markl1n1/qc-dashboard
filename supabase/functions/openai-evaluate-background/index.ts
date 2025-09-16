@@ -130,7 +130,7 @@ serve(async (req) => {
     }
 
     // Extract speaker information with robust handling
-    let speakers = {};
+    let speakers: any = {};
     if (analysisResult?.speakers) {
       if (Array.isArray(analysisResult.speakers) && analysisResult.speakers.length > 0) {
         speakers = analysisResult.speakers[0] || {};
@@ -190,6 +190,58 @@ serve(async (req) => {
     if (updateError) {
       console.error('❌ Dialog update error:', updateError);
       throw updateError;
+    }
+
+    // -------------------------------
+    // NEW: update dialog_speaker_utterances
+    // -------------------------------
+    // This will update utterances where speaker exactly equals 'Speaker 0' / 'Speaker 1'
+    // to the detected speaker names from analysis (speaker_0 / speaker_1).
+    // We do this in two steps:
+    // 1) fetch transcription ids for the dialog
+    // 2) run update queries scoped to those transcription_ids
+    try {
+      // fetch transcription ids for the dialog
+      const { data: trans, error: tErr } = await supabase
+        .from('dialog_transcriptions')
+        .select('id')
+        .eq('dialog_id', dialogId);
+
+      if (tErr) {
+        console.warn('⚠️ Could not fetch dialog_transcriptions for updating utterances:', tErr.message || tErr);
+      } else {
+        const ids = (trans || []).map((r: any) => r.id).filter(Boolean);
+        if (ids.length === 0) {
+          console.log('ℹ️ No transcriptions found for dialog, skipping utterance updates.');
+        } else {
+          // Helper to perform an update for a speaker label
+          async function updateSpeakerLabel(originalLabel: string, newName: string | null) {
+            if (!newName) {
+              console.log(`ℹ️ No new name for ${originalLabel}, skipping update.`);
+              return;
+            }
+            // Optional normalization: if your stored utterances use "Speaker 0:" with colon
+            // you might want to adjust the condition to match patterns. Here we match exact text.
+            const { error: uErr } = await supabase
+              .from('dialog_speaker_utterances')
+              .update({ speaker: newName })
+              .in('transcription_id', ids)
+              .eq('speaker', originalLabel);
+
+            if (uErr) {
+              console.warn(`⚠️ Failed to update utterances for ${originalLabel}:`, uErr.message || uErr);
+            } else {
+              console.log(`✅ Updated utterances where speaker='${originalLabel}' -> '${newName}'`);
+            }
+          }
+
+          await updateSpeakerLabel('Speaker 0', speaker_0);
+          await updateSpeakerLabel('Speaker 1', speaker_1);
+        }
+      }
+    } catch (utterErr) {
+      // make this non-fatal: log but continue
+      console.warn('⚠️ Error while updating dialog_speaker_utterances:', utterErr?.message || utterErr);
     }
 
     console.log('✅ AI analysis completed successfully');
