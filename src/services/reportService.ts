@@ -189,8 +189,6 @@ class ReportService {
         doc.text('Agent', margin, y);
         doc.text('Dialogs', margin + 60, y);
         doc.text('Avg Score', margin + 100, y);
-        doc.text('Minutes', margin + 140, y);
-        doc.text('Success %', margin + 180, y);
         y += 10;
         
         // Table data
@@ -230,8 +228,8 @@ class ReportService {
     
     if (agentStats.length > 0) {
       content += `## Agent Performance\n\n`;
-      content += `| Agent | Dialogs | Avg Quality Score | Total Minutes | Success Rate |\n`;
-      content += `|-------|---------|-------------------|---------------|--------------|\n`;
+      content += `| Agent | Dialogs | Avg Quality Score |\n`;
+      content += `|-------|---------|-------------------|\n`;
       
       agentStats.forEach(stats => {
         content += `| ${stats.agentName} | ${stats.dialogCount} | ${stats.averageQualityScore}/100 | ${stats.totalMinutes} | ${stats.successRate}% |\n`;
