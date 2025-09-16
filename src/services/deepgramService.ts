@@ -4,6 +4,7 @@ import { SpeakerUtterance, UnifiedTranscriptionProgress } from '../types';
 import { supabase } from '../integrations/supabase/client';
 import { logger } from './loggingService';
 import { sanitizeFilename } from '../utils/filenameSanitizer';
+import { audioCleanupService } from './audioCleanupService';
 
 class DeepgramService {
   private progressCallback: ((progress: UnifiedTranscriptionProgress) => void) | null = null;
@@ -62,8 +63,8 @@ class DeepgramService {
           }
         });
 
-        // Clean up storage file
-        await supabase.storage.from('audio-files').remove([fileName]);
+        // Clean up storage file after transcription
+        await audioCleanupService.cleanupSingleFile(fileName);
 
         if (error) {
           logger.error('Deepgram edge function error (large file)', error, { fileName: audioFile.name });

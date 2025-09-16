@@ -4,6 +4,7 @@
 
 import { mergeAudioFilesTo8kWav } from "@/lib/merge-audio-to-wav";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { audioCleanupService } from './audioCleanupService';
 
 // Optional: create a default Supabase client for the WAV server path
 let defaultSupabase: SupabaseClient | undefined;

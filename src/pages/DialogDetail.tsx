@@ -20,6 +20,7 @@ import { OpenAIEvaluationProgress } from '../types/openaiEvaluation';
 import { supabase } from '../integrations/supabase/client';
 import { generateDialogPDF } from '../utils/pdfGenerator';
 import { useLanguageStore } from '../store/languageStore';
+import ErrorBoundaryAnalysis from '../components/ErrorBoundaryAnalysis';
 
 const DialogDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -299,7 +300,7 @@ const DialogDetail = () => {
                 block: 'center'
               });
             }, 100);
-          }} detectedLanguage={undefined} metadata={undefined} analysisData={dialog.openaiEvaluation} /> : <Card>
+          }} detectedLanguage={undefined} metadata={undefined} analysisData={dialog.openaiEvaluation || null} /> : <Card>
                 <CardContent className="pt-6">
                   <p className="text-center text-muted-foreground">No transcription available</p>
                 </CardContent>
@@ -343,7 +344,8 @@ const DialogDetail = () => {
         </TabsContent>
 
         <TabsContent value="results" className="mt-6">
-          <div className="space-y-6">
+          <ErrorBoundaryAnalysis onRetry={() => loadDialog(id!)}>
+            <div className="space-y-6">
             {/* AI Analysis Results */}
             {(analysisData || dialog.openaiEvaluation) ? (
               <div className="space-y-4">
@@ -398,25 +400,25 @@ const DialogDetail = () => {
 
 
                 {/* Recommendations */}
-                {dialog.openaiEvaluation.recommendations && dialog.openaiEvaluation.recommendations.length > 0 && <Card>
+                {dialog.openaiEvaluation?.recommendations && dialog.openaiEvaluation.recommendations.length > 0 && <Card>
                     <CardHeader>
                       <CardTitle>Recommendations</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <ul className="list-disc pl-6 space-y-2">
-                        {dialog.openaiEvaluation.recommendations.map((rec, index) => <li key={index} className="text-muted-foreground leading-relaxed">{rec}</li>)}
+                        {dialog.openaiEvaluation?.recommendations?.map((rec, index) => <li key={index} className="text-muted-foreground leading-relaxed">{rec}</li>)}
                       </ul>
                     </CardContent>
                   </Card>}
 
                 {/* Enhanced Detected Issues with bidirectional navigation */}
-                {dialog.openaiEvaluation.mistakes && dialog.openaiEvaluation.mistakes.length > 0 && <Card>
+                {dialog.openaiEvaluation?.mistakes && dialog.openaiEvaluation.mistakes.length > 0 && <Card>
                     <CardHeader>
-                      <CardTitle>Detected Issues ({dialog.openaiEvaluation.mistakes.length})</CardTitle>
+                      <CardTitle>Detected Issues ({dialog.openaiEvaluation?.mistakes?.length || 0})</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <EnhancedDialogDetail 
-                        mistakes={dialog.openaiEvaluation.mistakes} 
+                        mistakes={dialog.openaiEvaluation?.mistakes || []} 
                         utterances={dialog.speakerTranscription || []} 
                         onNavigateToSpeaker={utteranceText => {
                           setHighlightedUtterance(utteranceText);
@@ -441,7 +443,7 @@ const DialogDetail = () => {
                       />
                     </CardContent>
                   </Card>}
-               </div>
+              </div>
             ) : (
               <Card>
                 <CardContent className="pt-6">
@@ -451,7 +453,8 @@ const DialogDetail = () => {
                 </CardContent>
               </Card>
             )}
-          </div>
+            </div>
+          </ErrorBoundaryAnalysis>
         </TabsContent>
       </Tabs>
     </div>;
