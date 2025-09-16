@@ -179,10 +179,7 @@ export class PDFGenerator {
 
     const evaluation = dialog.openaiEvaluation;
 
-    this.addText('Overall Analysis Results', 14, 'bold');
-    this.yPosition += 5;
-
-    this.addText(`Overall Score: ${evaluation.overallScore}%`, 12, 'bold');
+    this.addText(`Overall Score: ${evaluation.overallScore}`, 12, 'bold');
     this.addText(`Confidence: ${Math.round((evaluation.confidence || 0) * 100)}%`, 10, 'normal');
     this.yPosition += 10;
 
