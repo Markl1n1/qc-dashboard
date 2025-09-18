@@ -1,38 +1,24 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Navigate, useSearchParams } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Button } from '../components/ui/button';
+import { useParams, Navigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Badge } from '../components/ui/badge';
-import { ArrowLeft, Play, Users, BarChart3, Loader2, CheckCircle, AlertCircle, FileText } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { Dialog } from '../types';
+import { Users, BarChart3, Play, Loader2 } from 'lucide-react';
+import { DialogData } from '../types/unified';
 import { useDatabaseDialogs } from '../hooks/useDatabaseDialogs';
-import { useEvaluateDialog } from '../hooks/useEvaluateDialog';
-import { useAnalysisResults } from '../hooks/useAnalysisResults';
+import { useDialogAnalysis } from '../hooks/useDialogAnalysis';
+import { useDialogNavigation } from '../hooks/useDialogNavigation';
+import { useDialogExport } from '../hooks/useDialogExport';
 import { toast } from 'sonner';
-import { extractUsernameFromEmail, capitalizeStatus } from '../utils/userUtils';
-import DeepgramSpeakerDialog from '../components/DeepgramSpeakerDialog';
-import EnhancedSpeakerDialog from '../components/EnhancedSpeakerDialog';
-import EnhancedDialogDetail from '../components/EnhancedDialogDetail';
-import AnalysisSummaryCards from '../components/AnalysisSummaryCards';
-import { OpenAIEvaluationProgress } from '../types/openaiEvaluation';
 import { supabase } from '../integrations/supabase/client';
-import { generateDialogPDF } from '../utils/pdfGenerator';
-import { useLanguageStore } from '../store/languageStore';
 import ErrorBoundaryAnalysis from '../components/ErrorBoundaryAnalysis';
+import DialogDetailHeader from '../components/DialogDetailHeader';
+import DialogAnalysisTab from '../components/DialogAnalysisTab';
+import DialogResultsTab from '../components/DialogResultsTab';
+import DialogTranscriptionTab from '../components/DialogTranscriptionTab';
 
 const DialogDetail = () => {
   const { id } = useParams<{ id: string }>();
-  const [searchParams] = useSearchParams();
-  const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [dialog, setDialog] = useState<DialogData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isExportingPDF, setIsExportingPDF] = useState(false);
-  const [currentTab, setCurrentTab] = useState(() => {
-    // Initialize tab from URL params or default to transcription
-    return searchParams.get('tab') || 'transcription';
-  });
-  const [highlightedUtterance, setHighlightedUtterance] = useState<string | null>(null);
   
   // Early return if no ID
   if (!id) {
@@ -40,8 +26,22 @@ const DialogDetail = () => {
   }
   
   const { getDialog } = useDatabaseDialogs();
-  const evaluateDialogMutation = useEvaluateDialog();
-  const { data: analysisData, isLoading: isAnalysisLoading, isFetching: isAnalysisFetching } = useAnalysisResults(id);
+  const { 
+    startAnalysis, 
+    analysisData, 
+    isAnalyzing 
+  } = useDialogAnalysis(id);
+  
+  const {
+    currentTab,
+    setCurrentTab,
+    highlightedUtterance,
+    navigateToAnalysis,
+    navigateToSpeaker,
+    navigateToResults
+  } = useDialogNavigation();
+  
+  const { isExportingPDF, exportToPDF } = useDialogExport();
   useEffect(() => {
     if (id) {
       loadDialog(id);
@@ -69,12 +69,12 @@ const DialogDetail = () => {
           const retryLoadDialog = async (attempt = 1, maxAttempts = 5) => {
             try {
               console.log(`🔄 Loading dialog attempt ${attempt}/${maxAttempts}`);
-              const updatedDialog = await getDialog(id);
+            const updatedDialog = await getDialog(id);
               
               if (updatedDialog?.openaiEvaluation) {
                 console.log('✅ Analysis data loaded successfully');
-                setDialog(updatedDialog);
-                setCurrentTab('results');
+                setDialog(updatedDialog as DialogData);
+                navigateToResults();
                 
                 // Dispatch custom event for any other components listening
                 window.dispatchEvent(new CustomEvent('analysis-data-loaded', { 
@@ -148,11 +148,10 @@ const DialogDetail = () => {
             dialogData.openaiEvaluation = JSON.parse(dialogData.openaiEvaluation);
           } catch (parseError) {
             console.error('Failed to parse openaiEvaluation JSON:', parseError);
-            // Clear invalid JSON data
             dialogData.openaiEvaluation = null;
           }
         }
-        setDialog(dialogData);
+        setDialog(dialogData as DialogData);
       }
     } catch (error) {
       console.error('Error loading dialog:', error);
@@ -161,61 +160,15 @@ const DialogDetail = () => {
       setIsLoading(false);
     }
   };
-  const handleStartAnalysis = async () => {
-    if (!dialog || !dialog.speakerTranscription || dialog.speakerTranscription.length === 0) {
-      toast.error('No transcription available for analysis');
-      return;
-    }
 
-    // Use the new TanStack Query mutation
-    evaluateDialogMutation.mutate({
-      dialogId: dialog.id,
-      utterances: dialog.speakerTranscription,
-      modelId: 'gpt-5-mini'
-    });
+  const handleStartAnalysis = async () => {
+    if (!dialog) return;
+    await startAnalysis(dialog);
   };
-  const { commentLanguage } = useLanguageStore();
-  
+
   const handleExportPDF = async () => {
     if (!dialog) return;
-    setIsExportingPDF(true);
-    try {
-      generateDialogPDF(dialog, commentLanguage);
-      toast.success('PDF exported successfully!');
-    } catch (error) {
-      console.error('Error exporting PDF:', error);
-      toast.error('Failed to export PDF');
-    } finally {
-      setIsExportingPDF(false);
-    }
-  };
-  const getStatusColor = (status: Dialog['status']) => {
-    const normalizedStatus = status.toLowerCase();
-    switch (normalizedStatus) {
-      case 'completed':
-        return 'text-green-600 bg-green-50 border-green-200';
-      case 'processing':
-        return 'text-blue-600 bg-blue-50 border-blue-200';
-      case 'failed':
-        return 'text-red-600 bg-red-50 border-red-200';
-      default:
-        return 'text-gray-600 bg-gray-50 border-gray-200';
-    }
-  };
-  const renderProgressIndicator = () => {
-    if (!evaluateDialogMutation.isPending) return null;
-    
-    return (
-      <div className="mt-4 p-4 border rounded-lg">
-        <div className="flex items-center gap-2 mb-2">
-          <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
-          <span className="font-medium">Starting AI analysis...</span>
-        </div>
-        <div className="w-full bg-gray-200 rounded-full h-2">
-          <div className="bg-blue-600 h-2 rounded-full transition-all duration-300 animate-pulse" style={{ width: '30%' }} />
-        </div>
-      </div>
-    );
+    await exportToPDF(dialog);
   };
   if (isLoading) {
     return <div className="container mx-auto px-4 py-8">
@@ -228,47 +181,13 @@ const DialogDetail = () => {
   if (!dialog) {
     return <Navigate to="/" replace />;
   }
-  return <div className="container mx-auto px-4 py-8">
-      {/* Header */}
-      <div className="mb-6">
-        <div className="flex items-center gap-4 mb-4">
-          <Button variant="ghost" size="sm" asChild>
-            <Link to="/">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Dashboard
-            </Link>
-          </Button>
-          <Badge className={getStatusColor(dialog.status)}>
-            {capitalizeStatus(dialog.status)}
-          </Badge>
-        </div>
-        
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold mb-2">{dialog.fileName}</h1>
-            <div className="flex items-center space-x-4 text-sm text-muted-foreground">
-              <span>Supervisor: {extractUsernameFromEmail(dialog.assignedSupervisor)}</span>
-              <span>•</span>
-              <span>Uploaded: {new Date(dialog.uploadDate).toLocaleDateString()}</span>
-              {dialog.qualityScore && <>
-                  <span>•</span>
-                  <span>Quality Score: {dialog.qualityScore}%</span>
-                </>}
-            </div>
-          </div>
-          
-          {/* Export PDF Button */}
-          <Button onClick={handleExportPDF} disabled={isExportingPDF || !dialog.speakerTranscription} variant="outline" size="sm">
-            {isExportingPDF ? <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Exporting...
-              </> : <>
-                <FileText className="h-4 w-4 mr-2" />
-                Export PDF
-              </>}
-          </Button>
-        </div>
-      </div>
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <DialogDetailHeader 
+        dialog={dialog}
+        isExportingPDF={isExportingPDF}
+        onExportPDF={handleExportPDF}
+      />
 
       {/* Main Content */}
       <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
@@ -288,143 +207,31 @@ const DialogDetail = () => {
         </TabsList>
 
         <TabsContent value="transcription" className="mt-6">
-          <div className="space-y-6">
-            {/* Enhanced Speaker Transcription with mistake highlighting */}
-            {dialog.speakerTranscription && dialog.speakerTranscription.length > 0 ? <EnhancedSpeakerDialog utterances={dialog.speakerTranscription} mistakes={dialog.openaiEvaluation?.mistakes || []} highlightedUtterance={highlightedUtterance} onNavigateToAnalysis={issueIndex => {
-            setCurrentTab('results');
-            // Scroll to the specific issue
-            setTimeout(() => {
-              const element = document.getElementById(`issue-${issueIndex}`);
-              element?.scrollIntoView({
-                behavior: 'smooth',
-                block: 'center'
-              });
-            }, 100);
-          }} detectedLanguage={undefined} metadata={undefined} analysisData={dialog.openaiEvaluation || null} /> : <Card>
-                <CardContent className="pt-6">
-                  <p className="text-center text-muted-foreground">No transcription available</p>
-                </CardContent>
-              </Card>}
-          </div>
+          <DialogTranscriptionTab 
+            dialog={dialog}
+            highlightedUtterance={highlightedUtterance}
+            onNavigateToAnalysis={navigateToAnalysis}
+          />
         </TabsContent>
 
         <TabsContent value="analysis" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>AI Quality Analysis</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Button 
-                onClick={handleStartAnalysis} 
-                disabled={evaluateDialogMutation.isPending || !dialog.speakerTranscription} 
-                size="lg"
-              >
-                {evaluateDialogMutation.isPending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Analyzing...
-                  </>
-                ) : (
-                  <>
-                    <Play className="h-4 w-4 mr-2" />
-                    Start AI Analysis
-                  </>
-                )}
-              </Button>
-              {!dialog.speakerTranscription && (
-                <p className="text-sm text-muted-foreground mt-2">
-                  Transcription required before analysis can be performed.
-                </p>
-              )}
-              
-              {/* Progress Indicator */}
-              {renderProgressIndicator()}
-            </CardContent>
-          </Card>
+          <DialogAnalysisTab 
+            dialog={dialog}
+            isAnalyzing={isAnalyzing}
+            onStartAnalysis={handleStartAnalysis}
+          />
         </TabsContent>
 
         <TabsContent value="results" className="mt-6">
           <ErrorBoundaryAnalysis onRetry={() => loadDialog(id!)}>
-            <div className="space-y-6">
-            {/* AI Analysis Results */}
-            {(analysisData || dialog.openaiEvaluation) ? (
-              <div className="space-y-4">
-                {/* Violation Summary Cards */}
-                {(analysisData?.mistakes || dialog.openaiEvaluation?.mistakes) && 
-                 (analysisData?.mistakes || dialog.openaiEvaluation?.mistakes)?.length > 0 && (
-                  <AnalysisSummaryCards mistakes={analysisData?.mistakes || dialog.openaiEvaluation?.mistakes || []} />
-                )}
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Overall Score</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        
-                        <div className="text-3xl font-bold text-primary">
-                          {analysisData?.overallScore || dialog.openaiEvaluation?.overallScore}
-                        </div>
-                        <div className="text-sm text-muted-foreground mt-1">
-                          Confidence: {Math.round(((analysisData?.confidence || dialog.openaiEvaluation?.confidence) || 0) * 100)}%
-                        </div>
-                      </div>
-                      
-                      
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Category Scores */}
-                {(analysisData?.categoryScores || dialog.openaiEvaluation?.categoryScores) && 
-                 Object.keys(analysisData?.categoryScores || dialog.openaiEvaluation?.categoryScores || {}).length > 0 && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Category Scores</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {Object.entries(analysisData?.categoryScores || dialog.openaiEvaluation?.categoryScores || {}).map(([category, score]) => (
-                          <div key={category} className="p-3 border rounded">
-                            <div className="text-sm font-medium capitalize mb-1">
-                              {category.replace(/_/g, ' ')}
-                            </div>
-                            <div className="text-2xl font-bold">{String(score)}%</div>
-                           </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-
-                {/* Recommendations */}
-                {dialog.openaiEvaluation?.recommendations && dialog.openaiEvaluation.recommendations.length > 0 && <Card>
-                    <CardHeader>
-                      <CardTitle>Recommendations</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ul className="list-disc pl-6 space-y-2">
-                        {dialog.openaiEvaluation?.recommendations?.map((rec, index) => <li key={index} className="text-muted-foreground leading-relaxed">{rec}</li>)}
-                      </ul>
-                    </CardContent>
-                  </Card>}
-
-                {/* Enhanced Detected Issues with bidirectional navigation */}
-                {dialog.openaiEvaluation?.mistakes && dialog.openaiEvaluation.mistakes.length > 0 && <Card>
-                    <CardHeader>
-                      <CardTitle>Detected Issues ({dialog.openaiEvaluation?.mistakes?.length || 0})</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <EnhancedDialogDetail 
-                        mistakes={dialog.openaiEvaluation?.mistakes || []} 
-                        utterances={dialog.speakerTranscription || []} 
-                        onNavigateToSpeaker={utteranceText => {
-                          setHighlightedUtterance(utteranceText);
-                          setCurrentTab('transcription');
-                          // Scroll to the utterance in speaker dialog
-                          setTimeout(() => {
+            <DialogResultsTab 
+              dialog={dialog}
+              analysisData={analysisData}
+              onNavigateToSpeaker={navigateToSpeaker}
+              onNavigateToAnalysis={navigateToAnalysis}
+            />
+          </ErrorBoundaryAnalysis>
+        </TabsContent>
                             const elements = document.querySelectorAll('[data-utterance-text]');
                             for (const element of elements) {
                               if (element.getAttribute('data-utterance-text')?.includes(utteranceText)) {
