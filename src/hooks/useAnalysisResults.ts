@@ -24,12 +24,14 @@ export function useAnalysisResults(dialogId: string) {
       return dialog.openaiEvaluation;
     },
     // Instant render on first load after analysis completion (cache priming)
+    // Use cached data if available
     initialData: () => {
       const cachedData = queryClient.getQueryData(['analysis', dialogId]);
       if (cachedData) {
         console.log('⚡️ Using cached analysis data for instant render');
+        return cachedData;
       }
-      return cachedData;
+      return undefined;
     },
     enabled: !!dialogId && dialogId !== 'undefined', // Only run query if we have a valid ID
     staleTime: 5 * 60 * 1000, // 5 minutes

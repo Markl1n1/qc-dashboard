@@ -1,7 +1,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Dialog, SpeakerUtterance, AIAnalysis } from '../types';
+import { Dialog, SpeakerUtterance } from '../types';
 import { databaseService, DatabaseDialog } from '../services/databaseService';
 import { useAuthStore } from './authStore';
 
@@ -24,7 +24,7 @@ interface EnhancedDialogStore {
   saveSpeakerTranscription: (dialogId: string, utterances: SpeakerUtterance[], type: 'speaker' | 'russian_speaker') => Promise<void>;
   
   // Analysis operations
-  saveAnalysis: (dialogId: string, analysis: AIAnalysis, type: 'openai') => Promise<void>;
+  saveAnalysis: (dialogId: string, analysis: any, type: 'openai') => Promise<void>;
   
   // Local state management
   setLoading: (loading: boolean) => void;
@@ -285,7 +285,7 @@ export const useEnhancedDialogStore = create<EnhancedDialogStore>()(
         }
       },
 
-      saveAnalysis: async (dialogId: string, analysis: AIAnalysis, type: 'openai') => {
+      saveAnalysis: async (dialogId: string, analysis: any, type: 'openai') => {
         try {
           set({ error: null });
           

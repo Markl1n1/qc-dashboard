@@ -1,12 +1,11 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { DialogData, OpenAIEvaluationResult } from '../types/unified';
-import AnalysisSummaryCards from './AnalysisSummaryCards';
-import EnhancedDialogDetail from './EnhancedDialogDetail';
+import { OptimizedAnalysisSummaryCards, OptimizedEnhancedDialogDetail } from './LazyComponents';
 
 interface DialogResultsTabProps {
   dialog: DialogData;
-  analysisData?: OpenAIEvaluationResult | null;
+  analysisData?: OpenAIEvaluationResult | null | undefined;
   onNavigateToSpeaker: (utteranceText: string) => void;
   onNavigateToAnalysis: (issueIndex: number) => void;
 }
@@ -35,7 +34,7 @@ const DialogResultsTab: React.FC<DialogResultsTabProps> = ({
     <div className="space-y-6">
       {/* Summary Cards */}
       {evaluationData.mistakes && evaluationData.mistakes.length > 0 && (
-        <AnalysisSummaryCards mistakes={evaluationData.mistakes} />
+        <OptimizedAnalysisSummaryCards mistakes={evaluationData.mistakes} />
       )}
 
       {/* Overall Score */}
@@ -104,7 +103,7 @@ const DialogResultsTab: React.FC<DialogResultsTabProps> = ({
             <CardTitle>Detected Issues ({evaluationData.mistakes.length})</CardTitle>
           </CardHeader>
           <CardContent>
-            <EnhancedDialogDetail 
+            <OptimizedEnhancedDialogDetail 
               mistakes={evaluationData.mistakes} 
               utterances={dialog.speakerTranscription || []} 
               onNavigateToSpeaker={onNavigateToSpeaker}

@@ -32,8 +32,8 @@ const DialogTranscriptionTab: React.FC<DialogTranscriptionTabProps> = ({
         highlightedUtterance={highlightedUtterance} 
         onNavigateToAnalysis={onNavigateToAnalysis}
         detectedLanguage={undefined} 
-        metadata={undefined} 
-        analysisData={dialog.openaiEvaluation || null} 
+        metadata={undefined}
+        analysisData={dialog.openaiEvaluation as any} 
       />
     </div>
   );

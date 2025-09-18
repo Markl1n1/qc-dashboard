@@ -42,6 +42,7 @@ const DialogDetail = () => {
   } = useDialogNavigation();
   
   const { isExportingPDF, exportToPDF } = useDialogExport();
+
   useEffect(() => {
     if (id) {
       loadDialog(id);
@@ -69,7 +70,7 @@ const DialogDetail = () => {
           const retryLoadDialog = async (attempt = 1, maxAttempts = 5) => {
             try {
               console.log(`🔄 Loading dialog attempt ${attempt}/${maxAttempts}`);
-            const updatedDialog = await getDialog(id);
+              const updatedDialog = await getDialog(id);
               
               if (updatedDialog?.openaiEvaluation) {
                 console.log('✅ Analysis data loaded successfully');
@@ -120,23 +121,24 @@ const DialogDetail = () => {
       .subscribe();
 
     // Listen for custom analysis complete events
-    const handleAnalysisComplete = async (event: CustomEvent) => {
-      if (event.detail.transcriptId === id) {
+    const handleAnalysisComplete = async (event: any) => {
+      if (event.detail?.transcriptId === id) {
         console.log('🔄 Handling analysis complete event');
         setTimeout(async () => {
           await loadDialog(id);
-          setCurrentTab('results');
+          navigateToResults();
         }, 1000);
       }
     };
 
-    window.addEventListener('analysis-complete', handleAnalysisComplete as EventListener);
+    window.addEventListener('analysis-complete', handleAnalysisComplete);
 
     return () => {
       supabase.removeChannel(channel);
-      window.removeEventListener('analysis-complete', handleAnalysisComplete as EventListener);
+      window.removeEventListener('analysis-complete', handleAnalysisComplete);
     };
-  }, [id]);
+  }, [id, navigateToResults]);
+
   const loadDialog = async (dialogId: string) => {
     try {
       setIsLoading(true);
@@ -170,17 +172,22 @@ const DialogDetail = () => {
     if (!dialog) return;
     await exportToPDF(dialog);
   };
+
   if (isLoading) {
-    return <div className="container mx-auto px-4 py-8">
+    return (
+      <div className="container mx-auto px-4 py-8">
         <div className="flex items-center justify-center space-x-2">
           <Loader2 className="h-6 w-6 animate-spin" />
           <span>Loading dialog details...</span>
         </div>
-      </div>;
+      </div>
+    );
   }
+
   if (!dialog) {
     return <Navigate to="/" replace />;
   }
+
   return (
     <div className="container mx-auto px-4 py-8">
       <DialogDetailHeader 
@@ -226,67 +233,24 @@ const DialogDetail = () => {
           <ErrorBoundaryAnalysis onRetry={() => loadDialog(id!)}>
             <DialogResultsTab 
               dialog={dialog}
-              analysisData={analysisData}
+              analysisData={analysisData as any || undefined}
               onNavigateToSpeaker={navigateToSpeaker}
               onNavigateToAnalysis={navigateToAnalysis}
             />
           </ErrorBoundaryAnalysis>
         </TabsContent>
-                            const elements = document.querySelectorAll('[data-utterance-text]');
-                            for (const element of elements) {
-                              if (element.getAttribute('data-utterance-text')?.includes(utteranceText)) {
-                                element.scrollIntoView({
-                                  behavior: 'smooth',
-                                  block: 'center'
-                                });
-                                break;
-                              }
-                            }
-                          }, 100);
-                        }} 
-                        currentTab={currentTab} 
-                        onTabChange={setCurrentTab}
-                        analysisData={dialog.openaiEvaluation}
-                      />
-                    </CardContent>
-                  </Card>}
-              </div>
-            ) : (
-              <Card>
-                <CardContent className="pt-6">
-                  <p className="text-center text-muted-foreground">
-                    No analysis results available. Run AI analysis first.
-                  </p>
-                </CardContent>
-              </Card>
-            )}
-            </div>
-          </ErrorBoundaryAnalysis>
-        </TabsContent>
       </Tabs>
-    </div>;
+    </div>
+  );
 };
 
 // Wrap with error handling
 const SafeDialogDetail = () => {
-  try {
-    return <DialogDetail />;
-  } catch (error) {
-    console.error('DialogDetail component error:', error);
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-lg font-semibold mb-2">Dialog not found</h2>
-          <p className="text-muted-foreground mb-4">
-            The requested dialog could not be loaded.
-          </p>
-          <Link to="/unified-dashboard" className="text-primary hover:underline">
-            Return to Dashboard
-          </Link>
-        </div>
-      </div>
-    );
-  }
+  return (
+    <ErrorBoundaryAnalysis>
+      <DialogDetail />
+    </ErrorBoundaryAnalysis>
+  );
 };
 
 export default SafeDialogDetail;

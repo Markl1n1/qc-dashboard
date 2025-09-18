@@ -30,16 +30,11 @@ export interface SpeakerUtterance {
   end: number;
 }
 
-export interface TokenEstimation {
+export interface SimplifiedTokenEstimation {
   audioLengthMinutes: number;
   estimatedCost: number;
-  openAI?: {
-    estimatedInputTokens: number;
-    actualInputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-    cost: number;
-  };
+  totalTokens?: number;
+  cost?: number;
 }
 
 export interface Dialog {
@@ -52,7 +47,7 @@ export interface Dialog {
   assignedSupervisor: string;
   uploadDate: string;
   error?: string;
-  tokenEstimation?: TokenEstimation;
+  tokenEstimation?: SimplifiedTokenEstimation;
   
   // Translation properties
   russianTranscription?: string;
@@ -74,38 +69,10 @@ export interface Dialog {
   segmentCount?: number;
   segmentIndex?: number;
   
-  // Analysis properties
-  analysis?: AIAnalysis;
-  openaiEvaluation?: any;
+  // Analysis properties - use unified types
+  openaiEvaluation?: import('./unified').OpenAIEvaluationResult | null;
   qualityScore?: number;
 }
 
-export interface MistakeHighlight {
-  id: string;
-  level: 'minor' | 'major' | 'critical';
-  category: string;
-  mistakeName: string;
-  description: string;
-  text: string;
-  position: number;
-  speaker: string;
-  suggestion: string;
-  impact: 'low' | 'medium' | 'high';
-  confidence: number;
-}
-
-export interface AIAnalysis {
-  overallScore: number;
-  categoryScores: {
-    communication: number;
-    professionalism: number;
-    problem_solving: number;
-    compliance: number;
-    customer_satisfaction: number;
-  };
-  mistakes: MistakeHighlight[];
-  recommendations: string[];
-  summary: string;
-  confidence: number;
-  bannedWordsDetected?: Array<{ word: string; position: number }>;
-}
+// Remove over-engineered interfaces - replaced by unified types
+export type { OpenAIEvaluationResult } from './unified';

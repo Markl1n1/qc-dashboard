@@ -1,5 +1,6 @@
 import { supabase } from '../integrations/supabase/client';
-import { Dialog, SpeakerUtterance, AIAnalysis } from '../types';
+import { Dialog, SpeakerUtterance } from '../types';
+import { OpenAIEvaluationResult } from '../types/unified';
 import { logger } from './loggingService';
 
 export interface DatabaseDialog {
@@ -529,27 +530,30 @@ class DatabaseService {
           };
 
           dialog.openaiEvaluation = {
+            score: firstRecord.overall_score || 0,
             overallScore: firstRecord.overall_score || 0,
             categoryScores: {},
-            mistakes: mistakes,
+            mistakes: mistakes as any[], // Temporarily allow any for mistakes
+            speakers: speakers ? [speakers] : [],
             recommendations: [],
             summary: '',
             confidence: firstRecord.confidence || 0,
-            tokenUsage: firstRecord.token_usage || {},
-            speakers: speakers
-          };
+            tokenUsage: firstRecord.token_usage || undefined
+          } as OpenAIEvaluationResult;
         } else {
           // Fallback to old format for backward compatibility
           const openaiAnalysis = openaiAnalyses[0];
           dialog.openaiEvaluation = {
+            score: openaiAnalysis.overall_score || 0,
             overallScore: openaiAnalysis.overall_score || 0,
-            categoryScores: openaiAnalysis.category_scores,
-            mistakes: openaiAnalysis.mistakes,
-            recommendations: openaiAnalysis.recommendations,
+            categoryScores: openaiAnalysis.category_scores || {},
+            mistakes: (openaiAnalysis.mistakes as any[]) || [],
+            speakers: openaiAnalysis.speaker_0 ? [{ speaker_0: openaiAnalysis.speaker_0, speaker_1: openaiAnalysis.speaker_1 }] : [],
+            recommendations: openaiAnalysis.recommendations || [],
             summary: openaiAnalysis.summary || '',
             confidence: openaiAnalysis.confidence || 0,
-            tokenUsage: openaiAnalysis.token_usage
-          };
+            tokenUsage: openaiAnalysis.token_usage || undefined
+          } as OpenAIEvaluationResult;
         }
       }
     }

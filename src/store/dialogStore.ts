@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { OpenAIEvaluationResult } from '../types/openaiEvaluation';
-import { Dialog as BaseDialog, TokenEstimation } from '../types';
+import { Dialog as BaseDialog, SimplifiedTokenEstimation } from '../types';
 
 // Use the Dialog interface from types/index.ts to ensure consistency
 export interface Dialog extends BaseDialog {}
@@ -43,18 +43,14 @@ export const useDialogStore = create<DialogStore>()(
           dialogs: state.dialogs.map((dialog) => {
             if (dialog.id === id) {
               // Add OpenAI token estimation
-              const tokenEstimation: TokenEstimation = dialog.tokenEstimation || {
+              const tokenEstimation: SimplifiedTokenEstimation = dialog.tokenEstimation || {
                 audioLengthMinutes: 0,
                 estimatedCost: 0
               };
               
-              tokenEstimation.openAI = {
-                estimatedInputTokens: 0, // Will be updated when we have the estimation
-                actualInputTokens: evaluation.tokenUsage.input,
-                outputTokens: evaluation.tokenUsage.output,
-                totalTokens: evaluation.tokenUsage.input + evaluation.tokenUsage.output,
-                cost: evaluation.tokenUsage.cost || 0
-              };
+              // Update token estimation with OpenAI data
+              tokenEstimation.totalTokens = (evaluation.tokenUsage?.input || 0) + (evaluation.tokenUsage?.output || 0);
+              tokenEstimation.cost = evaluation.tokenUsage?.cost || 0;
 
               return { 
                 ...dialog, 

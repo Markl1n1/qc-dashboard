@@ -5,13 +5,13 @@ import { toast } from 'sonner';
 
 interface EvaluationPayload {
   dialogId: string;
-  utterances: any[];
+  utterances: import('../types/unified').SpeakerUtterance[];
   modelId: string;
 }
 
 interface EvaluationResult {
   success: boolean;
-  analysis?: any;
+  analysis?: import('../types/unified').OpenAIEvaluationResult;
   error?: string;
 }
 
