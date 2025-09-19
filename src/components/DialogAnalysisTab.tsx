@@ -1,8 +1,10 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
-import { Play, Loader2 } from 'lucide-react';
+import { Badge } from './ui/badge';
+import { Play, Loader2, CheckCircle } from 'lucide-react';
 import { DialogData } from '../types/unified';
+import { useBackgroundAnalysis } from '../hooks/useBackgroundAnalysis';
 
 interface DialogAnalysisTabProps {
   dialog: DialogData;
@@ -15,6 +17,12 @@ const DialogAnalysisTab: React.FC<DialogAnalysisTabProps> = ({
   isAnalyzing,
   onStartAnalysis
 }) => {
+  const { addAnalysis } = useBackgroundAnalysis();
+
+  const handleStartAnalysis = () => {
+    addAnalysis(dialog.id, dialog.fileName);
+    onStartAnalysis();
+  };
   const renderProgressIndicator = () => {
     if (!isAnalyzing) return null;
     
@@ -34,17 +42,37 @@ const DialogAnalysisTab: React.FC<DialogAnalysisTabProps> = ({
     );
   };
 
+  const hasExistingAnalysis = dialog.openaiEvaluation;
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>AI Quality Analysis</CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle>AI Quality Analysis</CardTitle>
+          {hasExistingAnalysis && (
+            <Badge variant="secondary" className="flex items-center gap-1">
+              <CheckCircle className="h-3 w-3" />
+              Analysis Complete
+            </Badge>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
-        <Button 
-          onClick={onStartAnalysis} 
-          disabled={isAnalyzing || !dialog.speakerTranscription} 
-          size="lg"
-        >
+        <div className="space-y-4">
+          {hasExistingAnalysis && (
+            <div className="p-4 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
+              <p className="text-sm text-green-800 dark:text-green-200">
+                ✅ AI analysis has been completed for this dialog. View results in the "Analysis Results" tab.
+              </p>
+            </div>
+          )}
+          
+          <Button 
+            onClick={handleStartAnalysis} 
+            disabled={isAnalyzing || !dialog.speakerTranscription} 
+            size="lg"
+            variant={hasExistingAnalysis ? "outline" : "default"}
+          >
           {isAnalyzing ? (
             <>
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -53,17 +81,35 @@ const DialogAnalysisTab: React.FC<DialogAnalysisTabProps> = ({
           ) : (
             <>
               <Play className="h-4 w-4 mr-2" />
-              Start AI Analysis
+              {hasExistingAnalysis ? 'Re-run Analysis' : 'Start AI Analysis'}
             </>
           )}
-        </Button>
+          </Button>
+          
+          {isAnalyzing && (
+            <div className="p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+              <p className="text-sm text-blue-800 dark:text-blue-200 mb-2">
+                🚀 Analysis is running in the background. You can safely navigate away from this page.
+              </p>
+              <p className="text-xs text-blue-600 dark:text-blue-300">
+                You'll receive a notification when the analysis is complete.
+              </p>
+            </div>
+          )}
         {!dialog.speakerTranscription && (
           <p className="text-sm text-muted-foreground mt-2">
             Transcription required before analysis can be performed.
           </p>
         )}
-        
-        {renderProgressIndicator()}
+          
+          {!dialog.speakerTranscription && (
+            <p className="text-sm text-muted-foreground">
+              Transcription required before analysis can be performed.
+            </p>
+          )}
+          
+          {renderProgressIndicator()}
+        </div>
       </CardContent>
     </Card>
   );

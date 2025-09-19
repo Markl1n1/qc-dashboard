@@ -3,6 +3,7 @@ import React from 'react';
 import { Outlet } from 'react-router-dom';
 import { SidebarProvider } from './ui/sidebar';
 import { AppSidebar } from './AppSidebar';
+import BackgroundAnalysisManager from './BackgroundAnalysisManager';
 
 const Layout: React.FC = () => {
   return (
@@ -13,6 +14,7 @@ const Layout: React.FC = () => {
           <Outlet />
         </main>
       </div>
+      <BackgroundAnalysisManager />
     </SidebarProvider>
   );
 };

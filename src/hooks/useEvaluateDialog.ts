@@ -48,13 +48,27 @@ export function useEvaluateDialog() {
         console.log('💾 Analysis data cached successfully');
       }
       
-      // Only navigate if user is still on the same dialog page
+      // Always provide toast notification with navigation link
       const currentPath = location.pathname;
       if (currentPath.includes(`/dialog/${dialogId}`)) {
+        // User is on the dialog page - navigate to results tab
         navigate(`/dialog/${dialogId}?tab=results`);
-        toast.success('AI analysis completed successfully!');
+        toast.success('AI analysis completed successfully!', {
+          action: {
+            label: 'View Results',
+            onClick: () => navigate(`/dialog/${dialogId}?tab=results`)
+          }
+        });
       } else {
-        toast.success(`AI analysis completed for dialog ${dialogId}!`);
+        // User is elsewhere - show toast with navigation option
+        toast.success('AI analysis completed!', {
+          description: `Analysis for dialog ${dialogId} is ready`,
+          action: {
+            label: 'View Results',
+            onClick: () => navigate(`/dialog/${dialogId}?tab=results`)
+          },
+          duration: 10000 // Longer duration for navigation toast
+        });
       }
     },
     onError: (error: Error) => {

@@ -1,7 +1,7 @@
 
 import { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Home, Upload, Settings, LogOut, Users, BarChart3, FileText, User, Sun, Moon, Menu, Lock } from 'lucide-react';
+import { Home, Upload, Settings, LogOut, Users, BarChart3, FileText, User, Sun, Moon, Menu, Lock, Shield } from 'lucide-react';
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarTrigger, useSidebar } from './ui/sidebar';
 import { useAuthStore } from '../store/authStore';
 import { useTheme } from '../hooks/useTheme';
@@ -22,6 +22,11 @@ const navigationItems = [{
   title: 'Agent Management',
   url: '/agents',
   icon: Users
+}, {
+  title: 'Admin Dashboard',
+  url: '/admin',
+  icon: Shield,
+  adminOnly: true
 }, {
   title: 'Settings',
   url: '/settings',
