@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { Shield, Users, Key, Settings } from 'lucide-react';
 import AdminManagement from '../components/AdminManagement';
 import PasscodeManager from '../components/PasscodeManager';
+import PerformanceMonitor from '../components/PerformanceMonitor';
 import { useUserRole } from '../hooks/useUserRole';
 import { Navigate } from 'react-router-dom';
 
@@ -101,19 +102,23 @@ const AdminDashboard = () => {
         </TabsContent>
 
         <TabsContent value="settings" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>System Configuration</CardTitle>
-              <CardDescription>
-                Global system settings and configurations
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                System settings will be available here in future updates.
-              </p>
-            </CardContent>
-          </Card>
+          <div className="space-y-6">
+            <PerformanceMonitor />
+            
+            <Card>
+              <CardHeader>
+                <CardTitle>System Configuration</CardTitle>
+                <CardDescription>
+                  Global system settings and configurations
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Additional system settings will be available here in future updates.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
     </div>
