@@ -7,3 +7,7 @@ timeout_sec = 300
 [functions.admin-operations]
 memory_mb = 256
 timeout_sec = 60
+
+[functions.dialog-cleanup]
+memory_mb = 256
+timeout_sec = 120

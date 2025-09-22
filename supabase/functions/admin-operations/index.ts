@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 interface AdminOperationRequest {
-  operation: 'batch_user_update' | 'system_config_update' | 'bulk_delete';
+  operation: 'batch_user_update' | 'system_config_update' | 'bulk_delete' | 'create_user' | 'reset_password' | 'delete_user' | 'audit_log';
   data: any;
 }
 
@@ -38,6 +38,14 @@ serve(async (req) => {
         return await handleSystemConfigUpdate(supabase, data);
       case 'bulk_delete':
         return await handleBulkDelete(supabase, data);
+      case 'create_user':
+        return await handleCreateUser(supabase, data);
+      case 'reset_password':
+        return await handleResetPassword(supabase, data);
+      case 'delete_user':
+        return await handleDeleteUser(supabase, data);
+      case 'audit_log':
+        return await handleAuditLog(supabase, data);
       default:
         return new Response(
           JSON.stringify({ error: 'Invalid operation' }),
@@ -163,5 +171,164 @@ async function handleBulkDelete(supabase: any, data: any) {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
+  }
+}
+
+async function handleCreateUser(supabase: any, data: any) {
+  const { email, password, name, role } = data;
+  
+  try {
+    // Create user using admin API
+    const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { name }
+    });
+
+    if (createError) throw createError;
+
+    // Update profile with role
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .update({ role, name })
+      .eq('id', newUser.user.id);
+
+    if (profileError) throw profileError;
+
+    // Log audit trail
+    await logAuditAction(supabase, 'user_created', { user_id: newUser.user.id, email, role });
+
+    return new Response(
+      JSON.stringify({ success: true, user: newUser.user }),
+      { 
+        status: 200, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+  } catch (error) {
+    console.error('Create user error:', error);
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { 
+        status: 500, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+  }
+}
+
+async function handleResetPassword(supabase: any, data: any) {
+  const { userId, newPassword } = data;
+  
+  try {
+    const { error } = await supabase.auth.admin.updateUserById(userId, {
+      password: newPassword
+    });
+
+    if (error) throw error;
+
+    // Log audit trail
+    await logAuditAction(supabase, 'password_reset', { user_id: userId });
+
+    return new Response(
+      JSON.stringify({ success: true }),
+      { 
+        status: 200, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+  } catch (error) {
+    console.error('Reset password error:', error);
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { 
+        status: 500, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+  }
+}
+
+async function handleDeleteUser(supabase: any, data: any) {
+  const { userId } = data;
+  
+  try {
+    // Check if user is admin - admins cannot delete admin users
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', userId)
+      .single();
+
+    if (profile?.role === 'admin') {
+      throw new Error('Cannot delete admin users');
+    }
+
+    const { error } = await supabase.auth.admin.deleteUser(userId);
+    if (error) throw error;
+
+    // Log audit trail
+    await logAuditAction(supabase, 'user_deleted', { user_id: userId });
+
+    return new Response(
+      JSON.stringify({ success: true }),
+      { 
+        status: 200, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+  } catch (error) {
+    console.error('Delete user error:', error);
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { 
+        status: 500, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+  }
+}
+
+async function handleAuditLog(supabase: any, data: any) {
+  const { action, details } = data;
+  
+  try {
+    await logAuditAction(supabase, action, details);
+    
+    return new Response(
+      JSON.stringify({ success: true }),
+      { 
+        status: 200, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+  } catch (error) {
+    console.error('Audit log error:', error);
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { 
+        status: 500, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+  }
+}
+
+async function logAuditAction(supabase: any, action: string, details: any) {
+  try {
+    const { error } = await supabase
+      .from('audit_logs')
+      .insert({
+        action,
+        details,
+        created_at: new Date().toISOString()
+      });
+    
+    if (error) {
+      console.error('Audit log insert error:', error);
+    }
+  } catch (error) {
+    console.error('Audit logging failed:', error);
   }
 }
