@@ -455,7 +455,8 @@ const OptimizedAdminManagement = () => {
                           variant="destructive"
                           size="sm"
                           onClick={() => deleteUser(user.id)}
-                          disabled={pendingOperations.has(`delete-${user.id}`)}
+                          disabled={pendingOperations.has(`delete-${user.id}`) || user.role === 'admin'}
+                          title={user.role === 'admin' ? 'Admin users cannot be deleted' : 'Delete user'}
                         >
                           <Trash2 className="h-3 w-3" />
                         </Button>

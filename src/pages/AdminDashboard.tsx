@@ -2,7 +2,8 @@ import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Shield, Users, Key, Settings } from 'lucide-react';
-import AdminManagement from '../components/AdminManagement';
+import OptimizedAdminManagement from '../components/OptimizedAdminManagement';
+import DataRetentionManager from '../components/DataRetentionManager';
 import PasscodeManager from '../components/PasscodeManager';
 import PerformanceMonitor from '../components/PerformanceMonitor';
 import { useUserRole } from '../hooks/useUserRole';
@@ -54,7 +55,7 @@ const AdminDashboard = () => {
         </TabsList>
 
         <TabsContent value="users" className="mt-6">
-          <AdminManagement />
+          <OptimizedAdminManagement />
         </TabsContent>
 
         <TabsContent value="security" className="mt-6">
@@ -104,6 +105,7 @@ const AdminDashboard = () => {
         <TabsContent value="settings" className="mt-6">
           <div className="space-y-6">
             <PerformanceMonitor />
+            <DataRetentionManager />
             
             <Card>
               <CardHeader>
