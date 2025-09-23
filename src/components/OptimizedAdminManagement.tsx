@@ -126,40 +126,27 @@ const OptimizedAdminManagement = () => {
       setUsers(prev => [tempUser, ...prev]);
       toast.success('Creating user...', { duration: 1000 });
 
-      // Create user via Supabase Auth Admin API
-      const { data, error } = await supabase.auth.admin.createUser({
-        email: newUser.email,
-        password: newUser.password,
-        email_confirm: true,
-        user_metadata: {
-          name: newUser.name
+      // Create user via admin-operations edge function
+      const { data, error } = await supabase.functions.invoke('admin-operations', {
+        body: {
+          operation: 'create_user',
+          email: newUser.email,
+          password: newUser.password,
+          name: newUser.name,
+          role: newUser.role
         }
       });
 
       if (error) throw error;
 
-      // Update the profile with the correct role
-      if (data.user) {
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .update({ 
-            role: newUser.role,
-            name: newUser.name 
-          })
-          .eq('id', data.user.id);
-
-        if (profileError) {
-          console.error('Error updating profile:', profileError);
-          toast.error('User created but role assignment failed');
-        } else {
-          // Replace temp user with real user
-          setUsers(prev => prev.map(user => 
-            user.id === tempId 
-              ? { ...user, id: data.user.id }
-              : user
-          ));
-          toast.success(`${newUser.role === 'admin' ? 'Admin' : 'Supervisor'} user created successfully`);
-        }
+      if (data?.user) {
+        // Replace temp user with real user
+        setUsers(prev => prev.map(user => 
+          user.id === tempId 
+            ? { ...user, id: data.user.id }
+            : user
+        ));
+        toast.success(`${newUser.role === 'admin' ? 'Admin' : 'Supervisor'} user created successfully`);
       }
 
       setShowCreateDialog(false);
@@ -190,8 +177,12 @@ const OptimizedAdminManagement = () => {
     setPendingOperations(prev => new Set(prev).add(operationId));
 
     try {
-      const { error } = await supabase.auth.admin.updateUserById(userId, {
-        password: newPassword
+      const { data, error } = await supabase.functions.invoke('admin-operations', {
+        body: {
+          operation: 'reset_password',
+          userId: userId,
+          password: newPassword
+        }
       });
 
       if (error) throw error;
@@ -261,7 +252,12 @@ const OptimizedAdminManagement = () => {
     toast.success('Deleting user...', { duration: 1000 });
 
     try {
-      const { error } = await supabase.auth.admin.deleteUser(userId);
+      const { data, error } = await supabase.functions.invoke('admin-operations', {
+        body: {
+          operation: 'delete_user',
+          userId: userId
+        }
+      });
 
       if (error) throw error;
 
