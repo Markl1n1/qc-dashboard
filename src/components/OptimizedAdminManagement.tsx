@@ -130,10 +130,12 @@ const OptimizedAdminManagement = () => {
       const { data, error } = await supabase.functions.invoke('admin-operations', {
         body: {
           operation: 'create_user',
-          email: newUser.email,
-          password: newUser.password,
-          name: newUser.name,
-          role: newUser.role
+          data: {
+            email: newUser.email,
+            password: newUser.password,
+            name: newUser.name,
+            role: newUser.role
+          }
         }
       });
 
@@ -180,8 +182,10 @@ const OptimizedAdminManagement = () => {
       const { data, error } = await supabase.functions.invoke('admin-operations', {
         body: {
           operation: 'reset_password',
-          userId: userId,
-          password: newPassword
+          data: {
+            userId: userId,
+            newPassword: newPassword
+          }
         }
       });
 
@@ -255,7 +259,9 @@ const OptimizedAdminManagement = () => {
       const { data, error } = await supabase.functions.invoke('admin-operations', {
         body: {
           operation: 'delete_user',
-          userId: userId
+          data: {
+            userId: userId
+          }
         }
       });
 
