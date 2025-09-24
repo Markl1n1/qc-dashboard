@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 interface AdminOperationRequest {
-  operation: 'batch_user_update' | 'system_config_update' | 'bulk_delete' | 'create_user' | 'reset_password' | 'delete_user' | 'audit_log' | 'list_users';
+  operation: 'batch_user_update' | 'system_config_update' | 'bulk_delete' | 'create_user' | 'reset_password' | 'delete_user' | 'audit_log' | 'list_users' | 'update_system_config' | 'get_system_config';
   data: any;
 }
 
@@ -48,6 +48,10 @@ serve(async (req) => {
         return await handleAuditLog(supabase, data);
       case 'list_users':
         return await handleListUsers(supabase, data);
+      case 'update_system_config':
+        return await handleUpdateSystemConfig(supabase, data);
+      case 'get_system_config':
+        return await handleGetSystemConfig(supabase, data);
       default:
         return new Response(
           JSON.stringify({ error: 'Invalid operation' }),
@@ -401,6 +405,74 @@ async function handleListUsers(supabase: any, data: any) {
       }
     );
   }
+}
+
+/**
+ * Update system configuration
+ */
+async function handleUpdateSystemConfig(supabase: any, data: any) {
+  const { config } = data;
+  
+  if (!config || typeof config !== 'object') {
+    throw new Error('Config object is required');
+  }
+
+  console.log('🔧 Updating system config:', Object.keys(config));
+
+  const updates = Object.entries(config).map(([key, value]) => ({
+    key,
+    value: String(value)
+  }));
+
+  const { error } = await supabase
+    .from('system_config')
+    .upsert(updates, { onConflict: 'key' });
+
+  if (error) {
+    console.error('❌ Failed to update system config:', error);
+    throw error;
+  }
+
+  await logAuditAction(supabase, 'system_config_updated', { config });
+  
+  console.log('✅ System config updated successfully');
+  return new Response(
+    JSON.stringify({ success: true, message: 'System configuration updated successfully' }),
+    { 
+      status: 200, 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    }
+  );
+}
+
+/**
+ * Get system configuration
+ */
+async function handleGetSystemConfig(supabase: any, data: any) {
+  console.log('📋 Fetching system config');
+
+  const { data: configData, error } = await supabase
+    .from('system_config')
+    .select('key, value, description');
+
+  if (error) {
+    console.error('❌ Failed to fetch system config:', error);
+    throw error;
+  }
+
+  const config = configData.reduce((acc: any, item: any) => {
+    acc[item.key] = item.value;
+    return acc;
+  }, {});
+
+  console.log('✅ System config fetched successfully');
+  return new Response(
+    JSON.stringify({ config }),
+    { 
+      status: 200, 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    }
+  );
 }
 
 async function logAuditAction(supabase: any, action: string, details: any) {

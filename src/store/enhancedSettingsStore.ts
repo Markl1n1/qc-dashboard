@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { databaseService } from '../services/databaseService';
+import { supabase } from '../integrations/supabase/client';
 
 interface EnhancedSettingsState {
   // Current settings
@@ -98,32 +99,50 @@ export const useEnhancedSettingsStore = create<EnhancedSettingsState>((set, get)
   },
 
   loadSystemConfig: async () => {
-    // Alias for loadSettings to maintain compatibility
-    const { loadSettings } = get();
-    await loadSettings();
+    set({ isLoading: true, error: null });
+    try {
+      // Try admin-operations first, fall back to direct DB access
+      try {
+        const { data, error } = await supabase.functions.invoke('admin-operations', {
+          body: { operation: 'get_system_config', data: {} }
+        });
+        
+        if (error) throw error;
+        set({ systemConfig: data.config });
+      } catch (edgeFunctionError) {
+        console.warn('Edge function failed, falling back to direct DB access:', edgeFunctionError);
+        const config = await databaseService.getAllSystemConfig();
+        set({ systemConfig: config });
+      }
+    } catch (error: any) {
+      console.error('Failed to load system config:', error);
+      set({ error: error.message });
+    } finally {
+      set({ isLoading: false });
+    }
   },
 
   updateSystemConfig: async (config: Record<string, string>) => {
+    set({ isLoading: true, error: null });
     try {
-      set({ isLoading: true, error: null });
-      
-      // Update each config value in the database
-      for (const [key, value] of Object.entries(config)) {
-        await databaseService.updateSystemConfig(key, value);
-      }
-      
-      // Reload settings to get the updated values
-      const { loadSettings } = get();
-      await loadSettings();
-      
-      set({ isLoading: false });
-    } catch (error) {
-      console.error('Error updating system config:', error);
-      set({ 
-        error: error instanceof Error ? error.message : 'Failed to update system config',
-        isLoading: false 
+      // Use admin-operations edge function to bypass RLS issues
+      const { data, error } = await supabase.functions.invoke('admin-operations', {
+        body: { 
+          operation: 'update_system_config', 
+          data: { config } 
+        }
       });
+      
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error || 'Failed to update system config');
+      
+      await get().loadSystemConfig();
+    } catch (error: any) {
+      console.error('Failed to update system config:', error);
+      set({ error: error.message });
       throw error;
+    } finally {
+      set({ isLoading: false });
     }
   },
 
