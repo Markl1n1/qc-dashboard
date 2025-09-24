@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 interface AdminOperationRequest {
-  operation: 'batch_user_update' | 'system_config_update' | 'bulk_delete' | 'create_user' | 'reset_password' | 'delete_user' | 'audit_log';
+  operation: 'batch_user_update' | 'system_config_update' | 'bulk_delete' | 'create_user' | 'reset_password' | 'delete_user' | 'audit_log' | 'list_users';
   data: any;
 }
 
@@ -46,6 +46,8 @@ serve(async (req) => {
         return await handleDeleteUser(supabase, data);
       case 'audit_log':
         return await handleAuditLog(supabase, data);
+      case 'list_users':
+        return await handleListUsers(supabase, data);
       default:
         return new Response(
           JSON.stringify({ error: 'Invalid operation' }),
@@ -186,13 +188,71 @@ async function handleCreateUser(supabase: any, data: any) {
       user_metadata: { name }
     });
 
-    if (createError) throw createError;
+    if (createError) {
+      // Handle email_exists error gracefully
+      if (createError.status === 422 && createError.code === 'email_exists') {
+        try {
+          // Find existing user by email
+          const { data: existingUsers, error: listError } = await supabase.auth.admin.listUsers();
+          if (listError) throw listError;
+          
+          const existingUser = existingUsers.users.find((u: any) => u.email === email);
+          if (existingUser) {
+            // Upsert profile for existing user
+            const { error: profileError } = await supabase
+              .from('profiles')
+              .upsert({ 
+                id: existingUser.id, 
+                name, 
+                email, 
+                role 
+              }, { onConflict: 'id' });
 
-    // Update profile with role
+            if (profileError) throw profileError;
+
+            await logAuditAction(supabase, 'user_exists_profile_upserted', { 
+              user_id: existingUser.id, 
+              email, 
+              role 
+            });
+
+            return new Response(
+              JSON.stringify({ 
+                success: true, 
+                user: existingUser,
+                message: 'User already existed, profile updated',
+                user_already_existed: true
+              }),
+              { 
+                status: 200, 
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+              }
+            );
+          }
+        } catch (fallbackError) {
+          console.error('Fallback error:', fallbackError);
+        }
+        
+        return new Response(
+          JSON.stringify({ error: 'A user with this email already exists' }),
+          { 
+            status: 409, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+      throw createError;
+    }
+
+    // Upsert profile with role (use upsert to ensure profile is created)
     const { error: profileError } = await supabase
       .from('profiles')
-      .update({ role, name })
-      .eq('id', newUser.user.id);
+      .upsert({ 
+        id: newUser.user.id, 
+        name, 
+        email, 
+        role 
+      }, { onConflict: 'id' });
 
     if (profileError) throw profileError;
 
@@ -305,6 +365,34 @@ async function handleAuditLog(supabase: any, data: any) {
     );
   } catch (error) {
     console.error('Audit log error:', error);
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { 
+        status: 500, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+  }
+}
+
+async function handleListUsers(supabase: any, data: any) {
+  try {
+    const { data: profiles, error } = await supabase
+      .from('profiles')
+      .select('id, name, email, role, created_at')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    return new Response(
+      JSON.stringify({ success: true, users: profiles }),
+      { 
+        status: 200, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+  } catch (error) {
+    console.error('List users error:', error);
     return new Response(
       JSON.stringify({ error: error.message }),
       { 

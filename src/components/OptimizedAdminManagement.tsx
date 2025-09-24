@@ -75,15 +75,16 @@ const OptimizedAdminManagement = () => {
         return;
       }
 
-      // Optimized query - select only required columns and add index hint
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, name, email, role, created_at')
-        .order('created_at', { ascending: false });
+      // Use edge function to list users (bypasses RLS issues)
+      const { data, error } = await supabase.functions.invoke('admin-operations', {
+        body: {
+          operation: 'list_users'
+        }
+      });
 
       if (error) throw error;
       
-      const processedUsers = (data || []).map(user => ({
+      const processedUsers = (data?.users || []).map((user: any) => ({
         ...user,
         role: user.role as 'admin' | 'supervisor'
       }));
@@ -142,23 +143,31 @@ const OptimizedAdminManagement = () => {
       if (error) throw error;
 
       if (data?.user) {
-        // Replace temp user with real user
-        setUsers(prev => prev.map(user => 
-          user.id === tempId 
-            ? { ...user, id: data.user.id }
-            : user
-        ));
-        toast.success(`${newUser.role === 'admin' ? 'Admin' : 'Supervisor'} user created successfully`);
+        // Handle different success scenarios
+        const successMessage = data.user_already_existed 
+          ? `${newUser.role === 'admin' ? 'Admin' : 'Supervisor'} user already existed, profile updated`
+          : `${newUser.role === 'admin' ? 'Admin' : 'Supervisor'} user created successfully`;
+        
+        toast.success(successMessage);
       }
 
       setShowCreateDialog(false);
       setNewUser({ email: '', password: '', name: '', role: 'supervisor' });
       
-      // Clear cache to force refresh
-      userCache = null;
+      // Refresh user list from server to show the new/updated user
+      await loadUsers(true);
     } catch (error: any) {
       console.error('Error creating user:', error);
-      toast.error(`Failed to create user: ${error.message}`);
+      
+      // Handle specific error codes with better messages
+      let errorMessage = 'Failed to create user';
+      if (error.message?.includes('already exists') || error.status === 409) {
+        errorMessage = 'A user with this email already exists';
+      } else if (error.message) {
+        errorMessage = `Failed to create user: ${error.message}`;
+      }
+      
+      toast.error(errorMessage);
       
       // Remove temp user on error
       setUsers(prev => prev.filter(user => !user.id.startsWith('temp-')));
@@ -216,10 +225,15 @@ const OptimizedAdminManagement = () => {
     ));
 
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ role: newRole })
-        .eq('id', userId);
+      // Use edge function for role updates (bypasses RLS issues)
+      const { data, error } = await supabase.functions.invoke('admin-operations', {
+        body: {
+          operation: 'batch_user_update',
+          data: {
+            updates: [{ userId, role: newRole }]
+          }
+        }
+      });
 
       if (error) throw error;
 
