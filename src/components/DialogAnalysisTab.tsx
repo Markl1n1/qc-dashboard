@@ -62,7 +62,7 @@ const DialogAnalysisTab: React.FC<DialogAnalysisTabProps> = ({
           {hasExistingAnalysis && (
             <div className="p-4 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
               <p className="text-sm text-green-800 dark:text-green-200">
-                ✅ AI analysis has been completed for this dialog. View results in the "Analysis Results" tab.
+                ✅ AI analysis has been completed. Results in the "Analysis Results" tab.
               </p>
             </div>
           )}
