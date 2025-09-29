@@ -2,7 +2,8 @@ import React, { memo } from 'react';
 import { Card, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { Eye, Trash2, Clock, User, Award } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
+import { Eye, Trash2, Clock, User, Award, AlertCircle } from 'lucide-react';
 import { Dialog } from '../types';
 import { format } from 'date-fns';
 
@@ -56,6 +57,25 @@ const OptimizedDialogCard = memo<OptimizedDialogCardProps>(({
                 </div>
               )}
             </div>
+            
+            {/* Error message for failed dialogs */}
+            {dialog.status === 'failed' && dialog.error && (
+              <div className="mt-2 flex items-start gap-2 p-2 rounded-md bg-destructive/10 border border-destructive/20">
+                <AlertCircle className="h-3 w-3 text-destructive mt-0.5 flex-shrink-0" />
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <p className="text-xs text-destructive line-clamp-2 cursor-help">
+                        {dialog.error}
+                      </p>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p className="text-sm">{dialog.error}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+            )}
           </div>
           
           <div className="flex items-center gap-1 ml-2">

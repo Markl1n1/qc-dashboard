@@ -2,7 +2,8 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { ArrowLeft, FileText, Loader2 } from 'lucide-react';
+import { Alert, AlertDescription } from './ui/alert';
+import { ArrowLeft, FileText, Loader2, AlertCircle } from 'lucide-react';
 import { DialogData } from '../types/unified';
 import { extractUsernameFromEmail, capitalizeStatus } from '../utils/userUtils';
 
@@ -80,6 +81,16 @@ const DialogDetailHeader: React.FC<DialogDetailHeaderProps> = ({
           )}
         </Button>
       </div>
+      
+      {/* Error message for failed dialogs */}
+      {dialog.status === 'failed' && dialog.error && (
+        <Alert variant="destructive" className="mt-4">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription className="text-sm">
+            <strong>Transcription failed:</strong> {dialog.error}
+          </AlertDescription>
+        </Alert>
+      )}
     </div>
   );
 };

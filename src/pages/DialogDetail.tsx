@@ -214,11 +214,24 @@ const DialogDetail = () => {
         </TabsList>
 
         <TabsContent value="transcription" className="mt-6">
-          <DialogTranscriptionTab 
-            dialog={dialog}
-            highlightedUtterance={highlightedUtterance}
-            onNavigateToAnalysis={navigateToAnalysis}
-          />
+          {dialog.status === 'failed' ? (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground mb-4">
+                Transcription failed. No speaker dialog available.
+              </p>
+              {dialog.error && (
+                <p className="text-sm text-destructive">
+                  Error: {dialog.error}
+                </p>
+              )}
+            </div>
+          ) : (
+            <DialogTranscriptionTab 
+              dialog={dialog}
+              highlightedUtterance={highlightedUtterance}
+              onNavigateToAnalysis={navigateToAnalysis}
+            />
+          )}
         </TabsContent>
 
         <TabsContent value="analysis" className="mt-6">
