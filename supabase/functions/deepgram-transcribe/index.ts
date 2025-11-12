@@ -169,7 +169,7 @@ Deno.serve(async (req) => {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ url: publicUrl }),
-        signal: AbortSignal.timeout(600000) // 10 minutes timeout
+        signal: AbortSignal.timeout(840000) // 14 minutes timeout (slightly less than 15 min function limit)
       });
     } else {
       deepgramResponse = await fetch(deepgramUrl, {
@@ -179,7 +179,7 @@ Deno.serve(async (req) => {
           // Remove Content-Type header to let Deepgram auto-detect format
         },
         body: audioBuffer!,
-        signal: AbortSignal.timeout(600000) // 10 minutes timeout
+        signal: AbortSignal.timeout(840000) // 14 minutes timeout (slightly less than 15 min function limit)
       });
     }
 
@@ -294,6 +294,21 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('❌ Deepgram transcription error:', error);
+    
+    // Handle timeout errors specifically
+    if (error instanceof Error && (error.name === 'TimeoutError' || error.message.includes('timeout'))) {
+      console.error('⏱️ Transcription timeout - audio file may be too long');
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Transcription timeout: audio file is too long. Maximum supported duration is approximately 2.5-3 hours.' 
+        }),
+        { 
+          status: 504,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
     
     // Clean up storage file even on error
     if (req.method === 'POST') {
