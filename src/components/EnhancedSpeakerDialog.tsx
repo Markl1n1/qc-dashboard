@@ -307,7 +307,7 @@ const assignments = useMemo(() => {
                       </div>
 
                       {/* единый параграф */}
-                      <div className="text-sm leading-relaxed" style={{ color: style.textColor, whiteSpace: 'normal' }}>
+                      <div className="text-sm leading-relaxed break-words whitespace-normal" style={{ color: style.textColor }}>
                         {utterance.text}
                       </div>
 
