@@ -24,6 +24,11 @@ interface DeepgramRequest {
 }
 
 Deno.serve(async (req) => {
+  const requestStartTime = Date.now();
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('🎬 [START] Deepgram transcription request');
+  console.log('⏰ [TIME] Request received at:', new Date().toISOString());
+  
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -33,17 +38,20 @@ Deno.serve(async (req) => {
     const DEEPGRAM_API_KEY = Deno.env.get('DEEPGRAM_API_KEY');
     
     if (!DEEPGRAM_API_KEY) {
+      console.error('❌ [CONFIG] Deepgram API key not configured');
       throw new Error('Deepgram API key not configured');
     }
 
     const { audio, storageFile, mimeType, options }: DeepgramRequest = await req.json();
     
-    console.log('🎙️ Processing Deepgram transcription request', {
+    console.log('📋 [REQUEST] Transcription parameters:', {
       mimeType,
       options,
-      audioLength: audio?.length,
-      storageFile,
-      isLargeFile: !!storageFile
+      audioDataSize: audio ? `${(audio.length / 1024 / 1024).toFixed(2)} MB (base64)` : 'N/A',
+      storageFile: storageFile || 'N/A',
+      processingMode: storageFile ? 'LARGE FILE (Storage URL)' : 'SMALL FILE (Base64)',
+      diarizationEnabled: options.diarize || false,
+      language: options.language || 'auto-detect'
     });
 
     // Create Supabase client
@@ -54,24 +62,36 @@ Deno.serve(async (req) => {
 
     let audioBuffer: Uint8Array;
     let useSignedUrl = false;
+    let estimatedAudioDuration = 0;
 
     if (storageFile) {
-      console.log('🔗 Using direct public URL for large file:', storageFile);
-      useSignedUrl = true; // Still use URL approach but with public URL
+      console.log('📦 [STORAGE] Processing large file from storage');
+      console.log('📁 [STORAGE] File path:', storageFile);
+      useSignedUrl = true;
       
     } else if (audio) {
       // Convert base64 to binary for small files
+      const conversionStart = Date.now();
       audioBuffer = Uint8Array.from(atob(audio), c => c.charCodeAt(0));
-      console.log('✅ Base64 audio converted, size:', audioBuffer.length);
+      const conversionTime = Date.now() - conversionStart;
+      console.log('✅ [CONVERSION] Base64 to binary complete:', {
+        bufferSize: `${(audioBuffer.length / 1024 / 1024).toFixed(2)} MB`,
+        conversionTimeMs: conversionTime
+      });
     } else {
+      console.error('❌ [ERROR] No audio data or storage file provided');
       throw new Error('No audio data or storage file provided');
     }
 
     // Get model configuration from database
+    console.log('🔧 [CONFIG] Fetching model configuration from database...');
+    const configFetchStart = Date.now();
     const { data: modelConfig } = await supabase
       .from('system_config')
       .select('key, value')
       .in('key', ['deepgram_nova2_languages', 'deepgram_nova3_languages', 'keyterm_prompt_en', 'keyterm_prompt_ru', 'keyterm_prompt_de', 'keyterm_prompt_es', 'keyterm_prompt_fr']);
+    
+    console.log('✅ [CONFIG] Configuration fetched in', Date.now() - configFetchStart, 'ms');
     
     // Parse language configurations
     const nova2Languages = modelConfig?.find(c => c.key === 'deepgram_nova2_languages')?.value || '["pl","ru"]';
@@ -104,21 +124,21 @@ Deno.serve(async (req) => {
         finalModel = 'nova-3-general';
         params.append('model', 'nova-3-general');
         useKeyterms = true; // Nova-3 supports keyterms
-        console.log('✅ Using Nova-3 model for language:', options.language);
+        console.log('🎯 [MODEL] Selected Nova-3 for language:', options.language);
       } else if (nova2List.includes(options.language)) {
         finalModel = 'nova-2-general';
         params.append('model', 'nova-2-general');
-        console.log('✅ Using Nova-2 model for language:', options.language);
+        console.log('🎯 [MODEL] Selected Nova-2 for language:', options.language);
       } else {
         // Language not in either list - try Nova-2 as fallback
         finalModel = 'nova-2-general';
         params.append('model', 'nova-2-general');
-        console.log('⚠️  Language not in configured lists, using Nova-2 fallback for:', options.language);
+        console.log('⚠️  [MODEL] Language not in configured lists, using Nova-2 fallback for:', options.language);
       }
     } else {
       // Default to Nova-2 if no language specified
       params.append('model', 'nova-2-general');
-      console.log('✅ Using Nova-2 model (no language specified)');
+      console.log('🎯 [MODEL] Using Nova-2 (no language specified)');
     }
 
     // Add keyterm parameter for Nova-3 model only (fully database-driven)
@@ -126,9 +146,9 @@ Deno.serve(async (req) => {
       const langKeyterm = keytermPrompts[options.language];
       if (langKeyterm && langKeyterm.trim()) {
         params.append('keyterm', langKeyterm);
-        console.log('✅ Added database keyterm prompts for', options.language, ':', langKeyterm);
+        console.log('🔑 [KEYTERMS] Added for', options.language, '- length:', langKeyterm.length, 'chars');
       } else {
-        console.log('⚠️  No keyterm prompts found in database for', options.language);
+        console.log('⚠️  [KEYTERMS] No prompts found in database for', options.language);
       }
     }
 
@@ -141,7 +161,7 @@ Deno.serve(async (req) => {
     if (options.diarize) {
       params.append('diarize', 'true');
       params.append('utterances', 'true');
-      console.log('✅ Diarization enabled: diarize=true, utterances=true');
+      console.log('👥 [DIARIZATION] Enabled: diarize=true, utterances=true');
     }
 
     // Additional options
@@ -151,37 +171,62 @@ Deno.serve(async (req) => {
 
     const deepgramUrl = `https://api.deepgram.com/v1/listen?${params.toString()}`;
     
-    console.log('📡 Calling Deepgram API with model:', finalModel);
-    console.log('📋 Full URL:', deepgramUrl);
-    console.log('📋 Parameters:', Object.fromEntries(params.entries()));
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🚀 [DEEPGRAM] Initiating API call');
+    console.log('🎯 [DEEPGRAM] Model:', finalModel);
+    console.log('📋 [DEEPGRAM] Parameters:', Object.fromEntries(params.entries()));
+    console.log('⏰ [DEEPGRAM] Call started at:', new Date().toISOString());
+    console.log('⏱️  [DEEPGRAM] Timeout set to: 14 minutes (840 seconds)');
 
     let deepgramResponse: Response;
+    const deepgramCallStart = Date.now();
 
     if (useSignedUrl) {
       // Use direct public URL since bucket is public
       const publicUrl = `https://sahudeguwojdypmmlbkd.supabase.co/storage/v1/object/public/audio-files/${storageFile}`;
-      console.log('🔗 Using public URL:', publicUrl);
+      console.log('🔗 [URL] Public URL:', publicUrl);
 
-      deepgramResponse = await fetch(deepgramUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Token ${DEEPGRAM_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ url: publicUrl }),
-        signal: AbortSignal.timeout(840000) // 14 minutes timeout (slightly less than 15 min function limit)
-      });
+      try {
+        deepgramResponse = await fetch(deepgramUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Token ${DEEPGRAM_API_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ url: publicUrl }),
+          signal: AbortSignal.timeout(840000) // 14 minutes timeout (slightly less than 15 min function limit)
+        });
+      } catch (fetchError) {
+        const elapsed = ((Date.now() - deepgramCallStart) / 1000).toFixed(2);
+        console.error('❌ [DEEPGRAM] Fetch failed after', elapsed, 'seconds');
+        if (fetchError instanceof Error && fetchError.name === 'TimeoutError') {
+          console.error('⏱️  [TIMEOUT] Deepgram API timeout - audio likely exceeds 2.5-3 hour limit');
+        }
+        throw fetchError;
+      }
     } else {
-      deepgramResponse = await fetch(deepgramUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Token ${DEEPGRAM_API_KEY}`,
-          // Remove Content-Type header to let Deepgram auto-detect format
-        },
-        body: audioBuffer!,
-        signal: AbortSignal.timeout(840000) // 14 minutes timeout (slightly less than 15 min function limit)
-      });
+      try {
+        deepgramResponse = await fetch(deepgramUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Token ${DEEPGRAM_API_KEY}`,
+            // Remove Content-Type header to let Deepgram auto-detect format
+          },
+          body: audioBuffer!,
+          signal: AbortSignal.timeout(840000) // 14 minutes timeout (slightly less than 15 min function limit)
+        });
+      } catch (fetchError) {
+        const elapsed = ((Date.now() - deepgramCallStart) / 1000).toFixed(2);
+        console.error('❌ [DEEPGRAM] Fetch failed after', elapsed, 'seconds');
+        if (fetchError instanceof Error && fetchError.name === 'TimeoutError') {
+          console.error('⏱️  [TIMEOUT] Deepgram API timeout - audio likely exceeds 2.5-3 hour limit');
+        }
+        throw fetchError;
+      }
     }
+
+    const deepgramCallDuration = ((Date.now() - deepgramCallStart) / 1000).toFixed(2);
+    console.log('✅ [DEEPGRAM] Response received in', deepgramCallDuration, 'seconds');
 
     if (!deepgramResponse.ok) {
       let detail: any;
@@ -201,14 +246,26 @@ Deno.serve(async (req) => {
     }
 
 
+    const parseStart = Date.now();
     const deepgramResult = await deepgramResponse.json();
-    console.log('✅ Deepgram response received', {
-      hasResults: !!deepgramResult.results,
-      hasUtterances: !!deepgramResult.results?.utterances,
-      utteranceCount: deepgramResult.results?.utterances?.length || 0,
-      model: finalModel,
-      detectedLanguage: deepgramResult.metadata?.model_info?.language
-    });
+    const parseDuration = Date.now() - parseStart;
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('📊 [RESULTS] Deepgram response parsed in', parseDuration, 'ms');
+    console.log('📊 [RESULTS] Has transcript:', !!deepgramResult.results);
+    console.log('📊 [RESULTS] Has utterances:', !!deepgramResult.results?.utterances);
+    console.log('📊 [RESULTS] Utterance count:', deepgramResult.results?.utterances?.length || 0);
+    console.log('📊 [RESULTS] Model used:', finalModel);
+    console.log('📊 [RESULTS] Detected language:', deepgramResult.metadata?.model_info?.language || 'N/A');
+    
+    if (deepgramResult.metadata?.duration) {
+      const audioDuration = deepgramResult.metadata.duration;
+      estimatedAudioDuration = audioDuration;
+      const processingSpeed = audioDuration / parseFloat(deepgramCallDuration);
+      console.log('📊 [PERFORMANCE] Audio duration:', audioDuration.toFixed(2), 'seconds (', (audioDuration / 60).toFixed(2), 'minutes )');
+      console.log('📊 [PERFORMANCE] Processing speed:', processingSpeed.toFixed(2), 'x realtime');
+      console.log('📊 [PERFORMANCE] Total processing time:', deepgramCallDuration, 'seconds');
+    }
 
     // Process the result
     const transcript = deepgramResult.results?.channels?.[0]?.alternatives?.[0]?.transcript || '';
@@ -216,15 +273,18 @@ Deno.serve(async (req) => {
     // Process speaker utterances if available
     let speakerUtterances: any[] = [];
     if (deepgramResult.results?.utterances) {
-      console.log('📊 Processing utterances, count:', deepgramResult.results.utterances.length);
+      const utteranceProcessStart = Date.now();
+      console.log('👥 [SPEAKERS] Processing', deepgramResult.results.utterances.length, 'utterances...');
       
       speakerUtterances = deepgramResult.results.utterances.map((utterance: any, index: number) => {
         // Use actual speaker numbers from Deepgram
         const speakerNumber = utterance.speaker !== undefined ? utterance.speaker : 0;
         const speakerLabel = `Speaker ${speakerNumber}`;
         
-        console.log(`🎤 Utterance ${index}: speaker=${speakerNumber}, confidence=${utterance.confidence}, text="${utterance.transcript.substring(0, 50)}..."`);
-        
+        if (index < 3 || index >= deepgramResult.results.utterances.length - 3) {
+          // Log first 3 and last 3 utterances for debugging
+          console.log(`👤 [SPEAKER] #${index}: Speaker ${speakerNumber}, confidence=${utterance.confidence?.toFixed(3)}, duration=${(utterance.end - utterance.start).toFixed(2)}s`);
+        }
         return {
           speaker: speakerLabel,
           text: utterance.transcript,
@@ -239,7 +299,11 @@ Deno.serve(async (req) => {
         acc[utterance.speaker] = (acc[utterance.speaker] || 0) + 1;
         return acc;
       }, {});
-      console.log('📈 Speaker distribution:', speakerDistribution);
+      const utteranceProcessDuration = Date.now() - utteranceProcessStart;
+      console.log('👥 [SPEAKERS] Distribution:', speakerDistribution);
+      console.log('👥 [SPEAKERS] Processing completed in', utteranceProcessDuration, 'ms');
+    } else {
+      console.log('⚠️  [SPEAKERS] No utterances in response - diarization may not be enabled');
     }
 
     // Detect language if available
@@ -262,30 +326,41 @@ Deno.serve(async (req) => {
       }
     };
 
-    console.log('✅ Processed transcription result', {
-      textLength: result.text.length,
-      utteranceCount: result.speakerUtterances.length,
-      hasLanguageDetection: !!result.detectedLanguage,
-      model: finalModel
-    });
+    const totalElapsedTime = ((Date.now() - requestStartTime) / 1000).toFixed(2);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('✅ [SUCCESS] Transcription completed');
+    console.log('📊 [SUMMARY] Transcript length:', result.text.length, 'characters');
+    console.log('📊 [SUMMARY] Utterance count:', result.speakerUtterances.length);
+    console.log('📊 [SUMMARY] Language detection:', result.detectedLanguage ? `${result.detectedLanguage.language} (${(result.detectedLanguage.confidence * 100).toFixed(1)}%)` : 'N/A');
+    console.log('📊 [SUMMARY] Model used:', finalModel);
+    console.log('⏱️  [SUMMARY] Total processing time:', totalElapsedTime, 'seconds');
+    if (estimatedAudioDuration > 0) {
+      console.log('⏱️  [SUMMARY] Audio duration:', (estimatedAudioDuration / 60).toFixed(2), 'minutes');
+      console.log('⏱️  [SUMMARY] Processing efficiency:', (estimatedAudioDuration / parseFloat(totalElapsedTime)).toFixed(2), 'x realtime');
+    }
 
     // Always clean up storage file regardless of success/failure
     if (storageFile) {
       try {
-        console.log('🗑️ Cleaning up storage file:', storageFile);
+        console.log('🗑️  [CLEANUP] Deleting storage file:', storageFile);
+        const cleanupStart = Date.now();
         const { error: deleteError } = await supabase.storage
           .from('audio-files')
           .remove([storageFile]);
         
+        const cleanupDuration = Date.now() - cleanupStart;
         if (deleteError) {
-          console.error('⚠️ Failed to delete storage file:', deleteError);
+          console.error('❌ [CLEANUP] Failed to delete storage file:', deleteError);
         } else {
-          console.log('✅ Storage file cleaned up successfully');
+          console.log('✅ [CLEANUP] Storage file deleted successfully in', cleanupDuration, 'ms');
         }
       } catch (cleanupError) {
-        console.error('⚠️ Storage cleanup error:', cleanupError);
+        console.error('❌ [CLEANUP] Storage cleanup error:', cleanupError);
       }
     }
+
+    console.log('🏁 [END] Request completed in', totalElapsedTime, 'seconds');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     return new Response(
       JSON.stringify({ success: true, result }),
@@ -293,15 +368,27 @@ Deno.serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('❌ Deepgram transcription error:', error);
+    const totalElapsedTime = ((Date.now() - requestStartTime) / 1000).toFixed(2);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error('❌ [ERROR] Deepgram transcription failed');
+    console.error('❌ [ERROR] Error type:', error instanceof Error ? error.name : typeof error);
+    console.error('❌ [ERROR] Error message:', error instanceof Error ? error.message : String(error));
+    console.error('❌ [ERROR] Time elapsed before error:', totalElapsedTime, 'seconds');
     
     // Handle timeout errors specifically
     if (error instanceof Error && (error.name === 'TimeoutError' || error.message.includes('timeout'))) {
-      console.error('⏱️ Transcription timeout - audio file may be too long');
+      console.error('⏱️  [TIMEOUT] Transcription timeout detected');
+      console.error('⏱️  [TIMEOUT] This usually means:');
+      console.error('⏱️  [TIMEOUT]   - Audio file is too long (>2.5-3 hours)');
+      console.error('⏱️  [TIMEOUT]   - Network issues with Deepgram API');
+      console.error('⏱️  [TIMEOUT]   - Edge Function timeout limit reached (15 min)');
+      
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'Transcription timeout: audio file is too long. Maximum supported duration is approximately 2.5-3 hours.' 
+          error: 'Transcription timeout: audio file is too long. Maximum supported duration is approximately 2.5-3 hours.',
+          errorType: 'TIMEOUT',
+          elapsedTime: totalElapsedTime
         }),
         { 
           status: 504,
@@ -315,23 +402,31 @@ Deno.serve(async (req) => {
       try {
         const requestData = await req.json();
         if (requestData.storageFile) {
+          console.log('🗑️  [CLEANUP] Attempting cleanup after error...');
           const supabase = createClient(
             'https://sahudeguwojdypmmlbkd.supabase.co',
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
           );
           await supabase.storage.from('audio-files').remove([requestData.storageFile]);
-          console.log('✅ Storage file cleaned up after error');
+          console.log('✅ [CLEANUP] Storage file cleaned up after error');
         }
       } catch (cleanupError) {
-        console.error('⚠️ Error cleanup failed:', cleanupError);
+        console.error('❌ [CLEANUP] Error cleanup failed:', cleanupError);
       }
     }
     
+    const errorResponse = {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred',
+      errorType: error instanceof Error ? error.name : 'UNKNOWN',
+      elapsedTime: ((Date.now() - requestStartTime) / 1000).toFixed(2)
+    };
+    
+    console.error('📤 [RESPONSE] Sending error response:', errorResponse);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    
     return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Unknown error occurred' 
-      }),
+      JSON.stringify(errorResponse),
       { 
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
