@@ -187,6 +187,21 @@ const assignments = useMemo(() => {
     [mergedUtterances]
   );
 
+  const callDurationSeconds = useMemo(() => {
+    if (!mergedUtterances.length) return 0;
+    const minStart = mergedUtterances.reduce(
+      (min, u) => Math.min(min, u.start),
+      mergedUtterances[0].start
+    );
+    const maxEnd = mergedUtterances.reduce(
+      (max, u) => Math.max(max, u.end),
+      mergedUtterances[0].end
+    );
+    return Math.max(0, maxEnd - minStart);
+  }, [mergedUtterances]);
+
+  const displayDuration = metadata?.duration ?? callDurationSeconds;
+
   return (
     <div className="space-y-4">
       {/* Metadata Header */}
@@ -219,16 +234,14 @@ const assignments = useMemo(() => {
                 <span className="text-foreground/70">({Math.round(detectedLanguage.confidence * 100)}% confidence)</span>
               </div>
             )}
-            {metadata && (
-              <>
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
-                  <span>{formatTime(metadata.duration)}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">{metadata.model}</Badge>
-                </div>
-              </>
+            <div className="flex items-center gap-2">
+              <Clock className="h-4 w-4" />
+              <span>{formatTime(displayDuration)}</span>
+            </div>
+            {metadata?.model && (
+              <div className="flex items-center gap-2">
+                <Badge variant="outline">{metadata.model}</Badge>
+              </div>
             )}
           </div>
 
