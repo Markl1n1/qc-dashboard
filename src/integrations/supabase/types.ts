@@ -464,16 +464,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      cleanup_expired_dialogs: {
-        Args: Record<PropertyKey, never>
-        Returns: number
-      }
-      get_current_user_role: {
-        Args: Record<PropertyKey, never>
-        Returns: string
-      }
+      cleanup_expired_dialogs: { Args: never; Returns: number }
+      get_current_user_role: { Args: never; Returns: string }
       get_next_deepgram_key: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           api_key: string
           id: string
@@ -490,10 +484,7 @@ export type Database = {
         }
         Returns: undefined
       }
-      update_dialog_expiration_dates: {
-        Args: Record<PropertyKey, never>
-        Returns: number
-      }
+      update_dialog_expiration_dates: { Args: never; Returns: number }
     }
     Enums: {
       [_ in never]: never

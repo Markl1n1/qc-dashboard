@@ -161,7 +161,8 @@ Deno.serve(async (req) => {
     if (options.diarize) {
       params.append('diarize', 'true');
       params.append('utterances', 'true');
-      console.log('👥 [DIARIZATION] Enabled: diarize=true, utterances=true');
+      params.append('min_speakers', '2'); // Force minimum 2 speakers for call center dialogs
+      console.log('👥 [DIARIZATION] Enabled: diarize=true, utterances=true, min_speakers=2');
     }
 
     // Additional options
@@ -302,6 +303,13 @@ Deno.serve(async (req) => {
       const utteranceProcessDuration = Date.now() - utteranceProcessStart;
       console.log('👥 [SPEAKERS] Distribution:', speakerDistribution);
       console.log('👥 [SPEAKERS] Processing completed in', utteranceProcessDuration, 'ms');
+      
+      // Warning if only one speaker detected
+      const uniqueSpeakers = Object.keys(speakerDistribution).length;
+      if (uniqueSpeakers === 1) {
+        console.warn('⚠️  [DIARIZATION WARNING] Only 1 speaker detected! This may indicate diarization issues.');
+        console.warn('⚠️  [DIARIZATION WARNING] Consider: audio quality, speaker separation, or re-processing.');
+      }
     } else {
       console.log('⚠️  [SPEAKERS] No utterances in response - diarization may not be enabled');
     }
@@ -315,14 +323,29 @@ Deno.serve(async (req) => {
       };
     }
 
+    // Calculate audio duration in minutes for database
+    const audioDurationSeconds = deepgramResult.metadata?.duration || 0;
+    const audioDurationMinutes = audioDurationSeconds / 60;
+    const fileSizeBytes = audioBuffer ? audioBuffer.length : 0;
+    const responseTimeMs = parseFloat(deepgramCallDuration) * 1000;
+    
     const result = {
       text: transcript,
       speakerUtterances,
       detectedLanguage,
       metadata: {
-        duration: deepgramResult.metadata?.duration || 0,
+        duration: audioDurationSeconds,
+        durationMinutes: audioDurationMinutes,
         channels: deepgramResult.metadata?.channels || 1,
         model: finalModel
+      },
+      // Include stats for logging
+      stats: {
+        audioDurationSeconds,
+        audioDurationMinutes,
+        fileSizeBytes,
+        responseTimeMs,
+        uniqueSpeakers: Object.keys(speakerUtterances.reduce((acc: any, u: any) => { acc[u.speaker] = 1; return acc; }, {})).length
       }
     };
 

@@ -134,18 +134,31 @@ class DeepgramService {
     // Process utterances
     const speakerUtterances = this.processRawSpeakerUtterances(result.speakerUtterances);
     
+    // Check for single speaker warning
+    const uniqueSpeakers = new Set(speakerUtterances.map(u => u.speaker)).size;
+    if (uniqueSpeakers === 1 && speakerUtterances.length > 5) {
+      logger.warn('Diarization returned only 1 speaker - potential issue', {
+        fileName,
+        utteranceCount: speakerUtterances.length
+      });
+    }
+    
     this.updateProgress('complete', 100, 'Transcription complete!');
 
     logger.info('Deepgram transcription completed successfully', {
       fileName,
       textLength: result.text.length,
       utteranceCount: speakerUtterances.length,
-      detectedLanguage: result.detectedLanguage
+      detectedLanguage: result.detectedLanguage,
+      audioDurationMinutes: result.metadata?.durationMinutes || 0,
+      uniqueSpeakers
     });
 
     return {
       text: result.text,
-      speakerUtterances
+      speakerUtterances,
+      audioDurationMinutes: result.metadata?.durationMinutes || 0,
+      stats: result.stats
     };
   }
 
@@ -203,3 +216,17 @@ class DeepgramService {
 
 export const deepgramService = new DeepgramService();
 export type { DeepgramOptions };
+
+// Type for transcription result with audio duration
+export interface TranscriptionResultWithDuration {
+  text: string;
+  speakerUtterances: SpeakerUtterance[];
+  audioDurationMinutes?: number;
+  stats?: {
+    audioDurationSeconds: number;
+    audioDurationMinutes: number;
+    fileSizeBytes: number;
+    responseTimeMs: number;
+    uniqueSpeakers: number;
+  };
+}

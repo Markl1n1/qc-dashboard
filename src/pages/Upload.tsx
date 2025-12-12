@@ -46,7 +46,24 @@ const Upload: React.FC<UploadProps> = () => {
     'audio/*': ['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac', '.mp4', '.webm', '.mp2', '.opus']
   };
 
+  // Maximum file size: 50MB per file
+  const MAX_FILE_SIZE_MB = 50;
+  const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
   const onDrop = useCallback((acceptedFiles: File[]) => {
+    // Validate file sizes
+    const oversizedFiles = acceptedFiles.filter(f => f.size > MAX_FILE_SIZE_BYTES);
+    if (oversizedFiles.length > 0) {
+      const fileNames = oversizedFiles.map(f => `${f.name} (${(f.size / 1024 / 1024).toFixed(1)}MB)`).join(', ');
+      toast.error(`Files too large (max ${MAX_FILE_SIZE_MB}MB): ${fileNames}`);
+      // Only add files that are within size limit
+      const validFiles = acceptedFiles.filter(f => f.size <= MAX_FILE_SIZE_BYTES);
+      if (validFiles.length > 0) {
+        setAudioFiles(prev => [...prev, ...validFiles]);
+      }
+      return;
+    }
+    
     setAudioFiles(prev => [...prev, ...acceptedFiles]);
     console.log('Files dropped:', acceptedFiles.map(f => f.name));
   }, []);
@@ -147,10 +164,14 @@ const Upload: React.FC<UploadProps> = () => {
         await saveSpeakerTranscription(dialogId, result.speakerUtterances, 'speaker');
       }
 
-      // Update dialog status to "completed"
+      // Update dialog status to "completed" and save audio duration
+      const audioDurationMinutes = (result as any).audioDurationMinutes || 0;
       await updateDialog(dialogId, {
-        status: 'completed'
+        status: 'completed',
+        audioLengthMinutes: audioDurationMinutes
       });
+      
+      console.log('Dialog updated with audio duration:', audioDurationMinutes, 'minutes');
 
       toast.success('Transcription completed successfully!');
       console.log('Transcription completed and saved to database');
@@ -237,6 +258,9 @@ const Upload: React.FC<UploadProps> = () => {
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
                   Multiple files will be merged before transcription
+                </p>
+                <p className="text-xs text-amber-600 mt-1">
+                  Max file size: 50MB per file
                 </p>
               </div>
             )}

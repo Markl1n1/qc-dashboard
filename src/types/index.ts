@@ -48,6 +48,7 @@ export interface Dialog {
   uploadDate: string;
   error?: string;
   tokenEstimation?: SimplifiedTokenEstimation;
+  audioLengthMinutes?: number;
   
   // Translation properties
   russianTranscription?: string;
