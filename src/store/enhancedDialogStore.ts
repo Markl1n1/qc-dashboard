@@ -164,6 +164,7 @@ export const useEnhancedDialogStore = create<EnhancedDialogStore>()(
           if (updates.error !== undefined) dbUpdates.error_message = updates.error;
           if (updates.qualityScore !== undefined) dbUpdates.quality_score = updates.qualityScore;
           if (updates.currentLanguage) dbUpdates.current_language = updates.currentLanguage;
+          if (updates.audioLengthMinutes !== undefined) dbUpdates.audio_length_minutes = updates.audioLengthMinutes;
 
           await databaseService.updateDialog(id, dbUpdates);
           

@@ -104,8 +104,16 @@ export interface DeepgramTranscriptionResult {
   };
   metadata?: {
     duration: number;
+    durationMinutes?: number;
     channels: number;
     model: string;
+  };
+  stats?: {
+    audioDurationSeconds: number;
+    audioDurationMinutes: number;
+    fileSizeBytes: number;
+    responseTimeMs: number;
+    uniqueSpeakers: number;
   };
 }
 
