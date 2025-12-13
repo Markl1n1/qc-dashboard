@@ -5,12 +5,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Keyterm prompts are now fully database-driven
-
 interface DeepgramRequest {
-  audio?: string; // base64 encoded for small files
-  storageFile?: string; // storage path for large files
+  audio?: string;
+  storageFile?: string;
   mimeType: string;
+  dialogId?: string; // Optional dialog ID for logging
   options: {
     model?: string;
     language?: string;
@@ -23,16 +22,88 @@ interface DeepgramRequest {
   };
 }
 
+interface TranscriptionLogData {
+  dialog_id?: string;
+  deepgram_request_id?: string;
+  deepgram_sha256?: string;
+  file_name?: string;
+  file_size_bytes?: number;
+  mime_type?: string;
+  audio_duration_reported?: number;
+  last_utterance_end?: number;
+  first_utterance_start?: number;
+  coverage_percentage?: number;
+  total_utterances?: number;
+  total_talk_time_seconds?: number;
+  total_pause_time_seconds?: number;
+  unique_speakers?: number;
+  max_gap_seconds?: number;
+  avg_gap_seconds?: number;
+  gaps_over_5s?: number;
+  processing_time_ms?: number;
+  deepgram_response_time_ms?: number;
+  upload_time_ms?: number;
+  raw_metadata?: Record<string, unknown>;
+  gap_analysis?: Record<string, unknown>;
+  utterance_summary?: Record<string, unknown>;
+  validation_warnings?: string[];
+  is_potentially_truncated?: boolean;
+}
+
+// Analyze gaps between utterances
+function analyzeGaps(utterances: Array<{ start: number; end: number }>) {
+  if (!utterances || utterances.length < 2) {
+    return { gaps: [], maxGap: 0, avgGap: 0, gapsOver5s: 0, totalGapTime: 0 };
+  }
+
+  const sortedUtterances = [...utterances].sort((a, b) => a.start - b.start);
+  const gaps: Array<{ start: number; end: number; duration: number }> = [];
+
+  for (let i = 1; i < sortedUtterances.length; i++) {
+    const prevEnd = sortedUtterances[i - 1].end;
+    const currStart = sortedUtterances[i].start;
+    const gapDuration = currStart - prevEnd;
+    
+    if (gapDuration > 0.1) { // Only count gaps > 100ms
+      gaps.push({
+        start: prevEnd,
+        end: currStart,
+        duration: gapDuration
+      });
+    }
+  }
+
+  const maxGap = gaps.length > 0 ? Math.max(...gaps.map(g => g.duration)) : 0;
+  const avgGap = gaps.length > 0 ? gaps.reduce((sum, g) => sum + g.duration, 0) / gaps.length : 0;
+  const gapsOver5s = gaps.filter(g => g.duration > 5).length;
+  const totalGapTime = gaps.reduce((sum, g) => sum + g.duration, 0);
+
+  return { gaps, maxGap, avgGap, gapsOver5s, totalGapTime };
+}
+
+// Calculate total talk time from utterances
+function calculateTalkTime(utterances: Array<{ start: number; end: number }>) {
+  return utterances.reduce((total, u) => total + (u.end - u.start), 0);
+}
+
 Deno.serve(async (req) => {
   const requestStartTime = Date.now();
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('🎬 [START] Deepgram transcription request');
-  console.log('⏰ [TIME] Request received at:', new Date().toISOString());
+  const requestId = crypto.randomUUID();
   
-  // Handle CORS preflight requests
+  console.log('╔══════════════════════════════════════════════════════════════╗');
+  console.log('║           🎬 DEEPGRAM TRANSCRIPTION REQUEST                   ║');
+  console.log('╚══════════════════════════════════════════════════════════════╝');
+  console.log(`📋 [REQUEST_ID] ${requestId}`);
+  console.log(`⏰ [TIMESTAMP] ${new Date().toISOString()}`);
+  
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const logData: TranscriptionLogData = {
+    validation_warnings: []
+  };
+  let supabase: ReturnType<typeof createClient>;
 
   try {
     const DEEPGRAM_API_KEY = Deno.env.get('DEEPGRAM_API_KEY');
@@ -42,65 +113,89 @@ Deno.serve(async (req) => {
       throw new Error('Deepgram API key not configured');
     }
 
-    const { audio, storageFile, mimeType, options }: DeepgramRequest = await req.json();
+    const { audio, storageFile, mimeType, dialogId, options }: DeepgramRequest = await req.json();
     
-    console.log('📋 [REQUEST] Transcription parameters:', {
-      mimeType,
-      options,
-      audioDataSize: audio ? `${(audio.length / 1024 / 1024).toFixed(2)} MB (base64)` : 'N/A',
-      storageFile: storageFile || 'N/A',
-      processingMode: storageFile ? 'LARGE FILE (Storage URL)' : 'SMALL FILE (Base64)',
-      diarizationEnabled: options.diarize || false,
-      language: options.language || 'auto-detect'
-    });
+    logData.dialog_id = dialogId;
+    logData.mime_type = mimeType;
+    logData.file_name = storageFile || 'base64_upload';
+    
+    const base64SizeBytes = audio ? Math.floor(audio.length * 0.75) : 0; // Estimate actual size from base64
+    logData.file_size_bytes = base64SizeBytes;
 
-    // Create Supabase client
-    const supabase = createClient(
+    console.log('┌─────────────────────────────────────────────────────────────┐');
+    console.log('│                    📥 INPUT DETAILS                          │');
+    console.log('├─────────────────────────────────────────────────────────────┤');
+    console.log(`│ Dialog ID: ${dialogId || 'NOT PROVIDED'}`);
+    console.log(`│ MIME Type: ${mimeType}`);
+    console.log(`│ Processing Mode: ${storageFile ? 'LARGE FILE (Storage URL)' : 'SMALL FILE (Base64)'}`);
+    console.log(`│ Storage File: ${storageFile || 'N/A'}`);
+    console.log(`│ Base64 Size: ${audio ? `${(audio.length / 1024 / 1024).toFixed(2)} MB` : 'N/A'}`);
+    console.log(`│ Estimated Audio Size: ${base64SizeBytes ? `${(base64SizeBytes / 1024 / 1024).toFixed(2)} MB` : 'N/A'}`);
+    console.log('├─────────────────────────────────────────────────────────────┤');
+    console.log('│                    🎛️ OPTIONS                                │');
+    console.log('├─────────────────────────────────────────────────────────────┤');
+    console.log(`│ Model: ${options.model || 'auto'}`);
+    console.log(`│ Language: ${options.language || 'auto-detect'}`);
+    console.log(`│ Diarization: ${options.diarize ? 'ENABLED' : 'disabled'}`);
+    console.log(`│ Punctuation: ${options.punctuate !== false ? 'ENABLED' : 'disabled'}`);
+    console.log(`│ Smart Format: ${options.smart_format !== false ? 'ENABLED' : 'disabled'}`);
+    console.log(`│ Profanity Filter: ${options.profanity_filter ? 'ENABLED' : 'disabled'}`);
+    console.log('└─────────────────────────────────────────────────────────────┘');
+
+    supabase = createClient(
       'https://sahudeguwojdypmmlbkd.supabase.co',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
     let audioBuffer: Uint8Array;
     let useSignedUrl = false;
-    let estimatedAudioDuration = 0;
+    let uploadTimeMs = 0;
 
     if (storageFile) {
-      console.log('📦 [STORAGE] Processing large file from storage');
-      console.log('📁 [STORAGE] File path:', storageFile);
+      console.log('📦 [STORAGE] Processing large file from storage:', storageFile);
       useSignedUrl = true;
       
+      // Get file info from storage
+      const { data: fileInfo } = await supabase.storage
+        .from('audio-files')
+        .list('', { search: storageFile });
+      
+      if (fileInfo && fileInfo.length > 0) {
+        const file = fileInfo.find(f => f.name === storageFile);
+        if (file) {
+          logData.file_size_bytes = file.metadata?.size || 0;
+          console.log(`📁 [STORAGE] File size from storage: ${(logData.file_size_bytes / 1024 / 1024).toFixed(2)} MB`);
+        }
+      }
     } else if (audio) {
-      // Convert base64 to binary for small files
       const conversionStart = Date.now();
       audioBuffer = Uint8Array.from(atob(audio), c => c.charCodeAt(0));
       const conversionTime = Date.now() - conversionStart;
-      console.log('✅ [CONVERSION] Base64 to binary complete:', {
-        bufferSize: `${(audioBuffer.length / 1024 / 1024).toFixed(2)} MB`,
-        conversionTimeMs: conversionTime
-      });
+      uploadTimeMs = conversionTime;
+      logData.upload_time_ms = uploadTimeMs;
+      logData.file_size_bytes = audioBuffer.length;
+      
+      console.log(`✅ [CONVERSION] Base64 → Binary: ${(audioBuffer.length / 1024 / 1024).toFixed(2)} MB in ${conversionTime}ms`);
     } else {
-      console.error('❌ [ERROR] No audio data or storage file provided');
       throw new Error('No audio data or storage file provided');
     }
 
-    // Get model configuration from database
-    console.log('🔧 [CONFIG] Fetching model configuration from database...');
+    // Fetch model configuration
+    console.log('🔧 [CONFIG] Fetching model configuration...');
     const configFetchStart = Date.now();
     const { data: modelConfig } = await supabase
       .from('system_config')
       .select('key, value')
       .in('key', ['deepgram_nova2_languages', 'deepgram_nova3_languages', 'keyterm_prompt_en', 'keyterm_prompt_ru', 'keyterm_prompt_de', 'keyterm_prompt_es', 'keyterm_prompt_fr']);
     
-    console.log('✅ [CONFIG] Configuration fetched in', Date.now() - configFetchStart, 'ms');
+    console.log(`✅ [CONFIG] Fetched in ${Date.now() - configFetchStart}ms`);
     
-    // Parse language configurations
     const nova2Languages = modelConfig?.find(c => c.key === 'deepgram_nova2_languages')?.value || '["pl","ru"]';
     const nova3Languages = modelConfig?.find(c => c.key === 'deepgram_nova3_languages')?.value || '["es","fr","de","en"]';
     
     const nova2List = JSON.parse(nova2Languages);
     const nova3List = JSON.parse(nova3Languages);
     
-    // Get keyterm prompts from database
     const keytermPrompts: Record<string, string> = {};
     modelConfig?.forEach(config => {
       if (config.key.startsWith('keyterm_prompt_')) {
@@ -109,185 +204,143 @@ Deno.serve(async (req) => {
       }
     });
 
-    // Prepare Deepgram request parameters
+    // Build Deepgram request
     const params = new URLSearchParams();
-    
-    // Determine model based on language configuration with better logic
-    let finalModel = 'nova-2-general'; // Default model
+    let finalModel = 'nova-2-general';
     let useKeyterms = false;
     
     if (options.language) {
       params.append('language', options.language);
       
-      // Check if language is supported by Nova-3 first (for keyterm support)
       if (nova3List.includes(options.language)) {
         finalModel = 'nova-3-general';
         params.append('model', 'nova-3-general');
-        useKeyterms = true; // Nova-3 supports keyterms
-        console.log('🎯 [MODEL] Selected Nova-3 for language:', options.language);
+        useKeyterms = true;
+        console.log(`🎯 [MODEL] Nova-3 selected for: ${options.language}`);
       } else if (nova2List.includes(options.language)) {
         finalModel = 'nova-2-general';
         params.append('model', 'nova-2-general');
-        console.log('🎯 [MODEL] Selected Nova-2 for language:', options.language);
+        console.log(`🎯 [MODEL] Nova-2 selected for: ${options.language}`);
       } else {
-        // Language not in either list - try Nova-2 as fallback
         finalModel = 'nova-2-general';
         params.append('model', 'nova-2-general');
-        console.log('⚠️  [MODEL] Language not in configured lists, using Nova-2 fallback for:', options.language);
+        console.log(`⚠️ [MODEL] Language not configured, fallback to Nova-2: ${options.language}`);
       }
     } else {
-      // Default to Nova-2 if no language specified
       params.append('model', 'nova-2-general');
-      console.log('🎯 [MODEL] Using Nova-2 (no language specified)');
+      console.log('🎯 [MODEL] Nova-2 (no language specified)');
     }
 
-    // Add keyterm parameter for Nova-3 model only (fully database-driven)
     if (useKeyterms && options.language) {
       const langKeyterm = keytermPrompts[options.language];
       if (langKeyterm && langKeyterm.trim()) {
         params.append('keyterm', langKeyterm);
-        console.log('🔑 [KEYTERMS] Added for', options.language, '- length:', langKeyterm.length, 'chars');
-      } else {
-        console.log('⚠️  [KEYTERMS] No prompts found in database for', options.language);
+        console.log(`🔑 [KEYTERMS] Added ${langKeyterm.length} chars for ${options.language}`);
       }
     }
 
-    // Core parameters
     params.append('punctuate', 'true');
-    params.append('smart_format', 'true'); // Always false as requested
+    params.append('smart_format', 'true');
     params.append('filler_words', 'true');
 
-    // Speaker diarization - CRITICAL: Ensure both parameters are set
     if (options.diarize) {
       params.append('diarize', 'true');
       params.append('utterances', 'true');
-      params.append('min_speakers', '2'); // Force minimum 2 speakers for call center dialogs
+      params.append('min_speakers', '2');
       console.log('👥 [DIARIZATION] Enabled: diarize=true, utterances=true, min_speakers=2');
     }
 
-    // Additional options
     if (options.profanity_filter) {
       params.append('profanity_filter', 'true');
     }
 
     const deepgramUrl = `https://api.deepgram.com/v1/listen?${params.toString()}`;
     
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('🚀 [DEEPGRAM] Initiating API call');
-    console.log('🎯 [DEEPGRAM] Model:', finalModel);
-    console.log('📋 [DEEPGRAM] Parameters:', Object.fromEntries(params.entries()));
-    console.log('⏰ [DEEPGRAM] Call started at:', new Date().toISOString());
-    console.log('⏱️  [DEEPGRAM] Timeout set to: 14 minutes (840 seconds)');
+    console.log('┌─────────────────────────────────────────────────────────────┐');
+    console.log('│                    🚀 DEEPGRAM API CALL                      │');
+    console.log('├─────────────────────────────────────────────────────────────┤');
+    console.log(`│ Model: ${finalModel}`);
+    console.log(`│ Timeout: 14 minutes (840 seconds)`);
+    console.log(`│ Parameters: ${params.toString().substring(0, 80)}...`);
+    console.log('└─────────────────────────────────────────────────────────────┘');
 
     let deepgramResponse: Response;
     const deepgramCallStart = Date.now();
 
     if (useSignedUrl) {
-      // Use direct public URL since bucket is public
       const publicUrl = `https://sahudeguwojdypmmlbkd.supabase.co/storage/v1/object/public/audio-files/${storageFile}`;
-      console.log('🔗 [URL] Public URL:', publicUrl);
+      console.log(`🔗 [URL] Public URL: ${publicUrl}`);
 
-      try {
-        deepgramResponse = await fetch(deepgramUrl, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Token ${DEEPGRAM_API_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ url: publicUrl }),
-          signal: AbortSignal.timeout(840000) // 14 minutes timeout (slightly less than 15 min function limit)
-        });
-      } catch (fetchError) {
-        const elapsed = ((Date.now() - deepgramCallStart) / 1000).toFixed(2);
-        console.error('❌ [DEEPGRAM] Fetch failed after', elapsed, 'seconds');
-        if (fetchError instanceof Error && fetchError.name === 'TimeoutError') {
-          console.error('⏱️  [TIMEOUT] Deepgram API timeout - audio likely exceeds 2.5-3 hour limit');
-        }
-        throw fetchError;
-      }
+      deepgramResponse = await fetch(deepgramUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Token ${DEEPGRAM_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ url: publicUrl }),
+        signal: AbortSignal.timeout(840000)
+      });
     } else {
-      try {
-        deepgramResponse = await fetch(deepgramUrl, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Token ${DEEPGRAM_API_KEY}`,
-            // Remove Content-Type header to let Deepgram auto-detect format
-          },
-          body: audioBuffer!,
-          signal: AbortSignal.timeout(840000) // 14 minutes timeout (slightly less than 15 min function limit)
-        });
-      } catch (fetchError) {
-        const elapsed = ((Date.now() - deepgramCallStart) / 1000).toFixed(2);
-        console.error('❌ [DEEPGRAM] Fetch failed after', elapsed, 'seconds');
-        if (fetchError instanceof Error && fetchError.name === 'TimeoutError') {
-          console.error('⏱️  [TIMEOUT] Deepgram API timeout - audio likely exceeds 2.5-3 hour limit');
-        }
-        throw fetchError;
-      }
+      deepgramResponse = await fetch(deepgramUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Token ${DEEPGRAM_API_KEY}`,
+        },
+        body: audioBuffer!,
+        signal: AbortSignal.timeout(840000)
+      });
     }
 
-    const deepgramCallDuration = ((Date.now() - deepgramCallStart) / 1000).toFixed(2);
-    console.log('✅ [DEEPGRAM] Response received in', deepgramCallDuration, 'seconds');
+    const deepgramResponseTimeMs = Date.now() - deepgramCallStart;
+    logData.deepgram_response_time_ms = deepgramResponseTimeMs;
+    console.log(`✅ [DEEPGRAM] Response received in ${(deepgramResponseTimeMs / 1000).toFixed(2)}s`);
 
     if (!deepgramResponse.ok) {
       let detail: any;
       try { detail = await deepgramResponse.json(); } catch {}
-      console.error("❌ Deepgram API error:", {
+      console.error('❌ [DEEPGRAM] API Error:', {
         status: deepgramResponse.status,
         statusText: deepgramResponse.statusText,
         error: detail,
       });
-      return new Response(JSON.stringify({
-        success: false,
-        status: deepgramResponse.status,
-        statusText: deepgramResponse.statusText,
-        error: detail?.err_msg ?? "Deepgram error",
-        request_id: detail?.request_id ?? null,
-      }), { status: deepgramResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" }});
+      throw new Error(`Deepgram API error: ${detail?.err_msg ?? deepgramResponse.statusText}`);
     }
 
-
-    const parseStart = Date.now();
     const deepgramResult = await deepgramResponse.json();
-    const parseDuration = Date.now() - parseStart;
     
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('📊 [RESULTS] Deepgram response parsed in', parseDuration, 'ms');
-    console.log('📊 [RESULTS] Has transcript:', !!deepgramResult.results);
-    console.log('📊 [RESULTS] Has utterances:', !!deepgramResult.results?.utterances);
-    console.log('📊 [RESULTS] Utterance count:', deepgramResult.results?.utterances?.length || 0);
-    console.log('📊 [RESULTS] Model used:', finalModel);
-    console.log('📊 [RESULTS] Detected language:', deepgramResult.metadata?.model_info?.language || 'N/A');
-    
-    if (deepgramResult.metadata?.duration) {
-      const audioDuration = deepgramResult.metadata.duration;
-      estimatedAudioDuration = audioDuration;
-      const processingSpeed = audioDuration / parseFloat(deepgramCallDuration);
-      console.log('📊 [PERFORMANCE] Audio duration:', audioDuration.toFixed(2), 'seconds (', (audioDuration / 60).toFixed(2), 'minutes )');
-      console.log('📊 [PERFORMANCE] Processing speed:', processingSpeed.toFixed(2), 'x realtime');
-      console.log('📊 [PERFORMANCE] Total processing time:', deepgramCallDuration, 'seconds');
-    }
+    // Extract Deepgram metadata
+    logData.deepgram_request_id = deepgramResult.metadata?.request_id;
+    logData.deepgram_sha256 = deepgramResult.metadata?.sha256;
+    logData.raw_metadata = deepgramResult.metadata;
 
-    // Process the result
+    console.log('┌─────────────────────────────────────────────────────────────┐');
+    console.log('│                    📊 DEEPGRAM RESPONSE                      │');
+    console.log('├─────────────────────────────────────────────────────────────┤');
+    console.log(`│ Request ID: ${deepgramResult.metadata?.request_id || 'N/A'}`);
+    console.log(`│ SHA256: ${deepgramResult.metadata?.sha256?.substring(0, 16) || 'N/A'}...`);
+    console.log(`│ Duration (reported): ${deepgramResult.metadata?.duration?.toFixed(2) || 'N/A'} seconds`);
+    console.log(`│ Duration (minutes): ${deepgramResult.metadata?.duration ? (deepgramResult.metadata.duration / 60).toFixed(2) : 'N/A'} minutes`);
+    console.log(`│ Channels: ${deepgramResult.metadata?.channels || 'N/A'}`);
+    console.log(`│ Model Used: ${deepgramResult.metadata?.model_info?.name || finalModel}`);
+    console.log(`│ Has Utterances: ${!!deepgramResult.results?.utterances}`);
+    console.log(`│ Utterance Count: ${deepgramResult.results?.utterances?.length || 0}`);
+    console.log('└─────────────────────────────────────────────────────────────┘');
+
     const transcript = deepgramResult.results?.channels?.[0]?.alternatives?.[0]?.transcript || '';
-    
-    // Process speaker utterances if available
+    const audioDurationSeconds = deepgramResult.metadata?.duration || 0;
+    logData.audio_duration_reported = audioDurationSeconds;
+
+    // Process utterances with detailed analysis
     let speakerUtterances: any[] = [];
+    
     if (deepgramResult.results?.utterances) {
-      const utteranceProcessStart = Date.now();
-      console.log('👥 [SPEAKERS] Processing', deepgramResult.results.utterances.length, 'utterances...');
+      const rawUtterances = deepgramResult.results.utterances;
+      console.log(`👥 [UTTERANCES] Processing ${rawUtterances.length} utterances...`);
       
-      speakerUtterances = deepgramResult.results.utterances.map((utterance: any, index: number) => {
-        // Use actual speaker numbers from Deepgram
+      speakerUtterances = rawUtterances.map((utterance: any) => {
         const speakerNumber = utterance.speaker !== undefined ? utterance.speaker : 0;
-        const speakerLabel = `Speaker ${speakerNumber}`;
-        
-        if (index < 3 || index >= deepgramResult.results.utterances.length - 3) {
-          // Log first 3 and last 3 utterances for debugging
-          console.log(`👤 [SPEAKER] #${index}: Speaker ${speakerNumber}, confidence=${utterance.confidence?.toFixed(3)}, duration=${(utterance.end - utterance.start).toFixed(2)}s`);
-        }
         return {
-          speaker: speakerLabel,
+          speaker: `Speaker ${speakerNumber}`,
           text: utterance.transcript,
           confidence: utterance.confidence,
           start: utterance.start,
@@ -295,26 +348,119 @@ Deno.serve(async (req) => {
         };
       });
 
-      // Log speaker distribution for debugging
-      const speakerDistribution = speakerUtterances.reduce((acc: any, utterance: any) => {
-        acc[utterance.speaker] = (acc[utterance.speaker] || 0) + 1;
+      // Detailed utterance analysis
+      const firstUtterance = speakerUtterances[0];
+      const lastUtterance = speakerUtterances[speakerUtterances.length - 1];
+      
+      logData.first_utterance_start = firstUtterance?.start || 0;
+      logData.last_utterance_end = lastUtterance?.end || 0;
+      logData.total_utterances = speakerUtterances.length;
+
+      // Calculate talk time
+      const totalTalkTime = calculateTalkTime(speakerUtterances);
+      logData.total_talk_time_seconds = totalTalkTime;
+      logData.total_pause_time_seconds = audioDurationSeconds - totalTalkTime;
+
+      // Analyze gaps
+      const gapAnalysis = analyzeGaps(speakerUtterances);
+      logData.max_gap_seconds = gapAnalysis.maxGap;
+      logData.avg_gap_seconds = gapAnalysis.avgGap;
+      logData.gaps_over_5s = gapAnalysis.gapsOver5s;
+      logData.gap_analysis = {
+        totalGapTime: gapAnalysis.totalGapTime,
+        gapCount: gapAnalysis.gaps.length,
+        largestGaps: gapAnalysis.gaps
+          .sort((a, b) => b.duration - a.duration)
+          .slice(0, 5)
+          .map(g => ({ start: g.start.toFixed(2), end: g.end.toFixed(2), duration: g.duration.toFixed(2) }))
+      };
+
+      // Coverage calculation
+      const coverage = audioDurationSeconds > 0 
+        ? ((lastUtterance?.end || 0) / audioDurationSeconds) * 100 
+        : 0;
+      logData.coverage_percentage = coverage;
+
+      // Speaker distribution
+      const speakerDistribution = speakerUtterances.reduce((acc: Record<string, { count: number; talkTime: number }>, u) => {
+        if (!acc[u.speaker]) {
+          acc[u.speaker] = { count: 0, talkTime: 0 };
+        }
+        acc[u.speaker].count++;
+        acc[u.speaker].talkTime += (u.end - u.start);
         return acc;
       }, {});
-      const utteranceProcessDuration = Date.now() - utteranceProcessStart;
-      console.log('👥 [SPEAKERS] Distribution:', speakerDistribution);
-      console.log('👥 [SPEAKERS] Processing completed in', utteranceProcessDuration, 'ms');
       
-      // Warning if only one speaker detected
-      const uniqueSpeakers = Object.keys(speakerDistribution).length;
-      if (uniqueSpeakers === 1) {
-        console.warn('⚠️  [DIARIZATION WARNING] Only 1 speaker detected! This may indicate diarization issues.');
-        console.warn('⚠️  [DIARIZATION WARNING] Consider: audio quality, speaker separation, or re-processing.');
+      logData.unique_speakers = Object.keys(speakerDistribution).length;
+      logData.utterance_summary = {
+        firstUtterance: { speaker: firstUtterance?.speaker, start: firstUtterance?.start, end: firstUtterance?.end },
+        lastUtterance: { speaker: lastUtterance?.speaker, start: lastUtterance?.start, end: lastUtterance?.end },
+        speakerDistribution
+      };
+
+      console.log('┌─────────────────────────────────────────────────────────────┐');
+      console.log('│                    📈 UTTERANCE ANALYSIS                     │');
+      console.log('├─────────────────────────────────────────────────────────────┤');
+      console.log(`│ Total Utterances: ${speakerUtterances.length}`);
+      console.log(`│ First Utterance Start: ${firstUtterance?.start?.toFixed(2) || 0}s`);
+      console.log(`│ Last Utterance End: ${lastUtterance?.end?.toFixed(2) || 0}s`);
+      console.log(`│ Audio Duration: ${audioDurationSeconds.toFixed(2)}s (${(audioDurationSeconds / 60).toFixed(2)} min)`);
+      console.log(`│ Coverage: ${coverage.toFixed(2)}%`);
+      console.log(`│ Total Talk Time: ${totalTalkTime.toFixed(2)}s (${(totalTalkTime / 60).toFixed(2)} min)`);
+      console.log(`│ Total Pause Time: ${(audioDurationSeconds - totalTalkTime).toFixed(2)}s`);
+      console.log(`│ Unique Speakers: ${logData.unique_speakers}`);
+      console.log('├─────────────────────────────────────────────────────────────┤');
+      console.log('│                    🔍 GAP ANALYSIS                           │');
+      console.log('├─────────────────────────────────────────────────────────────┤');
+      console.log(`│ Max Gap: ${gapAnalysis.maxGap.toFixed(2)}s`);
+      console.log(`│ Avg Gap: ${gapAnalysis.avgGap.toFixed(2)}s`);
+      console.log(`│ Gaps > 5s: ${gapAnalysis.gapsOver5s}`);
+      console.log(`│ Total Gap Time: ${gapAnalysis.totalGapTime.toFixed(2)}s`);
+      console.log('├─────────────────────────────────────────────────────────────┤');
+      console.log('│                    👥 SPEAKER DISTRIBUTION                   │');
+      console.log('├─────────────────────────────────────────────────────────────┤');
+      Object.entries(speakerDistribution).forEach(([speaker, data]) => {
+        console.log(`│ ${speaker}: ${data.count} utterances, ${data.talkTime.toFixed(2)}s talk time`);
+      });
+      console.log('└─────────────────────────────────────────────────────────────┘');
+
+      // Validation warnings
+      const validationWarnings: string[] = [];
+      
+      // Check for truncation
+      const lastEndVsAudioDiff = audioDurationSeconds - (lastUtterance?.end || 0);
+      if (lastEndVsAudioDiff > 60) { // More than 60 seconds difference
+        const warning = `POTENTIAL TRUNCATION: Last utterance ends at ${lastUtterance?.end?.toFixed(2)}s but audio is ${audioDurationSeconds.toFixed(2)}s (${lastEndVsAudioDiff.toFixed(2)}s difference)`;
+        validationWarnings.push(warning);
+        logData.is_potentially_truncated = true;
+        console.warn(`⚠️ [VALIDATION] ${warning}`);
       }
-    } else {
-      console.log('⚠️  [SPEAKERS] No utterances in response - diarization may not be enabled');
+
+      // Check coverage
+      if (coverage < 50) {
+        const warning = `LOW COVERAGE: Only ${coverage.toFixed(2)}% of audio covered by utterances`;
+        validationWarnings.push(warning);
+        console.warn(`⚠️ [VALIDATION] ${warning}`);
+      }
+
+      // Check single speaker
+      if (logData.unique_speakers === 1 && speakerUtterances.length > 5) {
+        const warning = `SINGLE SPEAKER: Only 1 speaker detected with ${speakerUtterances.length} utterances - diarization may have failed`;
+        validationWarnings.push(warning);
+        console.warn(`⚠️ [VALIDATION] ${warning}`);
+      }
+
+      // Check for long gaps
+      if (gapAnalysis.gapsOver5s > 10) {
+        const warning = `MANY LONG GAPS: ${gapAnalysis.gapsOver5s} gaps > 5 seconds detected`;
+        validationWarnings.push(warning);
+        console.warn(`⚠️ [VALIDATION] ${warning}`);
+      }
+
+      logData.validation_warnings = validationWarnings;
     }
 
-    // Detect language if available
+    // Detect language
     let detectedLanguage = null;
     if (deepgramResult.metadata?.model_info?.language) {
       detectedLanguage = {
@@ -323,67 +469,88 @@ Deno.serve(async (req) => {
       };
     }
 
-    // Calculate audio duration in minutes for database
-    const audioDurationSeconds = deepgramResult.metadata?.duration || 0;
-    const audioDurationMinutes = audioDurationSeconds / 60;
-    const fileSizeBytes = audioBuffer ? audioBuffer.length : 0;
-    const responseTimeMs = parseFloat(deepgramCallDuration) * 1000;
-    
+    const totalProcessingTime = Date.now() - requestStartTime;
+    logData.processing_time_ms = totalProcessingTime;
+
     const result = {
       text: transcript,
       speakerUtterances,
       detectedLanguage,
       metadata: {
         duration: audioDurationSeconds,
-        durationMinutes: audioDurationMinutes,
+        durationMinutes: audioDurationSeconds / 60,
         channels: deepgramResult.metadata?.channels || 1,
         model: finalModel
       },
-      // Include stats for logging
       stats: {
         audioDurationSeconds,
-        audioDurationMinutes,
-        fileSizeBytes,
-        responseTimeMs,
-        uniqueSpeakers: Object.keys(speakerUtterances.reduce((acc: any, u: any) => { acc[u.speaker] = 1; return acc; }, {})).length
+        audioDurationMinutes: audioDurationSeconds / 60,
+        fileSizeBytes: logData.file_size_bytes || 0,
+        responseTimeMs: deepgramResponseTimeMs,
+        uniqueSpeakers: logData.unique_speakers || 0
+      },
+      // Include debug info in response
+      debug: {
+        requestId,
+        deepgramRequestId: logData.deepgram_request_id,
+        firstUtteranceStart: logData.first_utterance_start,
+        lastUtteranceEnd: logData.last_utterance_end,
+        coveragePercentage: logData.coverage_percentage,
+        totalTalkTimeSeconds: logData.total_talk_time_seconds,
+        totalPauseTimeSeconds: logData.total_pause_time_seconds,
+        validationWarnings: logData.validation_warnings,
+        isPotentiallyTruncated: logData.is_potentially_truncated
       }
     };
 
-    const totalElapsedTime = ((Date.now() - requestStartTime) / 1000).toFixed(2);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('✅ [SUCCESS] Transcription completed');
-    console.log('📊 [SUMMARY] Transcript length:', result.text.length, 'characters');
-    console.log('📊 [SUMMARY] Utterance count:', result.speakerUtterances.length);
-    console.log('📊 [SUMMARY] Language detection:', result.detectedLanguage ? `${result.detectedLanguage.language} (${(result.detectedLanguage.confidence * 100).toFixed(1)}%)` : 'N/A');
-    console.log('📊 [SUMMARY] Model used:', finalModel);
-    console.log('⏱️  [SUMMARY] Total processing time:', totalElapsedTime, 'seconds');
-    if (estimatedAudioDuration > 0) {
-      console.log('⏱️  [SUMMARY] Audio duration:', (estimatedAudioDuration / 60).toFixed(2), 'minutes');
-      console.log('⏱️  [SUMMARY] Processing efficiency:', (estimatedAudioDuration / parseFloat(totalElapsedTime)).toFixed(2), 'x realtime');
+    // Save transcription log to database
+    console.log('💾 [LOG] Saving transcription log to database...');
+    try {
+      const { error: logError } = await supabase
+        .from('transcription_logs')
+        .insert(logData);
+      
+      if (logError) {
+        console.error('❌ [LOG] Failed to save transcription log:', logError);
+      } else {
+        console.log('✅ [LOG] Transcription log saved successfully');
+      }
+    } catch (logSaveError) {
+      console.error('❌ [LOG] Error saving transcription log:', logSaveError);
     }
 
-    // Always clean up storage file regardless of success/failure
+    console.log('╔══════════════════════════════════════════════════════════════╗');
+    console.log('║                    ✅ TRANSCRIPTION COMPLETE                  ║');
+    console.log('╚══════════════════════════════════════════════════════════════╝');
+    console.log(`│ Transcript Length: ${result.text.length} characters`);
+    console.log(`│ Utterance Count: ${result.speakerUtterances.length}`);
+    console.log(`│ Audio Duration: ${(audioDurationSeconds / 60).toFixed(2)} minutes`);
+    console.log(`│ Processing Time: ${(totalProcessingTime / 1000).toFixed(2)}s`);
+    console.log(`│ Processing Speed: ${audioDurationSeconds > 0 ? (audioDurationSeconds / (totalProcessingTime / 1000)).toFixed(2) : 'N/A'}x realtime`);
+    if (logData.validation_warnings && logData.validation_warnings.length > 0) {
+      console.log('├─────────────────────────────────────────────────────────────┤');
+      console.log('│                    ⚠️ VALIDATION WARNINGS                    │');
+      logData.validation_warnings.forEach(w => console.log(`│ • ${w}`));
+    }
+    console.log('└─────────────────────────────────────────────────────────────┘');
+
+    // Cleanup storage file
     if (storageFile) {
       try {
-        console.log('🗑️  [CLEANUP] Deleting storage file:', storageFile);
-        const cleanupStart = Date.now();
+        console.log('🗑️ [CLEANUP] Deleting storage file:', storageFile);
         const { error: deleteError } = await supabase.storage
           .from('audio-files')
           .remove([storageFile]);
         
-        const cleanupDuration = Date.now() - cleanupStart;
         if (deleteError) {
           console.error('❌ [CLEANUP] Failed to delete storage file:', deleteError);
         } else {
-          console.log('✅ [CLEANUP] Storage file deleted successfully in', cleanupDuration, 'ms');
+          console.log('✅ [CLEANUP] Storage file deleted successfully');
         }
       } catch (cleanupError) {
         console.error('❌ [CLEANUP] Storage cleanup error:', cleanupError);
       }
     }
-
-    console.log('🏁 [END] Request completed in', totalElapsedTime, 'seconds');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     return new Response(
       JSON.stringify({ success: true, result }),
@@ -391,69 +558,50 @@ Deno.serve(async (req) => {
     );
 
   } catch (error) {
-    const totalElapsedTime = ((Date.now() - requestStartTime) / 1000).toFixed(2);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.error('❌ [ERROR] Deepgram transcription failed');
-    console.error('❌ [ERROR] Error type:', error instanceof Error ? error.name : typeof error);
-    console.error('❌ [ERROR] Error message:', error instanceof Error ? error.message : String(error));
-    console.error('❌ [ERROR] Time elapsed before error:', totalElapsedTime, 'seconds');
+    const totalElapsedTime = Date.now() - requestStartTime;
+    logData.processing_time_ms = totalElapsedTime;
+    logData.validation_warnings = [...(logData.validation_warnings || []), `ERROR: ${error instanceof Error ? error.message : String(error)}`];
     
-    // Handle timeout errors specifically
+    console.log('╔══════════════════════════════════════════════════════════════╗');
+    console.log('║                    ❌ TRANSCRIPTION FAILED                    ║');
+    console.log('╚══════════════════════════════════════════════════════════════╝');
+    console.error(`│ Error Type: ${error instanceof Error ? error.name : typeof error}`);
+    console.error(`│ Error Message: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`│ Time Elapsed: ${(totalElapsedTime / 1000).toFixed(2)}s`);
+    console.log('└─────────────────────────────────────────────────────────────┘');
+    
+    // Try to save error log
+    if (supabase) {
+      try {
+        await supabase.from('transcription_logs').insert(logData);
+        console.log('✅ [LOG] Error log saved to database');
+      } catch (logError) {
+        console.error('❌ [LOG] Failed to save error log:', logError);
+      }
+    }
+    
+    // Handle timeout
     if (error instanceof Error && (error.name === 'TimeoutError' || error.message.includes('timeout'))) {
-      console.error('⏱️  [TIMEOUT] Transcription timeout detected');
-      console.error('⏱️  [TIMEOUT] This usually means:');
-      console.error('⏱️  [TIMEOUT]   - Audio file is too long (>2.5-3 hours)');
-      console.error('⏱️  [TIMEOUT]   - Network issues with Deepgram API');
-      console.error('⏱️  [TIMEOUT]   - Edge Function timeout limit reached (15 min)');
-      
+      console.error('⏱️ [TIMEOUT] Transcription timeout detected');
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'Transcription timeout: audio file is too long. Maximum supported duration is approximately 2.5-3 hours.',
+          error: 'Transcription timeout: audio file may be too long',
           errorType: 'TIMEOUT',
-          elapsedTime: totalElapsedTime
+          elapsedTime: (totalElapsedTime / 1000).toFixed(2)
         }),
-        { 
-          status: 504,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
+        { status: 504, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
     
-    // Clean up storage file even on error
-    if (req.method === 'POST') {
-      try {
-        const requestData = await req.json();
-        if (requestData.storageFile) {
-          console.log('🗑️  [CLEANUP] Attempting cleanup after error...');
-          const supabase = createClient(
-            'https://sahudeguwojdypmmlbkd.supabase.co',
-            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-          );
-          await supabase.storage.from('audio-files').remove([requestData.storageFile]);
-          console.log('✅ [CLEANUP] Storage file cleaned up after error');
-        }
-      } catch (cleanupError) {
-        console.error('❌ [CLEANUP] Error cleanup failed:', cleanupError);
-      }
-    }
-    
-    const errorResponse = {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred',
-      errorType: error instanceof Error ? error.name : 'UNKNOWN',
-      elapsedTime: ((Date.now() - requestStartTime) / 1000).toFixed(2)
-    };
-    
-    console.error('📤 [RESPONSE] Sending error response:', errorResponse);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    
     return new Response(
-      JSON.stringify(errorResponse),
-      { 
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+      JSON.stringify({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        errorType: error instanceof Error ? error.name : 'UNKNOWN',
+        elapsedTime: (totalElapsedTime / 1000).toFixed(2)
+      }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
