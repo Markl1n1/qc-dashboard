@@ -6,6 +6,18 @@ import { logger } from './loggingService';
 import { sanitizeFilename } from '../utils/filenameSanitizer';
 import { audioCleanupService } from './audioCleanupService';
 
+interface TranscriptionDebugInfo {
+  requestId?: string;
+  deepgramRequestId?: string;
+  firstUtteranceStart?: number;
+  lastUtteranceEnd?: number;
+  coveragePercentage?: number;
+  totalTalkTimeSeconds?: number;
+  totalPauseTimeSeconds?: number;
+  validationWarnings?: string[];
+  isPotentiallyTruncated?: boolean;
+}
+
 class DeepgramService {
   private progressCallback: ((progress: UnifiedTranscriptionProgress) => void) | null = null;
 
@@ -19,120 +31,213 @@ class DeepgramService {
     }
   }
 
-  async transcribe(audioFile: File, options: DeepgramOptions): Promise<{ text: string; speakerUtterances: SpeakerUtterance[] }> {
-    logger.info('Starting Deepgram transcription', { 
-      fileName: audioFile.name, 
-      fileSize: audioFile.size,
-      options 
-    });
+  async transcribe(
+    audioFile: File, 
+    options: DeepgramOptions,
+    dialogId?: string
+  ): Promise<{ text: string; speakerUtterances: SpeakerUtterance[]; debug?: TranscriptionDebugInfo }> {
+    const transcriptionStartTime = Date.now();
+    
+    console.log('╔══════════════════════════════════════════════════════════════╗');
+    console.log('║          🎙️ CLIENT: Starting Deepgram Transcription          ║');
+    console.log('╚══════════════════════════════════════════════════════════════╝');
+    console.log(`│ File Name: ${audioFile.name}`);
+    console.log(`│ File Size: ${(audioFile.size / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`│ File Type: ${audioFile.type}`);
+    console.log(`│ Dialog ID: ${dialogId || 'NOT PROVIDED'}`);
+    console.log(`│ Options:`, JSON.stringify(options));
+    console.log('└─────────────────────────────────────────────────────────────┘');
 
     try {
-    const fileSizeMB = audioFile.size / (1024 * 1024);
-    const isLargeFile = fileSizeMB > 8;
+      const fileSizeMB = audioFile.size / (1024 * 1024);
+      const isLargeFile = fileSizeMB > 8;
+
+      console.log(`📁 [FILE] Processing mode: ${isLargeFile ? 'LARGE FILE (>8MB)' : 'SMALL FILE (<8MB)'}`);
 
       if (isLargeFile) {
-        this.updateProgress('uploading', 10, 'Uploading large file to storage...');
-        
-        // Upload large file to Supabase storage
-        const fileName = `audio_${Date.now()}_${sanitizeFilename(audioFile.name)}`;
-        const { error: uploadError } = await supabase.storage
-          .from('audio-files')
-          .upload(fileName, audioFile);
-
-        if (uploadError) {
-          throw new Error(`Failed to upload file: ${uploadError.message}`);
-        }
-
-        this.updateProgress('processing', 30, 'Processing large audio file...');
-
-        // Call edge function with storage path
-        const { data, error } = await supabase.functions.invoke('deepgram-transcribe', {
-          body: {
-            storageFile: fileName,
-            mimeType: audioFile.type,
-            options: {
-              model: options.model || 'nova-2-general',
-              language: options.language_detection ? undefined : options.language,
-              detect_language: options.language_detection || false,
-              diarize: options.speaker_labels || false,
-              punctuate: true,
-              utterances: options.speaker_labels || false,
-              smart_format: options.smart_formatting !== false,
-              profanity_filter: options.profanity_filter || false
-            }
-          }
-        });
-
-        // Clean up storage file after transcription
-        await audioCleanupService.cleanupSingleFile(fileName);
-
-        if (error) {
-          logger.error('Deepgram edge function error (large file)', error, { fileName: audioFile.name });
-          throw new Error(`Deepgram transcription failed: ${error.message}`);
-        }
-
-        if (!data || !data.success) {
-          const errorMsg = data?.error || 'Deepgram transcription failed';
-          logger.error('Deepgram transcription failed (large file)', new Error(errorMsg), { fileName: audioFile.name });
-          throw new Error(errorMsg);
-        }
-
-        return this.processTranscriptionResult(data, audioFile.name);
+        return await this.transcribeLargeFile(audioFile, options, dialogId, transcriptionStartTime);
       } else {
-        this.updateProgress('uploading', 10, 'Processing audio with Deepgram...');
-
-        // Convert File to base64 for small files
-        const base64Audio = await this.fileToBase64(audioFile);
-        
-        this.updateProgress('processing', 30, 'Processing audio with Deepgram...');
-
-        // Call Deepgram edge function with base64
-        const { data, error } = await supabase.functions.invoke('deepgram-transcribe', {
-          body: {
-            audio: base64Audio,
-            mimeType: audioFile.type,
-            options: {
-              model: options.model || 'nova-2-general',
-              language: options.language_detection ? undefined : options.language,
-              detect_language: options.language_detection || false,
-              diarize: options.speaker_labels || false,
-              punctuate: true,
-              utterances: options.speaker_labels || false,
-              smart_format: options.smart_formatting !== false,
-              profanity_filter: options.profanity_filter || false
-            }
-          }
-        });
-
-        if (error) {
-          logger.error('Deepgram edge function error', error, { fileName: audioFile.name });
-          throw new Error(`Deepgram transcription failed: ${error.message}`);
-        }
-
-        if (!data || !data.success) {
-          const errorMsg = data?.error || 'Deepgram transcription failed';
-          logger.error('Deepgram transcription failed', new Error(errorMsg), { fileName: audioFile.name });
-          throw new Error(errorMsg);
-        }
-
-        return this.processTranscriptionResult(data, audioFile.name);
+        return await this.transcribeSmallFile(audioFile, options, dialogId, transcriptionStartTime);
       }
 
-
     } catch (error) {
-      logger.error('Deepgram service error', error as Error, { fileName: audioFile.name });
+      const elapsed = Date.now() - transcriptionStartTime;
+      console.error('╔══════════════════════════════════════════════════════════════╗');
+      console.error('║          ❌ CLIENT: Transcription Failed                      ║');
+      console.error('╚══════════════════════════════════════════════════════════════╝');
+      console.error(`│ Error: ${error instanceof Error ? error.message : String(error)}`);
+      console.error(`│ Elapsed Time: ${(elapsed / 1000).toFixed(2)}s`);
+      console.error('└─────────────────────────────────────────────────────────────┘');
+      
       this.updateProgress('error', 0, error instanceof Error ? error.message : 'Transcription failed');
       throw error;
     }
   }
 
-  private processTranscriptionResult(data: any, fileName: string) {
+  private async transcribeLargeFile(
+    audioFile: File, 
+    options: DeepgramOptions, 
+    dialogId: string | undefined,
+    startTime: number
+  ): Promise<{ text: string; speakerUtterances: SpeakerUtterance[]; debug?: TranscriptionDebugInfo }> {
+    this.updateProgress('uploading', 10, 'Uploading large file to storage...');
+    
+    const uploadStart = Date.now();
+    const fileName = `audio_${Date.now()}_${sanitizeFilename(audioFile.name)}`;
+    
+    console.log(`📤 [UPLOAD] Starting upload: ${fileName}`);
+    
+    const { error: uploadError } = await supabase.storage
+      .from('audio-files')
+      .upload(fileName, audioFile);
+
+    const uploadTime = Date.now() - uploadStart;
+    console.log(`✅ [UPLOAD] Completed in ${(uploadTime / 1000).toFixed(2)}s`);
+
+    if (uploadError) {
+      console.error(`❌ [UPLOAD] Failed:`, uploadError);
+      throw new Error(`Failed to upload file: ${uploadError.message}`);
+    }
+
+    this.updateProgress('processing', 30, 'Processing large audio file...');
+
+    const edgeFunctionStart = Date.now();
+    console.log(`🚀 [EDGE_FUNCTION] Calling deepgram-transcribe...`);
+    
+    const { data, error } = await supabase.functions.invoke('deepgram-transcribe', {
+      body: {
+        storageFile: fileName,
+        mimeType: audioFile.type,
+        dialogId,
+        options: {
+          model: options.model || 'nova-2-general',
+          language: options.language_detection ? undefined : options.language,
+          detect_language: options.language_detection || false,
+          diarize: options.speaker_labels || false,
+          punctuate: true,
+          utterances: options.speaker_labels || false,
+          smart_format: options.smart_formatting !== false,
+          profanity_filter: options.profanity_filter || false
+        }
+      }
+    });
+
+    const edgeFunctionTime = Date.now() - edgeFunctionStart;
+    console.log(`✅ [EDGE_FUNCTION] Completed in ${(edgeFunctionTime / 1000).toFixed(2)}s`);
+
+    // Cleanup is handled by edge function, but try again just in case
+    await audioCleanupService.cleanupSingleFile(fileName);
+
+    if (error) {
+      console.error(`❌ [EDGE_FUNCTION] Error:`, error);
+      throw new Error(`Deepgram transcription failed: ${error.message}`);
+    }
+
+    if (!data || !data.success) {
+      const errorMsg = data?.error || 'Deepgram transcription failed';
+      console.error(`❌ [EDGE_FUNCTION] Failed:`, errorMsg);
+      throw new Error(errorMsg);
+    }
+
+    return this.processTranscriptionResult(data, audioFile.name, startTime);
+  }
+
+  private async transcribeSmallFile(
+    audioFile: File, 
+    options: DeepgramOptions, 
+    dialogId: string | undefined,
+    startTime: number
+  ): Promise<{ text: string; speakerUtterances: SpeakerUtterance[]; debug?: TranscriptionDebugInfo }> {
+    this.updateProgress('uploading', 10, 'Processing audio with Deepgram...');
+
+    const conversionStart = Date.now();
+    const base64Audio = await this.fileToBase64(audioFile);
+    const conversionTime = Date.now() - conversionStart;
+    
+    console.log(`✅ [CONVERSION] File to Base64 in ${conversionTime}ms (${(base64Audio.length / 1024 / 1024).toFixed(2)} MB)`);
+    
+    this.updateProgress('processing', 30, 'Processing audio with Deepgram...');
+
+    const edgeFunctionStart = Date.now();
+    console.log(`🚀 [EDGE_FUNCTION] Calling deepgram-transcribe...`);
+
+    const { data, error } = await supabase.functions.invoke('deepgram-transcribe', {
+      body: {
+        audio: base64Audio,
+        mimeType: audioFile.type,
+        dialogId,
+        options: {
+          model: options.model || 'nova-2-general',
+          language: options.language_detection ? undefined : options.language,
+          detect_language: options.language_detection || false,
+          diarize: options.speaker_labels || false,
+          punctuate: true,
+          utterances: options.speaker_labels || false,
+          smart_format: options.smart_formatting !== false,
+          profanity_filter: options.profanity_filter || false
+        }
+      }
+    });
+
+    const edgeFunctionTime = Date.now() - edgeFunctionStart;
+    console.log(`✅ [EDGE_FUNCTION] Completed in ${(edgeFunctionTime / 1000).toFixed(2)}s`);
+
+    if (error) {
+      console.error(`❌ [EDGE_FUNCTION] Error:`, error);
+      throw new Error(`Deepgram transcription failed: ${error.message}`);
+    }
+
+    if (!data || !data.success) {
+      const errorMsg = data?.error || 'Deepgram transcription failed';
+      console.error(`❌ [EDGE_FUNCTION] Failed:`, errorMsg);
+      throw new Error(errorMsg);
+    }
+
+    return this.processTranscriptionResult(data, audioFile.name, startTime);
+  }
+
+  private processTranscriptionResult(data: any, fileName: string, startTime: number) {
     this.updateProgress('processing', 80, 'Processing speaker diarization...');
 
-    const result = data.result as DeepgramTranscriptionResult;
+    const result = data.result as DeepgramTranscriptionResult & { debug?: TranscriptionDebugInfo };
+    const debug = result.debug;
     
     // Process utterances
     const speakerUtterances = this.processRawSpeakerUtterances(result.speakerUtterances);
+    
+    // Log debug info from edge function
+    console.log('┌─────────────────────────────────────────────────────────────┐');
+    console.log('│              📊 CLIENT: Transcription Results               │');
+    console.log('├─────────────────────────────────────────────────────────────┤');
+    console.log(`│ Transcript Length: ${result.text.length} characters`);
+    console.log(`│ Utterance Count: ${speakerUtterances.length}`);
+    console.log(`│ Audio Duration: ${result.metadata?.durationMinutes?.toFixed(2) || 'N/A'} minutes`);
+    console.log(`│ Unique Speakers: ${new Set(speakerUtterances.map(u => u.speaker)).size}`);
+    
+    if (debug) {
+      console.log('├─────────────────────────────────────────────────────────────┤');
+      console.log('│                    🔍 DEBUG INFO                             │');
+      console.log('├─────────────────────────────────────────────────────────────┤');
+      console.log(`│ Request ID: ${debug.requestId || 'N/A'}`);
+      console.log(`│ Deepgram Request ID: ${debug.deepgramRequestId || 'N/A'}`);
+      console.log(`│ First Utterance Start: ${debug.firstUtteranceStart?.toFixed(2) || 'N/A'}s`);
+      console.log(`│ Last Utterance End: ${debug.lastUtteranceEnd?.toFixed(2) || 'N/A'}s`);
+      console.log(`│ Coverage: ${debug.coveragePercentage?.toFixed(2) || 'N/A'}%`);
+      console.log(`│ Talk Time: ${debug.totalTalkTimeSeconds?.toFixed(2) || 'N/A'}s`);
+      console.log(`│ Pause Time: ${debug.totalPauseTimeSeconds?.toFixed(2) || 'N/A'}s`);
+      console.log(`│ Potentially Truncated: ${debug.isPotentiallyTruncated ? 'YES ⚠️' : 'NO'}`);
+      
+      if (debug.validationWarnings && debug.validationWarnings.length > 0) {
+        console.log('├─────────────────────────────────────────────────────────────┤');
+        console.log('│                    ⚠️ WARNINGS                              │');
+        debug.validationWarnings.forEach(w => console.log(`│ • ${w}`));
+      }
+    }
+    
+    const totalElapsed = Date.now() - startTime;
+    console.log('├─────────────────────────────────────────────────────────────┤');
+    console.log(`│ Total Client Time: ${(totalElapsed / 1000).toFixed(2)}s`);
+    console.log('└─────────────────────────────────────────────────────────────┘');
     
     // Check for single speaker warning
     const uniqueSpeakers = new Set(speakerUtterances.map(u => u.speaker)).size;
@@ -140,6 +245,16 @@ class DeepgramService {
       logger.warn('Diarization returned only 1 speaker - potential issue', {
         fileName,
         utteranceCount: speakerUtterances.length
+      });
+    }
+    
+    // Check for potential truncation
+    if (debug?.isPotentiallyTruncated) {
+      logger.warn('Transcription may be truncated', {
+        fileName,
+        lastUtteranceEnd: debug.lastUtteranceEnd,
+        audioDuration: result.metadata?.duration,
+        validationWarnings: debug.validationWarnings
       });
     }
     
@@ -151,14 +266,16 @@ class DeepgramService {
       utteranceCount: speakerUtterances.length,
       detectedLanguage: result.detectedLanguage,
       audioDurationMinutes: result.metadata?.durationMinutes || 0,
-      uniqueSpeakers
+      uniqueSpeakers,
+      isPotentiallyTruncated: debug?.isPotentiallyTruncated
     });
 
     return {
       text: result.text,
       speakerUtterances,
       audioDurationMinutes: result.metadata?.durationMinutes || 0,
-      stats: result.stats
+      stats: result.stats,
+      debug
     };
   }
 
@@ -167,7 +284,6 @@ class DeepgramService {
       const reader = new FileReader();
       reader.onload = () => {
         const base64 = reader.result as string;
-        // Remove data URL prefix
         const base64Data = base64.split(',')[1];
         resolve(base64Data);
       };
@@ -177,17 +293,12 @@ class DeepgramService {
   }
 
   private processRawSpeakerUtterances(utterances: unknown[]): SpeakerUtterance[] {
-    logger.debug('Processing Deepgram utterances', { 
-      utteranceCount: utterances?.length || 0 
-    });
-    
     if (!utterances || !Array.isArray(utterances)) {
-      logger.warn('No utterances array found or invalid format');
+      console.warn('⚠️ [UTTERANCES] No utterances array found or invalid format');
       return [];
     }
 
-    const processedUtterances = utterances.map((utterance: any, index: number) => {
-      // Use the speaker label directly from the edge function (already formatted as "Speaker X")
+    const processedUtterances = utterances.map((utterance: any) => {
       const speakerLabel = utterance.speaker || 'Speaker 0';
       
       return {
@@ -199,16 +310,13 @@ class DeepgramService {
       };
     });
 
-    // Log speaker distribution for analysis
+    // Log speaker distribution
     const speakerDistribution = processedUtterances.reduce((acc: Record<string, number>, utterance) => {
       acc[utterance.speaker] = (acc[utterance.speaker] || 0) + 1;
       return acc;
     }, {});
     
-    logger.debug('Speaker distribution analysis', { 
-      speakerDistribution, 
-      totalUtterances: processedUtterances.length 
-    });
+    console.log(`👥 [SPEAKERS] Distribution:`, speakerDistribution);
 
     return processedUtterances;
   }
@@ -217,7 +325,6 @@ class DeepgramService {
 export const deepgramService = new DeepgramService();
 export type { DeepgramOptions };
 
-// Type for transcription result with audio duration
 export interface TranscriptionResultWithDuration {
   text: string;
   speakerUtterances: SpeakerUtterance[];
@@ -229,4 +336,5 @@ export interface TranscriptionResultWithDuration {
     responseTimeMs: number;
     uniqueSpeakers: number;
   };
+  debug?: TranscriptionDebugInfo;
 }
