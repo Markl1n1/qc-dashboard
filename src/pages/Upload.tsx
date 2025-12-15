@@ -46,16 +46,16 @@ const Upload: React.FC<UploadProps> = () => {
     'audio/*': ['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac', '.mp4', '.webm', '.mp2', '.opus']
   };
 
-  // Maximum file size: 50MB per file
-  const MAX_FILE_SIZE_MB = 50;
-  const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+  // Maximum file size: 2GB per file (Deepgram limit)
+  const MAX_FILE_SIZE_GB = 2;
+  const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_GB * 1024 * 1024 * 1024;
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     // Validate file sizes
     const oversizedFiles = acceptedFiles.filter(f => f.size > MAX_FILE_SIZE_BYTES);
     if (oversizedFiles.length > 0) {
       const fileNames = oversizedFiles.map(f => `${f.name} (${(f.size / 1024 / 1024).toFixed(1)}MB)`).join(', ');
-      toast.error(`Files too large (max ${MAX_FILE_SIZE_MB}MB): ${fileNames}`);
+      toast.error(`Files too large (max ${MAX_FILE_SIZE_GB}GB): ${fileNames}`);
       // Only add files that are within size limit
       const validFiles = acceptedFiles.filter(f => f.size <= MAX_FILE_SIZE_BYTES);
       if (validFiles.length > 0) {
@@ -259,8 +259,8 @@ const Upload: React.FC<UploadProps> = () => {
                 <p className="text-xs text-muted-foreground mt-1">
                   Multiple files will be merged before transcription
                 </p>
-                <p className="text-xs text-amber-600 mt-1">
-                  Max file size: 50MB per file
+                <p className="text-xs text-muted-foreground mt-1">
+                  Max file size: 2GB per file
                 </p>
               </div>
             )}
