@@ -2,8 +2,7 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Progress } from './ui/progress';
-import { Badge } from './ui/badge';
-import { Loader2, CheckCircle, AlertCircle, Upload, Settings, Mic, FileAudio } from 'lucide-react';
+import { Loader2, CheckCircle, AlertCircle, Upload, Settings, Mic, FileAudio, Cloud } from 'lucide-react';
 
 interface UploadStage {
   id: string;
@@ -18,13 +17,19 @@ interface UploadProgressTrackerProps {
   stages: UploadStage[];
   currentStageId?: string;
   overallProgress: number;
+  uploadProgress?: number; // New prop for upload progress percentage
+  isUploading?: boolean;
+  fileSizeMB?: number;
 }
 
 const UploadProgressTracker: React.FC<UploadProgressTrackerProps> = ({
   fileName,
   stages,
   currentStageId,
-  overallProgress
+  overallProgress,
+  uploadProgress = 0,
+  isUploading = false,
+  fileSizeMB = 0
 }) => {
   const getStageIcon = (stage: UploadStage) => {
     switch (stage.status) {
@@ -42,40 +47,61 @@ const UploadProgressTracker: React.FC<UploadProgressTrackerProps> = ({
   const getDefaultIcon = (stageId: string) => {
     switch (stageId) {
       case 'validation':
-        return <Settings className="h-4 w-4 text-gray-400" />;
+        return <Settings className="h-4 w-4 text-muted-foreground" />;
       case 'conversion':
-        return <FileAudio className="h-4 w-4 text-gray-400" />;
+        return <FileAudio className="h-4 w-4 text-muted-foreground" />;
       case 'upload':
-        return <Upload className="h-4 w-4 text-gray-400" />;
+        return <Cloud className="h-4 w-4 text-muted-foreground" />;
       case 'transcription':
-        return <Mic className="h-4 w-4 text-gray-400" />;
+        return <Mic className="h-4 w-4 text-muted-foreground" />;
       default:
-        return <Settings className="h-4 w-4 text-gray-400" />;
+        return <Settings className="h-4 w-4 text-muted-foreground" />;
     }
   };
 
   const getStatusColor = (stage: UploadStage) => {
     switch (stage.status) {
       case 'complete':
-        return 'bg-green-100 text-green-800 border-green-200';
+        return 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800';
       case 'error':
-        return 'bg-red-100 text-red-800 border-red-200';
+        return 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800';
       case 'in-progress':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
+        return 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800';
       default:
-        return 'bg-gray-100 text-gray-600 border-gray-200';
+        return 'bg-muted text-muted-foreground border-border';
     }
+  };
+
+  const formatSpeed = (progress: number, sizeMB: number) => {
+    if (progress <= 0 || sizeMB <= 0) return '';
+    const uploadedMB = (sizeMB * progress) / 100;
+    return `${uploadedMB.toFixed(1)} / ${sizeMB.toFixed(1)} MB`;
   };
 
   return (
     <Card className="w-full">
       <CardHeader className="pb-3">
         <CardTitle className="text-base font-medium flex items-center gap-2">
-          <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+          <Loader2 className="h-5 w-5 animate-spin text-primary" />
           Processing: {fileName}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Upload Progress for Large Files */}
+        {isUploading && (
+          <div className="space-y-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+            <div className="flex items-center gap-2">
+              <Cloud className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <span className="font-medium text-blue-800 dark:text-blue-300">Uploading to server...</span>
+            </div>
+            <div className="flex justify-between text-sm text-blue-700 dark:text-blue-400">
+              <span>{Math.round(uploadProgress)}%</span>
+              <span>{formatSpeed(uploadProgress, fileSizeMB)}</span>
+            </div>
+            <Progress value={uploadProgress} className="h-2" />
+          </div>
+        )}
+
         {/* Overall Progress */}
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
