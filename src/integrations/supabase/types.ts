@@ -459,6 +459,104 @@ export type Database = {
         }
         Relationships: []
       }
+      transcription_logs: {
+        Row: {
+          audio_duration_reported: number | null
+          avg_gap_seconds: number | null
+          coverage_percentage: number | null
+          created_at: string
+          deepgram_request_id: string | null
+          deepgram_response_time_ms: number | null
+          deepgram_sha256: string | null
+          dialog_id: string | null
+          file_name: string | null
+          file_size_bytes: number | null
+          first_utterance_start: number | null
+          gap_analysis: Json | null
+          gaps_over_5s: number | null
+          id: string
+          is_potentially_truncated: boolean | null
+          last_utterance_end: number | null
+          max_gap_seconds: number | null
+          mime_type: string | null
+          processing_time_ms: number | null
+          raw_metadata: Json | null
+          total_pause_time_seconds: number | null
+          total_talk_time_seconds: number | null
+          total_utterances: number | null
+          unique_speakers: number | null
+          upload_time_ms: number | null
+          utterance_summary: Json | null
+          validation_warnings: Json | null
+        }
+        Insert: {
+          audio_duration_reported?: number | null
+          avg_gap_seconds?: number | null
+          coverage_percentage?: number | null
+          created_at?: string
+          deepgram_request_id?: string | null
+          deepgram_response_time_ms?: number | null
+          deepgram_sha256?: string | null
+          dialog_id?: string | null
+          file_name?: string | null
+          file_size_bytes?: number | null
+          first_utterance_start?: number | null
+          gap_analysis?: Json | null
+          gaps_over_5s?: number | null
+          id?: string
+          is_potentially_truncated?: boolean | null
+          last_utterance_end?: number | null
+          max_gap_seconds?: number | null
+          mime_type?: string | null
+          processing_time_ms?: number | null
+          raw_metadata?: Json | null
+          total_pause_time_seconds?: number | null
+          total_talk_time_seconds?: number | null
+          total_utterances?: number | null
+          unique_speakers?: number | null
+          upload_time_ms?: number | null
+          utterance_summary?: Json | null
+          validation_warnings?: Json | null
+        }
+        Update: {
+          audio_duration_reported?: number | null
+          avg_gap_seconds?: number | null
+          coverage_percentage?: number | null
+          created_at?: string
+          deepgram_request_id?: string | null
+          deepgram_response_time_ms?: number | null
+          deepgram_sha256?: string | null
+          dialog_id?: string | null
+          file_name?: string | null
+          file_size_bytes?: number | null
+          first_utterance_start?: number | null
+          gap_analysis?: Json | null
+          gaps_over_5s?: number | null
+          id?: string
+          is_potentially_truncated?: boolean | null
+          last_utterance_end?: number | null
+          max_gap_seconds?: number | null
+          mime_type?: string | null
+          processing_time_ms?: number | null
+          raw_metadata?: Json | null
+          total_pause_time_seconds?: number | null
+          total_talk_time_seconds?: number | null
+          total_utterances?: number | null
+          unique_speakers?: number | null
+          upload_time_ms?: number | null
+          utterance_summary?: Json | null
+          validation_warnings?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transcription_logs_dialog_id_fkey"
+            columns: ["dialog_id"]
+            isOneToOne: false
+            referencedRelation: "dialogs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
