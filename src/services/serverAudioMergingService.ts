@@ -9,11 +9,10 @@ import { audioCleanupService } from './audioCleanupService';
 // Optional: create a default Supabase client for the WAV server path
 let defaultSupabase: SupabaseClient | undefined;
 try {
-  const url = process.env.SUPABASE_URL;
-  const anon = process.env.SUPABASE_ANON_KEY;
+  const url = import.meta.env.VITE_SUPABASE_URL;
+  const anon = import.meta.env.VITE_SUPABASE_ANON_KEY;
   if (url && anon) {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { createClient } = require("@supabase/supabase-js");
+    const { createClient } = await import("@supabase/supabase-js");
     defaultSupabase = createClient(url, anon);
   }
 } catch {
@@ -61,8 +60,9 @@ export class ServerAudioMergingService {
   private opts: Required<ServerAudioMergingServiceOptions>;
 
   constructor(supabaseClient?: SupabaseClient, options?: ServerAudioMergingServiceOptions) {
-    const envEdge = process.env.SUPABASE_URL
-      ? `${process.env.SUPABASE_URL}/functions/v1/audio-merge`
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const envEdge = supabaseUrl
+      ? `${supabaseUrl}/functions/v1/audio-merge`
       : "";
 
     this.supabase = supabaseClient;
