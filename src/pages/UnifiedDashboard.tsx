@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Search, Filter, Upload, BarChart3, Clock, CheckCircle, AlertCircle, FileText, TrendingUp, Trash2, Loader2 } from 'lucide-react';
+import { Search, Filter, Upload, BarChart3, Clock, CheckCircle, AlertCircle, FileText, TrendingUp, Trash2, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useDatabaseDialogs } from '../hooks/useDatabaseDialogs';
 import { useUserRole } from '../hooks/useUserRole';
@@ -14,6 +14,8 @@ import { toast } from 'sonner';
 import GenerateReportDialog from '@/components/GenerateReportDialog';
 import OptimizedDialogCard from '@/components/OptimizedDialogCard';
 import SkeletonLoader from '@/components/SkeletonLoader';
+
+const ITEMS_PER_PAGE = 20;
 type SortOption = 'newest' | 'oldest' | 'name' | 'status';
 type StatusFilter = 'all' | 'pending' | 'processing' | 'completed' | 'failed';
 const UnifiedDashboard = () => {
@@ -30,6 +32,7 @@ const UnifiedDashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [currentPage, setCurrentPage] = useState(1);
   const stats = useMemo(() => {
     const total = dialogs.length;
     const pending = dialogs.filter(d => d.status === 'pending').length;
@@ -65,6 +68,18 @@ const UnifiedDashboard = () => {
       }
     });
   }, [dialogs, searchTerm, sortBy, statusFilter]);
+
+  // Reset page when filters change
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, sortBy, statusFilter]);
+
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredAndSortedDialogs.length / ITEMS_PER_PAGE);
+  const paginatedDialogs = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredAndSortedDialogs.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredAndSortedDialogs, currentPage]);
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'completed':
@@ -215,7 +230,7 @@ const UnifiedDashboard = () => {
               <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <p className="text-muted-foreground">No dialogs found matching your criteria</p>
             </div> : <div className="space-y-2">
-              {filteredAndSortedDialogs.map(dialog => <div key={dialog.id}>
+              {paginatedDialogs.map(dialog => <div key={dialog.id}>
                   <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
                     <div className="flex items-center gap-4 flex-1 min-w-0">
                       <div className="flex-1 min-w-0">
@@ -268,6 +283,57 @@ const UnifiedDashboard = () => {
                     </div>
                   </div>
                 </div>)}
+              
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between pt-4 border-t mt-4">
+                  <p className="text-sm text-muted-foreground">
+                    Showing {((currentPage - 1) * ITEMS_PER_PAGE) + 1} - {Math.min(currentPage * ITEMS_PER_PAGE, filteredAndSortedDialogs.length)} of {filteredAndSortedDialogs.length}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-1" />
+                      Previous
+                    </Button>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: totalPages }, (_, i) => i + 1)
+                        .filter(page => {
+                          // Show first, last, current, and adjacent pages
+                          return page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1;
+                        })
+                        .map((page, idx, arr) => (
+                          <React.Fragment key={page}>
+                            {idx > 0 && arr[idx - 1] !== page - 1 && (
+                              <span className="px-2 text-muted-foreground">...</span>
+                            )}
+                            <Button
+                              variant={currentPage === page ? "default" : "outline"}
+                              size="sm"
+                              className="w-8 h-8 p-0"
+                              onClick={() => setCurrentPage(page)}
+                            >
+                              {page}
+                            </Button>
+                          </React.Fragment>
+                        ))}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>}
         </CardContent>
       </Card>
