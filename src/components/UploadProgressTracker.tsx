@@ -17,9 +17,13 @@ interface UploadProgressTrackerProps {
   stages: UploadStage[];
   currentStageId?: string;
   overallProgress: number;
-  uploadProgress?: number; // New prop for upload progress percentage
+  uploadProgress?: number;
   isUploading?: boolean;
   fileSizeMB?: number;
+  uploadSpeed?: number; // bytes per second
+  estimatedTimeRemaining?: number; // seconds
+  uploadedBytes?: number;
+  totalBytes?: number;
 }
 
 const UploadProgressTracker: React.FC<UploadProgressTrackerProps> = ({
@@ -29,7 +33,11 @@ const UploadProgressTracker: React.FC<UploadProgressTrackerProps> = ({
   overallProgress,
   uploadProgress = 0,
   isUploading = false,
-  fileSizeMB = 0
+  fileSizeMB = 0,
+  uploadSpeed = 0,
+  estimatedTimeRemaining = 0,
+  uploadedBytes = 0,
+  totalBytes = 0
 }) => {
   const getStageIcon = (stage: UploadStage) => {
     switch (stage.status) {
@@ -72,10 +80,24 @@ const UploadProgressTracker: React.FC<UploadProgressTrackerProps> = ({
     }
   };
 
-  const formatSpeed = (progress: number, sizeMB: number) => {
-    if (progress <= 0 || sizeMB <= 0) return '';
-    const uploadedMB = (sizeMB * progress) / 100;
-    return `${uploadedMB.toFixed(1)} / ${sizeMB.toFixed(1)} MB`;
+  const formatBytes = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+  };
+
+  const formatTime = (seconds: number): string => {
+    if (seconds < 60) return `${Math.round(seconds)}s`;
+    if (seconds < 3600) {
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.round(seconds % 60);
+      return `${mins}m ${secs}s`;
+    }
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    return `${hours}h ${mins}m`;
   };
 
   return (
@@ -90,15 +112,29 @@ const UploadProgressTracker: React.FC<UploadProgressTrackerProps> = ({
         {/* Upload Progress for Large Files */}
         {isUploading && (
           <div className="space-y-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
-            <div className="flex items-center gap-2">
-              <Cloud className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-              <span className="font-medium text-blue-800 dark:text-blue-300">Uploading to server...</span>
-            </div>
-            <div className="flex justify-between text-sm text-blue-700 dark:text-blue-400">
-              <span>{Math.round(uploadProgress)}%</span>
-              <span>{formatSpeed(uploadProgress, fileSizeMB)}</span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Cloud className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <span className="font-medium text-blue-800 dark:text-blue-300">Uploading to server...</span>
+              </div>
+              <span className="text-sm font-medium text-blue-800 dark:text-blue-300">
+                {Math.round(uploadProgress)}%
+              </span>
             </div>
             <Progress value={uploadProgress} className="h-2" />
+            <div className="flex justify-between text-xs text-blue-600 dark:text-blue-400">
+              <span>
+                {formatBytes(uploadedBytes)} / {formatBytes(totalBytes)}
+              </span>
+              <span className="flex items-center gap-3">
+                {uploadSpeed > 0 && (
+                  <span>{formatBytes(uploadSpeed)}/s</span>
+                )}
+                {estimatedTimeRemaining > 0 && (
+                  <span>~{formatTime(estimatedTimeRemaining)} remaining</span>
+                )}
+              </span>
+            </div>
           </div>
         )}
 
