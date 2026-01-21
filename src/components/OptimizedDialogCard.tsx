@@ -3,7 +3,7 @@ import { Card, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
-import { Eye, Trash2, Clock, User, Award, AlertCircle, Timer } from 'lucide-react';
+import { Eye, Trash2, Clock, User, Award, AlertCircle, Timer, RotateCcw } from 'lucide-react';
 import { Dialog } from '../types';
 import { format } from 'date-fns';
 
@@ -28,6 +28,7 @@ interface OptimizedDialogCardProps {
   dialog: Dialog;
   onViewDetails: (id: string) => void;
   onDelete: (id: string) => void;
+  onRetry?: (dialog: Dialog) => void;
   getStatusColor: (status: string) => string;
   getStatusIcon: (status: string) => React.ReactNode;
 }
@@ -36,6 +37,7 @@ const OptimizedDialogCard = memo<OptimizedDialogCardProps>(({
   dialog,
   onViewDetails,
   onDelete,
+  onRetry,
   getStatusColor,
   getStatusIcon
 }) => {
@@ -102,6 +104,26 @@ const OptimizedDialogCard = memo<OptimizedDialogCardProps>(({
           </div>
           
           <div className="flex items-center gap-1 ml-2">
+            {/* Retry button for failed dialogs */}
+            {dialog.status === 'failed' && onRetry && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onRetry(dialog)}
+                      className="h-8 px-2"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Retry transcription</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
             <Button
               variant="ghost"
               size="sm"

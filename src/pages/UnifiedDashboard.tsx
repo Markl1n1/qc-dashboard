@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Search, Filter, Upload, BarChart3, Clock, CheckCircle, AlertCircle, FileText, TrendingUp, Trash2, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Filter, Upload, BarChart3, Clock, CheckCircle, AlertCircle, FileText, TrendingUp, Trash2, Loader2, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useDatabaseDialogs } from '../hooks/useDatabaseDialogs';
 import { useUserRole } from '../hooks/useUserRole';
@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import GenerateReportDialog from '@/components/GenerateReportDialog';
 import OptimizedDialogCard from '@/components/OptimizedDialogCard';
 import SkeletonLoader from '@/components/SkeletonLoader';
+import RetryTranscriptionDialog from '@/components/RetryTranscriptionDialog';
 
 const ITEMS_PER_PAGE = 20;
 type SortOption = 'newest' | 'oldest' | 'name' | 'status';
@@ -23,7 +24,8 @@ const UnifiedDashboard = () => {
   const {
     dialogs,
     isLoading,
-    deleteDialog
+    deleteDialog,
+    loadDialogs
   } = useDatabaseDialogs();
   const {
     isAdmin,
@@ -33,6 +35,8 @@ const UnifiedDashboard = () => {
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [currentPage, setCurrentPage] = useState(1);
+  const [retryDialog, setRetryDialog] = useState<Dialog | null>(null);
+  const [isRetryDialogOpen, setIsRetryDialogOpen] = useState(false);
   const stats = useMemo(() => {
     const total = dialogs.length;
     const pending = dialogs.filter(d => d.status === 'pending').length;
@@ -117,6 +121,16 @@ const UnifiedDashboard = () => {
       toast.error('Failed to delete dialog');
     }
   };
+
+  const handleRetryDialog = (dialog: Dialog) => {
+    setRetryDialog(dialog);
+    setIsRetryDialogOpen(true);
+  };
+
+  const handleRetrySuccess = () => {
+    loadDialogs();
+  };
+
   if (isLoading) {
     return <div className="container mx-auto px-6 py-8 space-y-6">
         {/* Header Skeleton */}
@@ -256,6 +270,18 @@ const UnifiedDashboard = () => {
                     </div>
                     
                     <div className="flex items-center gap-2 ml-4">
+                      {/* Retry button for failed dialogs */}
+                      {dialog.status === 'failed' && (
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => handleRetryDialog(dialog)}
+                          title="Retry transcription"
+                        >
+                          <RotateCcw className="h-4 w-4 mr-1" />
+                          Retry
+                        </Button>
+                      )}
                       <Button variant="ghost" size="sm" onClick={() => navigate(`/dialog/${dialog.id}`)}>
                         View Details
                       </Button>
@@ -337,6 +363,14 @@ const UnifiedDashboard = () => {
             </div>}
         </CardContent>
       </Card>
+
+      {/* Retry Transcription Dialog */}
+      <RetryTranscriptionDialog
+        dialog={retryDialog}
+        open={isRetryDialogOpen}
+        onOpenChange={setIsRetryDialogOpen}
+        onSuccess={handleRetrySuccess}
+      />
     </div>;
 };
 export default UnifiedDashboard;
