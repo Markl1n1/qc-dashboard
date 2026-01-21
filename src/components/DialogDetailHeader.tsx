@@ -3,9 +3,26 @@ import { Link } from 'react-router-dom';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Alert, AlertDescription } from './ui/alert';
-import { ArrowLeft, FileText, Loader2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, FileText, Loader2, AlertCircle, Timer } from 'lucide-react';
 import { DialogData } from '../types/unified';
 import { extractUsernameFromEmail, capitalizeStatus } from '../utils/userUtils';
+
+// Format audio duration in a readable format
+const formatDuration = (minutes?: number): string => {
+  if (!minutes || minutes <= 0) return '';
+  if (minutes < 1) {
+    const seconds = Math.round(minutes * 60);
+    return `${seconds}s`;
+  }
+  if (minutes >= 60) {
+    const hours = Math.floor(minutes / 60);
+    const mins = Math.round(minutes % 60);
+    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  }
+  const mins = Math.floor(minutes);
+  const secs = Math.round((minutes - mins) * 60);
+  return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+};
 
 interface DialogDetailHeaderProps {
   dialog: DialogData;
@@ -49,10 +66,19 @@ const DialogDetailHeader: React.FC<DialogDetailHeaderProps> = ({
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold mb-2">{dialog.fileName}</h1>
-          <div className="flex items-center space-x-4 text-sm text-muted-foreground">
+          <div className="flex items-center flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
             <span>Supervisor: {extractUsernameFromEmail(dialog.assignedSupervisor)}</span>
             <span>•</span>
             <span>Uploaded: {new Date(dialog.uploadDate).toLocaleDateString()}</span>
+            {dialog.audioLengthMinutes && dialog.audioLengthMinutes > 0 && (
+              <>
+                <span>•</span>
+                <span className="flex items-center gap-1">
+                  <Timer className="h-3.5 w-3.5" />
+                  Duration: {formatDuration(dialog.audioLengthMinutes)}
+                </span>
+              </>
+            )}
             {dialog.qualityScore && (
               <>
                 <span>•</span>
