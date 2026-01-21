@@ -3,9 +3,26 @@ import { Card, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
-import { Eye, Trash2, Clock, User, Award, AlertCircle } from 'lucide-react';
+import { Eye, Trash2, Clock, User, Award, AlertCircle, Timer } from 'lucide-react';
 import { Dialog } from '../types';
 import { format } from 'date-fns';
+
+// Format audio duration in a readable format
+const formatDuration = (minutes?: number): string => {
+  if (!minutes || minutes <= 0) return '';
+  if (minutes < 1) {
+    const seconds = Math.round(minutes * 60);
+    return `${seconds}s`;
+  }
+  if (minutes >= 60) {
+    const hours = Math.floor(minutes / 60);
+    const mins = Math.round(minutes % 60);
+    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  }
+  const mins = Math.floor(minutes);
+  const secs = Math.round((minutes - mins) * 60);
+  return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+};
 
 interface OptimizedDialogCardProps {
   dialog: Dialog;
@@ -50,6 +67,12 @@ const OptimizedDialogCard = memo<OptimizedDialogCardProps>(({
                   {dialog.assignedSupervisor}
                 </span>
               </div>
+              {dialog.audioLengthMinutes && dialog.audioLengthMinutes > 0 && (
+                <div className="flex items-center gap-1">
+                  <Timer className="h-3 w-3" />
+                  <span>{formatDuration(dialog.audioLengthMinutes)}</span>
+                </div>
+              )}
               {dialog.qualityScore && (
                 <div className="flex items-center gap-1">
                   <Award className="h-3 w-3" />

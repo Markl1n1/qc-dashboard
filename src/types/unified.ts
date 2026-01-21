@@ -50,6 +50,7 @@ export interface DialogData {
   openaiEvaluation?: OpenAIEvaluationResult | null;
   qualityScore?: number;
   error?: string;
+  audioLengthMinutes?: number;
 }
 
 export interface AnalysisProgress {
