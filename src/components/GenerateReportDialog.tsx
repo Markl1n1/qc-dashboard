@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Calendar } from './ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { CalendarIcon, BarChart3, Loader2 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, subDays, startOfMonth } from 'date-fns';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
 import { reportService } from '../services/reportService';
@@ -27,6 +27,18 @@ const GenerateReportDialog: React.FC<GenerateReportDialogProps> = ({ trigger }) 
     { value: 'type-b', label: 'Type B Report (Coming Soon)' },
     { value: 'type-c', label: 'Type C Report (Coming Soon)' }
   ];
+
+  const datePresets = [
+    { label: '7 дней', getValue: () => ({ from: subDays(new Date(), 7), to: new Date() }) },
+    { label: '30 дней', getValue: () => ({ from: subDays(new Date(), 30), to: new Date() }) },
+    { label: 'Этот месяц', getValue: () => ({ from: startOfMonth(new Date()), to: new Date() }) },
+  ];
+
+  const applyPreset = (preset: typeof datePresets[0]) => {
+    const { from, to } = preset.getValue();
+    setDateFrom(from);
+    setDateTo(to);
+  };
 
   const handleGenerate = async () => {
     if (!dateFrom || !dateTo) {
@@ -98,6 +110,24 @@ const GenerateReportDialog: React.FC<GenerateReportDialogProps> = ({ trigger }) 
         </DialogHeader>
         
         <div className="space-y-4">
+          {/* Quick Date Presets */}
+          <div className="space-y-2">
+            <Label>Быстрый выбор периода</Label>
+            <div className="flex gap-2">
+              {datePresets.map((preset) => (
+                <Button
+                  key={preset.label}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => applyPreset(preset)}
+                  className="flex-1"
+                >
+                  {preset.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Date From</Label>
