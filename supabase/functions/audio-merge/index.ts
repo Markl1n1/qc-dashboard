@@ -28,6 +28,38 @@ const ext = (p: string) => {
   return m ? m[1] : "";
 };
 
+// Helper function to verify JWT and get user
+async function verifyAuth(req: Request, supabase: any): Promise<{ user: any; error: Response | null }> {
+  const authHeader = req.headers.get('authorization');
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    console.error('Security Event: Missing or invalid authorization header');
+    return {
+      user: null,
+      error: new Response(
+        JSON.stringify({ error: 'Unauthorized - Missing authorization header', version: VERSION }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    };
+  }
+
+  const token = authHeader.replace('Bearer ', '');
+  const { data, error } = await supabase.auth.getUser(token);
+
+  if (error || !data?.user) {
+    console.error('Security Event: Invalid token or user not found:', error?.message);
+    return {
+      user: null,
+      error: new Response(
+        JSON.stringify({ error: 'Unauthorized - Invalid token', version: VERSION }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    };
+  }
+
+  return { user: data.user, error: null };
+}
+
 // Concatenate multiple ReadableStreams
 function concatStreams(
   streams: ReadableStream<Uint8Array>[],
@@ -144,6 +176,20 @@ serve(async (req) => {
     );
   }
 
+  // Initialize Supabase client for auth and storage
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+
+  // Verify JWT authentication
+  const { user, error: authError } = await verifyAuth(req, supabase);
+  if (authError) {
+    return authError;
+  }
+
+  console.log('Security Event: Audio merge authorized for user:', user.id);
+
   try {
     const body: MergeFromStorageRequest = await req.json().catch(() => ({}));
     const paths = Array.isArray(body?.paths) ? body.paths : undefined;
@@ -177,10 +223,7 @@ serve(async (req) => {
       );
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
+    // Use the supabase client already created for auth verification
 
     const parts: Part[] = [];
     let common: WavFmt | null = null;
