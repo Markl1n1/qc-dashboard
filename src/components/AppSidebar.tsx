@@ -1,7 +1,7 @@
 
 import { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Home, Upload, Settings, LogOut, Users, BarChart3, FileText, User, Sun, Moon, Menu, Lock, Shield } from 'lucide-react';
+import { Home, Upload, Settings, LogOut, Users, BarChart3, FileText, User, Sun, Moon, Lock, Shield } from 'lucide-react';
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarTrigger, useSidebar } from './ui/sidebar';
 import { useAuthStore } from '../store/authStore';
 import { useTheme } from '../hooks/useTheme';
@@ -45,7 +45,7 @@ export function AppSidebar() {
   const { theme, setTheme } = useTheme();
   const { isAdmin } = useUserRole();
   const { profile, isLoading: profileLoading } = useUserProfile();
-  const [extendedMode, setExtendedMode] = useState(true);
+  // Always show extended mode - removed hamburger toggle
   const currentPath = location.pathname;
   const collapsed = state === 'collapsed';
   const isActive = (path: string) => currentPath === path;
@@ -67,30 +67,17 @@ export function AppSidebar() {
 
   return (
     <Sidebar className={collapsed ? "w-14" : "w-60"} collapsible="icon">
-      {/* Header with logo and trigger */}
+      {/* Header with logo */}
       <div className="p-4 border-b bg-sidebar">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <VoiceQCLogo size="md" />
-            {!collapsed && extendedMode}
-          </div>
-          {!collapsed && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setExtendedMode(!extendedMode)}
-              className="h-8 w-8 p-0"
-            >
-              <Menu className="h-4 w-4" />
-            </Button>
-          )}
+        <div className="flex items-center gap-2">
+          <VoiceQCLogo size="md" />
         </div>
       </div>
 
       <SidebarContent className="bg-sidebar">
         <SidebarGroup>
           <SidebarGroupLabel className="text-sidebar-foreground font-medium">
-            {!collapsed && extendedMode ? (
+            {!collapsed ? (
               profileLoading ? 'Loading...' : (profile?.name || 'Main Navigation')
             ) : ''}
           </SidebarGroupLabel>
@@ -103,8 +90,8 @@ export function AppSidebar() {
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
                     <NavLink to={item.url} end className={getNavCls}>
-                      <item.icon className={`${collapsed || !extendedMode ? 'h-6 w-6' : 'mr-2 h-4 w-4'}`} />
-                      {!collapsed && extendedMode && <span>{item.title}</span>}
+                      <item.icon className={`${collapsed ? 'h-6 w-6' : 'mr-2 h-4 w-4'}`} />
+                      {!collapsed && <span>{item.title}</span>}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -115,11 +102,11 @@ export function AppSidebar() {
                 <SidebarMenuButton asChild>
                   <button onClick={toggleTheme} className={getNavCls({ isActive: false })}>
                     {theme === 'light' ? (
-                      <Moon className={`${collapsed || !extendedMode ? 'h-6 w-6' : 'mr-2 h-4 w-4'}`} />
+                      <Moon className={`${collapsed ? 'h-6 w-6' : 'mr-2 h-4 w-4'}`} />
                     ) : (
-                      <Sun className={`${collapsed || !extendedMode ? 'h-6 w-6' : 'mr-2 h-4 w-4'}`} />
+                      <Sun className={`${collapsed ? 'h-6 w-6' : 'mr-2 h-4 w-4'}`} />
                     )}
-                    {!collapsed && extendedMode && <span>Theme</span>}
+                    {!collapsed && <span>Theme</span>}
                   </button>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -128,8 +115,8 @@ export function AppSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton asChild>
                   <button onClick={handleSignOut} className={getNavCls({ isActive: false })}>
-                    <LogOut className={`${collapsed || !extendedMode ? 'h-6 w-6' : 'mr-2 h-4 w-4'}`} />
-                    {!collapsed && extendedMode && <span>Sign Out</span>}
+                    <LogOut className={`${collapsed ? 'h-6 w-6' : 'mr-2 h-4 w-4'}`} />
+                    {!collapsed && <span>Sign Out</span>}
                   </button>
                 </SidebarMenuButton>
               </SidebarMenuItem>
