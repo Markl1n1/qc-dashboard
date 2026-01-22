@@ -36,7 +36,7 @@ export const useEnhancedDialogStore = create<EnhancedDialogStore>()(
   persist(
     (set, get) => ({
       dialogs: [],
-      isLoading: false,
+      isLoading: false, // Always starts as false, never persisted
       error: null,
       dialogDetailsCache: new Map(),
 
@@ -361,7 +361,14 @@ export const useEnhancedDialogStore = create<EnhancedDialogStore>()(
     }),
     {
       name: 'enhanced-dialog-store',
-      partialize: (state) => ({ dialogs: state.dialogs })
+      partialize: (state) => ({ dialogs: state.dialogs }),
+      // Reset isLoading on hydration to prevent stuck loading states
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state.isLoading = false;
+          state.error = null;
+        }
+      }
     }
   )
 );
