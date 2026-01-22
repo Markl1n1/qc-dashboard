@@ -223,9 +223,19 @@ Deno.serve(async (req) => {
     const deepgramCallStart = Date.now();
 
     if (useSignedUrl) {
-      // Use direct public URL since bucket is public
-      const publicUrl = `https://sahudeguwojdypmmlbkd.supabase.co/storage/v1/object/public/audio-files/${storageFile}`;
-      console.log('🔗 [URL] Public URL:', publicUrl);
+      // Generate signed URL for secure access (bucket is private)
+      console.log('🔐 [SECURITY] Generating signed URL for private bucket access...');
+      const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+        .from('audio-files')
+        .createSignedUrl(storageFile, 3600); // 1 hour expiry
+
+      if (signedUrlError || !signedUrlData?.signedUrl) {
+        console.error('❌ [URL] Failed to generate signed URL:', signedUrlError);
+        throw new Error('Failed to generate signed URL for audio file');
+      }
+
+      const audioUrl = signedUrlData.signedUrl;
+      console.log('🔗 [URL] Signed URL generated (expires in 1 hour)');
 
       try {
         deepgramResponse = await fetch(deepgramUrl, {
@@ -234,7 +244,7 @@ Deno.serve(async (req) => {
             'Authorization': `Token ${DEEPGRAM_API_KEY}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ url: publicUrl }),
+          body: JSON.stringify({ url: audioUrl }),
           signal: AbortSignal.timeout(840000) // 14 minutes timeout (slightly less than 15 min function limit)
         });
       } catch (fetchError) {
