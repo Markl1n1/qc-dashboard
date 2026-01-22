@@ -6,6 +6,71 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Helper function to verify JWT and get user
+async function verifyAuth(req: Request, supabase: any): Promise<{ user: any; error: Response | null }> {
+  const authHeader = req.headers.get('authorization');
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    console.error('Security Event: Missing or invalid authorization header');
+    return {
+      user: null,
+      error: new Response(
+        JSON.stringify({ error: 'Unauthorized - Missing authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    };
+  }
+
+  const token = authHeader.replace('Bearer ', '');
+  const { data, error } = await supabase.auth.getUser(token);
+
+  if (error || !data?.user) {
+    console.error('Security Event: Invalid token or user not found:', error?.message);
+    return {
+      user: null,
+      error: new Response(
+        JSON.stringify({ error: 'Unauthorized - Invalid token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    };
+  }
+
+  return { user: data.user, error: null };
+}
+
+// Helper function to verify admin role
+async function verifyAdminRole(supabase: any, userId: string): Promise<{ isAdmin: boolean; error: Response | null }> {
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', userId)
+    .single();
+
+  if (profileError || !profile) {
+    console.error('Security Event: Failed to fetch user profile:', profileError?.message);
+    return {
+      isAdmin: false,
+      error: new Response(
+        JSON.stringify({ error: 'Failed to verify user role' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    };
+  }
+
+  if (profile.role !== 'admin') {
+    console.error('Security Event: Non-admin user attempted cleanup operation:', userId);
+    return {
+      isAdmin: false,
+      error: new Response(
+        JSON.stringify({ error: 'Forbidden - Admin access required' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    };
+  }
+
+  return { isAdmin: true, error: null };
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -23,6 +88,20 @@ serve(async (req) => {
         persistSession: false
       }
     });
+
+    // Verify JWT authentication
+    const { user, error: authError } = await verifyAuth(req, supabase);
+    if (authError) {
+      return authError;
+    }
+
+    // Verify admin role - only admins can trigger cleanup
+    const { isAdmin, error: roleError } = await verifyAdminRole(supabase, user.id);
+    if (roleError) {
+      return roleError;
+    }
+
+    console.log('Security Event: Dialog cleanup authorized for admin user:', user.id);
 
     // Get retention settings from system_config
     const { data: retentionConfig, error: configError } = await supabase

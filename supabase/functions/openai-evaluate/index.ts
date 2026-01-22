@@ -1,11 +1,43 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Helper function to verify JWT and get user
+async function verifyAuth(req: Request, supabase: any): Promise<{ user: any; error: Response | null }> {
+  const authHeader = req.headers.get('authorization');
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    console.error('Security Event: Missing or invalid authorization header');
+    return {
+      user: null,
+      error: new Response(
+        JSON.stringify({ error: 'Unauthorized - Missing authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    };
+  }
+
+  const token = authHeader.replace('Bearer ', '');
+  const { data, error } = await supabase.auth.getUser(token);
+
+  if (error || !data?.user) {
+    console.error('Security Event: Invalid token or user not found:', error?.message);
+    return {
+      user: null,
+      error: new Response(
+        JSON.stringify({ error: 'Unauthorized - Invalid token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    };
+  }
+
+  return { user: data.user, error: null };
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -13,6 +45,25 @@ serve(async (req) => {
   }
 
   try {
+    // Initialize Supabase client for auth verification
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    });
+
+    // Verify JWT authentication
+    const { user, error: authError } = await verifyAuth(req, supabase);
+    if (authError) {
+      return authError;
+    }
+
+    console.log('Security Event: OpenAI evaluate authorized for user:', user.id);
+
     const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
     
     if (!openAIApiKey) {
