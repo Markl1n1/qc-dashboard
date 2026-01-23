@@ -5,6 +5,12 @@ import { Dialog, SpeakerUtterance } from '../types';
 import { databaseService, DatabaseDialog } from '../services/databaseService';
 import { useAuthStore } from './authStore';
 
+// Guards against request storms (e.g. effects firing repeatedly or rapid re-mounts)
+// which otherwise keep `isLoading` true and spam `/dialogs?select=*...`.
+const DIALOGS_LOAD_MIN_INTERVAL_MS = 1500;
+let dialogsLoadInFlight = false;
+let lastDialogsLoadAt = 0;
+
 interface EnhancedDialogStore {
   dialogs: Dialog[];
   isLoading: boolean;
@@ -45,6 +51,13 @@ export const useEnhancedDialogStore = create<EnhancedDialogStore>()(
       setError: (error: string | null) => set({ error }),
       
       loadDialogs: async () => {
+        const now = Date.now();
+        if (dialogsLoadInFlight) return;
+        if (now - lastDialogsLoadAt < DIALOGS_LOAD_MIN_INTERVAL_MS) return;
+
+        dialogsLoadInFlight = true;
+        lastDialogsLoadAt = now;
+
         try {
           set({ isLoading: true, error: null });
           
@@ -59,6 +72,8 @@ export const useEnhancedDialogStore = create<EnhancedDialogStore>()(
         } catch (error) {
           console.error('Error loading dialogs:', error);
           set({ error: error instanceof Error ? error.message : 'Failed to load dialogs', isLoading: false });
+        } finally {
+          dialogsLoadInFlight = false;
         }
       },
 
