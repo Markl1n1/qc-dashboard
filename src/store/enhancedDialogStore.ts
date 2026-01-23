@@ -36,7 +36,7 @@ export const useEnhancedDialogStore = create<EnhancedDialogStore>()(
   persist(
     (set, get) => ({
       dialogs: [],
-      isLoading: false, // Always starts as false, never persisted
+      isLoading: false, // Must never be restored from persisted state
       error: null,
       dialogDetailsCache: new Map(),
 
@@ -362,13 +362,25 @@ export const useEnhancedDialogStore = create<EnhancedDialogStore>()(
     {
       name: 'enhanced-dialog-store',
       partialize: (state) => ({ dialogs: state.dialogs }),
-      // Reset isLoading on hydration to prevent stuck loading states
-      onRehydrateStorage: () => (state) => {
-        if (state) {
-          state.isLoading = false;
-          state.error = null;
-        }
-      }
+      /**
+       * IMPORTANT:
+       * Older persisted snapshots might still contain `isLoading: true` (from a previous version).
+       * If we merge that back in, the UI can get stuck on skeleton loaders forever.
+       *
+       * We explicitly merge only `dialogs` and always reset volatile fields.
+       */
+      merge: (persistedState, currentState) => {
+        const persistedDialogs = (persistedState as any)?.dialogs;
+
+        return {
+          ...currentState,
+          dialogs: Array.isArray(persistedDialogs) ? persistedDialogs : currentState.dialogs,
+          // volatile fields: always reset
+          isLoading: false,
+          error: null,
+          dialogDetailsCache: new Map(),
+        };
+      },
     }
   )
 );
