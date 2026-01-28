@@ -1,4 +1,5 @@
 // frontend/src/lib/upload-and-transcribe.ts
+// Merges audio files to 16 kHz mono WAV and uploads to Deepgram for transcription
 import { mergeAudioFilesTo8kWav } from "./merge-audio-to-wav";
 import { createClient } from "@supabase/supabase-js";
 
