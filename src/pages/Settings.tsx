@@ -12,6 +12,8 @@ import { AlertCircle, FileText, Shield, Brain, Save, Loader2, Settings as Settin
 import AIInstructionsFileManager from "@/components/AIInstructionsFileManager";
 import DeepgramModelSettings from "@/components/DeepgramModelSettings";
 import KeytermManagement from "@/components/KeytermManagement";
+import KeywordsBoostSettings from "@/components/KeywordsBoostSettings";
+import TranscriptionReplacements from "@/components/TranscriptionReplacements";
 import { useEnhancedSettingsStore } from "@/store/enhancedSettingsStore";
 import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "sonner";
@@ -334,6 +336,8 @@ const Settings: React.FC = () => {
           <TabsContent value="deepgram" className="space-y-6">
             <DeepgramModelSettings />
             <KeytermManagement />
+            <KeywordsBoostSettings />
+            <TranscriptionReplacements />
           </TabsContent>
 
         <TabsContent value="instructions" className="space-y-6">
