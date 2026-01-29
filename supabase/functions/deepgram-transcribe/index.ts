@@ -126,15 +126,12 @@ Deno.serve(async (req) => {
     // Get model configuration from database
     console.log('🔧 [CONFIG] Fetching model configuration from database...');
     const configFetchStart = Date.now();
-    
-    // Fetch all relevant config keys including keywords_boost and transcription_replace
     const { data: modelConfig } = await supabase
       .from('system_config')
       .select('key, value')
-      .or('key.in.(deepgram_nova2_languages,deepgram_nova3_languages),key.like.keyterm_prompt_%,key.like.keywords_boost_%,key.like.transcription_replace_%');
+      .in('key', ['deepgram_nova2_languages', 'deepgram_nova3_languages', 'keyterm_prompt_en', 'keyterm_prompt_ru', 'keyterm_prompt_de', 'keyterm_prompt_es', 'keyterm_prompt_fr']);
     
     console.log('✅ [CONFIG] Configuration fetched in', Date.now() - configFetchStart, 'ms');
-    console.log('📋 [CONFIG] Found', modelConfig?.length || 0, 'configuration entries');
     
     // Parse language configurations
     const nova2Languages = modelConfig?.find(c => c.key === 'deepgram_nova2_languages')?.value || '["pl","ru"]';
@@ -143,30 +140,12 @@ Deno.serve(async (req) => {
     const nova2List = JSON.parse(nova2Languages);
     const nova3List = JSON.parse(nova3Languages);
     
-    // Get keyterm prompts from database (Nova-3 only)
+    // Get keyterm prompts from database
     const keytermPrompts: Record<string, string> = {};
     modelConfig?.forEach(config => {
       if (config.key.startsWith('keyterm_prompt_')) {
         const lang = config.key.replace('keyterm_prompt_', '');
         keytermPrompts[lang] = config.value;
-      }
-    });
-    
-    // Get keywords boost from database (Nova-2) - format: "word1:intensity,word2:intensity"
-    const keywordsBoost: Record<string, string> = {};
-    modelConfig?.forEach(config => {
-      if (config.key.startsWith('keywords_boost_')) {
-        const lang = config.key.replace('keywords_boost_', '');
-        keywordsBoost[lang] = config.value;
-      }
-    });
-    
-    // Get transcription replacements from database - format: "pattern1:replacement1,pattern2:replacement2"
-    const transcriptionReplace: Record<string, string> = {};
-    modelConfig?.forEach(config => {
-      if (config.key.startsWith('transcription_replace_')) {
-        const lang = config.key.replace('transcription_replace_', '');
-        transcriptionReplace[lang] = config.value;
       }
     });
 
@@ -176,7 +155,6 @@ Deno.serve(async (req) => {
     // Determine model based on language configuration with better logic
     let finalModel = 'nova-2-general'; // Default model
     let useKeyterms = false;
-    let useKeywords = false;
     
     if (options.language) {
       params.append('language', options.language);
@@ -190,13 +168,11 @@ Deno.serve(async (req) => {
       } else if (nova2List.includes(options.language)) {
         finalModel = 'nova-2-general';
         params.append('model', 'nova-2-general');
-        useKeywords = true; // Nova-2 uses keywords API
         console.log('🎯 [MODEL] Selected Nova-2 for language:', options.language);
       } else {
         // Language not in either list - try Nova-2 as fallback
         finalModel = 'nova-2-general';
         params.append('model', 'nova-2-general');
-        useKeywords = true;
         console.log('⚠️  [MODEL] Language not in configured lists, using Nova-2 fallback for:', options.language);
       }
     } else {
@@ -213,35 +189,6 @@ Deno.serve(async (req) => {
         console.log('🔑 [KEYTERMS] Added for', options.language, '- length:', langKeyterm.length, 'chars');
       } else {
         console.log('⚠️  [KEYTERMS] No prompts found in database for', options.language);
-      }
-    }
-    
-    // Add keywords parameter for Nova-2 model (format: "word:intensity,word:intensity")
-    // Keywords API helps boost recognition of specific terms
-    if (useKeywords && options.language) {
-      const langKeywords = keywordsBoost[options.language];
-      if (langKeywords && langKeywords.trim()) {
-        // Parse comma-separated keywords and add each as separate param
-        const keywordPairs = langKeywords.split(',').map(k => k.trim()).filter(k => k);
-        keywordPairs.forEach(pair => {
-          // Format: "word:intensity" where intensity is -10 to 10
-          params.append('keywords', pair);
-        });
-        console.log('🔑 [KEYWORDS] Added', keywordPairs.length, 'keywords for Nova-2');
-      }
-    }
-    
-    // Add Find & Replace for automatic transcription corrections
-    // Format: "pattern:replacement,pattern:replacement"
-    if (options.language) {
-      const langReplace = transcriptionReplace[options.language];
-      if (langReplace && langReplace.trim()) {
-        const replacePairs = langReplace.split(',').map(r => r.trim()).filter(r => r);
-        replacePairs.forEach(pair => {
-          // Format: "pattern:replacement"
-          params.append('replace', pair);
-        });
-        console.log('🔄 [REPLACE] Added', replacePairs.length, 'auto-replacements for', options.language);
       }
     }
 

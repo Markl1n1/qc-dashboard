@@ -1,154 +1,24 @@
 // frontend/src/lib/merge-audio-to-wav.ts
-// Merge N audio files (mp3/m4a/flac/ogg/wav) → one 16k mono WAV Blob (speech-optimized).
+// Merge N audio files (mp3/m4a/flac/ogg/wav) → one 8k mono WAV Blob (speech-optimized).
 // Works in modern browsers without SharedArrayBuffer.
 //
 // Notes:
-// - Uses OfflineAudioContext for high-quality resampling (built-in anti-aliasing)
-// - 16 kHz is optimal for Deepgram recognition vs 8 kHz
+// - Uses Web Audio API to decode, resample to 8000 Hz mono, and concatenate sequentially.
 // - For long recordings, memory grows with total duration (Float32 arrays). Consider warning users if inputs are hours long.
 
 export type MergeResult = {
-  blob: Blob;           // final 16 kHz mono WAV (audio/wav)
+  blob: Blob;           // final 8 kHz mono WAV (audio/wav)
   durationSec: number;  // total duration (seconds)
-  sampleRate: number;   // 16000
+  sampleRate: number;   // 8000
   channels: number;     // 1
   samples: number;      // total mono PCM samples
 };
 
 type Options = {
   onProgress?: (stage: "decoding" | "resampling" | "concatenating" | "encoding", i?: number, n?: number) => void;
-  // If true, normalizes to -1..1 peak before 16-bit encoding (enabled by default for consistent levels)
+  // If true, normalizes to -1..1 peak before 16-bit encoding (rarely needed for clean speech)
   normalizePeak?: boolean;
-  // Apply audio preprocessing (high-pass filter, compression) for better recognition
-  preprocess?: boolean;
 };
-
-// Target sample rate: 16 kHz is Deepgram's recommended rate for optimal recognition
-// Previously 8 kHz - upgrading improves consonant and sibilant recognition by ~10-15%
-const TARGET_SR = 16000;
-const TARGET_CH = 1;
-
-/**
- * High-quality resampling using OfflineAudioContext
- * This uses the browser's native resampling which includes proper anti-aliasing
- */
-async function resampleWithOfflineContext(
-  sourceBuffer: AudioBuffer,
-  targetSampleRate: number
-): Promise<Float32Array> {
-  const sourceSampleRate = sourceBuffer.sampleRate;
-  const sourceLength = sourceBuffer.length;
-  const channels = sourceBuffer.numberOfChannels;
-  
-  // Calculate target length based on sample rate ratio
-  const targetLength = Math.ceil(sourceLength * targetSampleRate / sourceSampleRate);
-  
-  // Create offline context at target sample rate
-  const offlineCtx = new OfflineAudioContext(1, targetLength, targetSampleRate);
-  
-  // Create buffer source
-  const source = offlineCtx.createBufferSource();
-  
-  // If source is stereo/multi-channel, mix down to mono first
-  if (channels > 1) {
-    // Create a mono buffer with mixed channels
-    const monoBuffer = offlineCtx.createBuffer(1, sourceLength, sourceSampleRate);
-    const monoData = monoBuffer.getChannelData(0);
-    
-    for (let i = 0; i < sourceLength; i++) {
-      let sum = 0;
-      for (let ch = 0; ch < channels; ch++) {
-        sum += sourceBuffer.getChannelData(ch)[i];
-      }
-      monoData[i] = sum / channels;
-    }
-    
-    // Now resample the mono buffer
-    const resampleCtx = new OfflineAudioContext(1, targetLength, targetSampleRate);
-    const resampleSource = resampleCtx.createBufferSource();
-    resampleSource.buffer = monoBuffer;
-    resampleSource.connect(resampleCtx.destination);
-    resampleSource.start(0);
-    
-    const rendered = await resampleCtx.startRendering();
-    return rendered.getChannelData(0);
-  } else {
-    // Source is already mono, just resample
-    source.buffer = sourceBuffer;
-    source.connect(offlineCtx.destination);
-    source.start(0);
-    
-    const rendered = await offlineCtx.startRendering();
-    return rendered.getChannelData(0);
-  }
-}
-
-/**
- * Apply audio preprocessing for better speech recognition:
- * - High-pass filter (80 Hz) to remove low-frequency rumble/hum
- * - Low-pass filter (7500 Hz) to remove artifacts above speech range
- * - Dynamic compression to even out volume levels
- */
-async function preprocessAudio(
-  sourceBuffer: AudioBuffer,
-  sampleRate: number
-): Promise<Float32Array> {
-  const length = sourceBuffer.length;
-  const channels = sourceBuffer.numberOfChannels;
-  
-  // Create offline context for processing
-  const offlineCtx = new OfflineAudioContext(1, length, sampleRate);
-  
-  // Create source
-  const source = offlineCtx.createBufferSource();
-  
-  // Mix to mono if needed
-  if (channels > 1) {
-    const monoBuffer = offlineCtx.createBuffer(1, length, sampleRate);
-    const monoData = monoBuffer.getChannelData(0);
-    for (let i = 0; i < length; i++) {
-      let sum = 0;
-      for (let ch = 0; ch < channels; ch++) {
-        sum += sourceBuffer.getChannelData(ch)[i];
-      }
-      monoData[i] = sum / channels;
-    }
-    source.buffer = monoBuffer;
-  } else {
-    source.buffer = sourceBuffer;
-  }
-  
-  // High-pass filter at 80 Hz (removes rumble, HVAC noise, handling noise)
-  const highpass = offlineCtx.createBiquadFilter();
-  highpass.type = 'highpass';
-  highpass.frequency.value = 80;
-  highpass.Q.value = 0.7;
-  
-  // Low-pass filter at 7500 Hz (removes high-frequency artifacts, hiss)
-  const lowpass = offlineCtx.createBiquadFilter();
-  lowpass.type = 'lowpass';
-  lowpass.frequency.value = 7500;
-  lowpass.Q.value = 0.7;
-  
-  // Dynamic compressor for consistent volume
-  const compressor = offlineCtx.createDynamicsCompressor();
-  compressor.threshold.value = -24;  // Start compressing at -24 dB
-  compressor.knee.value = 12;        // Soft knee
-  compressor.ratio.value = 4;        // 4:1 compression ratio
-  compressor.attack.value = 0.003;   // Fast attack (3ms)
-  compressor.release.value = 0.25;   // Medium release (250ms)
-  
-  // Connect the chain: source → highpass → lowpass → compressor → destination
-  source.connect(highpass);
-  highpass.connect(lowpass);
-  lowpass.connect(compressor);
-  compressor.connect(offlineCtx.destination);
-  
-  source.start(0);
-  
-  const rendered = await offlineCtx.startRendering();
-  return rendered.getChannelData(0);
-}
 
 export async function mergeAudioFilesTo8kWav(
   files: File[],
@@ -156,9 +26,8 @@ export async function mergeAudioFilesTo8kWav(
 ): Promise<MergeResult> {
   if (!files || files.length < 2) throw new Error("Provide at least 2 files to merge.");
 
-  // Default: enable normalization for consistent levels
-  const shouldNormalize = opts.normalizePeak !== false;
-  const shouldPreprocess = opts.preprocess === true;
+  const TARGET_SR = 8000;
+  const TARGET_CH = 1;
 
   const AC: typeof AudioContext =
     (window as any).AudioContext || (window as any).webkitAudioContext;
@@ -181,31 +50,33 @@ export async function mergeAudioFilesTo8kWav(
     opts.onProgress?.("decoding", i + 1, files.length);
   }
 
-  // 2) Resample + downmix each to 16 kHz mono using high-quality OfflineAudioContext
+  // 2) Resample + downmix each to 8 kHz mono
+  //    We use a simple nearest-neighbor resample; for ASR this is sufficient.
   opts.onProgress?.("resampling", 0, decoded.length);
   const monoChunks: Float32Array[] = [];
   let totalFrames = 0;
 
   for (let i = 0; i < decoded.length; i++) {
     const src = decoded[i];
-    
-    let mono: Float32Array;
-    
-    if (shouldPreprocess) {
-      // Apply preprocessing first (at source sample rate), then resample
-      const preprocessed = await preprocessAudio(src, src.sampleRate);
-      
-      // Create a temporary buffer for the preprocessed audio
-      const tempCtx = new AC();
-      const tempBuffer = tempCtx.createBuffer(1, preprocessed.length, src.sampleRate);
-      tempBuffer.getChannelData(0).set(preprocessed);
-      await tempCtx.close();
-      
-      // Now resample to target rate
-      mono = await resampleWithOfflineContext(tempBuffer, TARGET_SR);
-    } else {
-      // Just resample without preprocessing
-      mono = await resampleWithOfflineContext(src, TARGET_SR);
+    const srcSR = src.sampleRate;
+    const channels = src.numberOfChannels;
+    const srcLen = src.length;
+
+    // Pre-get channel data
+    const chData: Float32Array[] = [];
+    for (let ch = 0; ch < channels; ch++) chData.push(src.getChannelData(ch));
+
+    // Number of frames in target sample rate
+    const framesAtTarget = Math.ceil((srcLen / srcSR) * TARGET_SR);
+    const mono = new Float32Array(framesAtTarget);
+
+    // Nearest neighbor resample + average for mono
+    const ratio = srcSR / TARGET_SR;
+    for (let t = 0; t < framesAtTarget; t++) {
+      const srcIdx = Math.min(srcLen - 1, Math.floor(t * ratio));
+      let sum = 0;
+      for (let ch = 0; ch < channels; ch++) sum += chData[ch][srcIdx] || 0;
+      mono[t] = sum / channels;
     }
 
     monoChunks.push(mono);
@@ -224,24 +95,20 @@ export async function mergeAudioFilesTo8kWav(
     }
   }
 
-  // Peak normalization (enabled by default for consistent levels)
-  if (shouldNormalize) {
+  // Optional normalization (peak normalize to avoid clipping after 16-bit quantization)
+  if (opts.normalizePeak) {
     let peak = 0;
     for (let i = 0; i < joined.length; i++) {
       const v = Math.abs(joined[i]);
       if (v > peak) peak = v;
     }
-    // Normalize to 0.95 peak to avoid any potential clipping
-    if (peak > 1e-6) {
-      const targetPeak = 0.95;
-      const gain = targetPeak / peak;
-      for (let i = 0; i < joined.length; i++) {
-        joined[i] *= gain;
-      }
+    if (peak > 1e-6 && peak > 1.0) {
+      const g = 1.0 / peak;
+      for (let i = 0; i < joined.length; i++) joined[i] *= g;
     }
   }
 
-  // 4) Encode 16-bit PCM WAV @ 16k mono
+  // 4) Encode 16-bit PCM WAV @ 8k mono
   opts.onProgress?.("encoding");
   const blob = float32ToWav16Mono(joined, TARGET_SR);
 
