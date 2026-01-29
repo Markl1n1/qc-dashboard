@@ -123,7 +123,7 @@ serve(async (req) => {
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `Please analyze this conversation and provide a JSON response with the exact format specified in the instructions:\n\n${conversationText}` }
         ],
-        max_completion_tokens: 8000, // Increased from 4000 to handle longer responses
+        max_completion_tokens: 16000, // Increased to 16000 to find ALL mistakes, not just a few
         response_format: { type: "json_object" }
       }),
     });

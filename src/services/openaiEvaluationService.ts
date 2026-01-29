@@ -321,6 +321,11 @@ class OpenAIEvaluationService {
 
     const basePrompt = `${instructions}
 
+IMPORTANT: You must find ALL mistakes and issues in the conversation, not just a few. 
+Do not limit yourself to only 3-5 mistakes. Analyze the entire conversation thoroughly 
+and report every issue you find, regardless of how many there are. The token limit has 
+been increased to allow for comprehensive analysis.
+
 You must respond in the following JSON format:
 {
   "score": <int>,
@@ -417,14 +422,22 @@ You must respond in the following JSON format:
   }
 
   private calculateOptimalTokens(promptTokens: number, model: string): number {
-    // Base token limits
-    const baseTokens = model.includes('mini') ? 2000 : 4000;
+    // Для GPT-5 моделей увеличиваем лимит для большего количества ошибок
+    const isGPT5OrNewer = model.includes('gpt-5') || model.includes('gpt-4.1') || model.includes('o3') || model.includes('o4');
+    
+    if (isGPT5OrNewer) {
+      // GPT-5 может обрабатывать больше токенов - увеличиваем для поиска всех ошибок
+      return Math.min(16000, Math.max(8000, promptTokens * 2));
+    }
+    
+    // Для старых моделей также увеличиваем лимит
+    const baseTokens = model.includes('mini') ? 4000 : 8000;
     
     // Increase tokens for complex analysis (long conversations)
     if (promptTokens > 8000) {
-      return Math.min(8000, baseTokens * 2);
+      return Math.min(12000, baseTokens * 2);
     } else if (promptTokens > 4000) {
-      return Math.min(6000, baseTokens * 1.5);
+      return Math.min(10000, baseTokens * 1.5);
     }
     
     return baseTokens;

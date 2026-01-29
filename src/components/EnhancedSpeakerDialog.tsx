@@ -268,6 +268,9 @@ const assignments = useMemo(() => {
                 return (
                   <div
                     key={index}
+                    id={`utterance-${index}`}
+                    data-utterance={utterance.text}
+                    data-utterance-normalized={normalizeForMatch(utterance.text)}
                     className={`flex gap-4 p-4 rounded-lg border-l-4 transition-all hover:shadow-sm ${
                       isHighlighted ? 'ring-2 ring-primary shadow-lg' : ''
                     } ${utteranceMistakes.length > 0 ? 'border-red-200 bg-red-50/50' : ''}`}
