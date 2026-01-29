@@ -148,11 +148,10 @@ export const useAuthStore = create<AuthStore>()(
         try {
           console.log('Security Event: Passcode verification request initiated');
           
-          // Use secure edge function for passcode verification
-          const { data, error } = await supabase.functions.invoke('verify-passcode', {
-            body: JSON.stringify({ passcode }),
-            headers: { 'Content-Type': 'application/json' }
-          });
+      // Use secure edge function for passcode verification
+      const { data, error } = await supabase.functions.invoke('verify-passcode', {
+        body: { passcode }
+      });
 
           if (error) {
             console.error('Security Event: Error calling passcode verification function:', error.message);
