@@ -140,10 +140,11 @@ serve(async (req) => {
           }
         );
     }
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Admin operation error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: errorMessage }),
       { 
         status: 500, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -179,10 +180,11 @@ async function handleBatchUserUpdate(supabase: any, data: any) {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Batch user update error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: errorMessage }),
       { 
         status: 500, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -216,10 +218,11 @@ async function handleSystemConfigUpdate(supabase: any, data: any) {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('System config update error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: errorMessage }),
       { 
         status: 500, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -247,10 +250,11 @@ async function handleBulkDelete(supabase: any, data: any) {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Bulk delete error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: errorMessage }),
       { 
         status: 500, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -349,10 +353,11 @@ async function handleCreateUser(supabase: any, data: any) {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Create user error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: errorMessage }),
       { 
         status: 500, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -381,10 +386,11 @@ async function handleResetPassword(supabase: any, data: any) {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Reset password error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: errorMessage }),
       { 
         status: 500, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -421,10 +427,11 @@ async function handleDeleteUser(supabase: any, data: any) {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Delete user error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: errorMessage }),
       { 
         status: 500, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -446,10 +453,11 @@ async function handleAuditLog(supabase: any, data: any) {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Audit log error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: errorMessage }),
       { 
         status: 500, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -474,10 +482,11 @@ async function handleListUsers(supabase: any, data: any) {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('List users error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: errorMessage }),
       { 
         status: 500, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 

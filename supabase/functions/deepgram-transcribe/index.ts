@@ -100,7 +100,7 @@ Deno.serve(async (req) => {
       language: options.language || 'auto-detect'
     });
 
-    let audioBuffer: Uint8Array;
+    let audioBuffer: Uint8Array | null = null;
     let useSignedUrl = false;
     let estimatedAudioDuration = 0;
 
@@ -222,7 +222,7 @@ Deno.serve(async (req) => {
     let deepgramResponse: Response;
     const deepgramCallStart = Date.now();
 
-    if (useSignedUrl) {
+    if (useSignedUrl && storageFile) {
       // Generate signed URL for secure access (bucket is private)
       console.log('🔐 [SECURITY] Generating signed URL for private bucket access...');
       const { data: signedUrlData, error: signedUrlError } = await supabase.storage
@@ -255,7 +255,7 @@ Deno.serve(async (req) => {
         }
         throw fetchError;
       }
-    } else {
+    } else if (audioBuffer) {
       try {
         deepgramResponse = await fetch(deepgramUrl, {
           method: 'POST',
@@ -263,7 +263,7 @@ Deno.serve(async (req) => {
             'Authorization': `Token ${DEEPGRAM_API_KEY}`,
             // Remove Content-Type header to let Deepgram auto-detect format
           },
-          body: audioBuffer!,
+          body: audioBuffer,
           signal: AbortSignal.timeout(840000) // 14 minutes timeout (slightly less than 15 min function limit)
         });
       } catch (fetchError) {
@@ -376,7 +376,7 @@ Deno.serve(async (req) => {
     // Calculate audio duration in minutes for database
     const audioDurationSeconds = deepgramResult.metadata?.duration || 0;
     const audioDurationMinutes = audioDurationSeconds / 60;
-    const fileSizeBytes = audioBuffer ? audioBuffer.length : 0;
+    const fileSizeBytes = audioBuffer?.length ?? 0;
     const responseTimeMs = parseFloat(deepgramCallDuration) * 1000;
     
     const result = {

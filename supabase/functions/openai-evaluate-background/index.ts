@@ -94,8 +94,9 @@ serve(async (req) => {
           }
         }
       }
-    } catch (error) {
-      console.warn('⚠️ Could not load AI instructions from storage, using default prompt:', error.message);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.warn('⚠️ Could not load AI instructions from storage, using default prompt:', errorMessage);
     }
 
     // Prepare conversation text
@@ -279,9 +280,10 @@ serve(async (req) => {
           await updateSpeakerLabel('Speaker 1', speaker_1);
         }
       }
-    } catch (utterErr) {
+    } catch (utterErr: unknown) {
       // make this non-fatal: log but continue
-      console.warn('⚠️ Error while updating dialog_speaker_utterances:', utterErr?.message || utterErr);
+      const errMsg = utterErr instanceof Error ? utterErr.message : String(utterErr);
+      console.warn('⚠️ Error while updating dialog_speaker_utterances:', errMsg);
     }
 
     console.log('✅ AI analysis completed successfully');
@@ -297,11 +299,12 @@ serve(async (req) => {
       }
     );
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('❌ AI analysis failed:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return new Response(
       JSON.stringify({ 
-        error: error.message,
+        error: errorMessage,
         success: false 
       }),
       {
