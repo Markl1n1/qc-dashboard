@@ -1,135 +1,226 @@
 
+# План исправления build-ошибок и изоляции агентов
 
-# План исправления проблем VoiceQC
+## Часть 1: Исправление TypeScript ошибок в Edge Functions
 
-## Проблема 1: Регистрация пользователей не работает
+### Анализ ошибок
+Все 19 ошибок относятся к двум типам:
 
-### Диагноз
-Edge function `verify-passcode` падает с ошибкой `SyntaxError: Unexpected end of JSON input` из-за **двойной JSON сериализации** в клиентском коде.
+1. **TS18046: 'error' is of type 'unknown'** (17 ошибок)
+   - В catch-блоках TypeScript требует явную типизацию error
+   - Файлы: `admin-operations`, `dialog-cleanup`, `openai-evaluate-background`, `openai-evaluate`
 
-### Причина
-В файле `src/store/authStore.ts` строка 152-154:
-```typescript
-const { data, error } = await supabase.functions.invoke('verify-passcode', {
-  body: JSON.stringify({ passcode }),  // ❌ ОШИБКА: двойная сериализация
-  headers: { 'Content-Type': 'application/json' }
-});
-```
-
-Метод `supabase.functions.invoke` автоматически конвертирует объект body в JSON. Ручной вызов `JSON.stringify()` создаёт строку `"{\"passcode\":\"...\"}"`, которую edge function не может распарсить.
+2. **TS2345/TS2769/TS2454: Проблемы с типами в deepgram-transcribe** (3 ошибки)
+   - `storageFile` может быть undefined — нужна проверка
+   - `audioBuffer` используется до присвоения
+   - `Uint8Array` не соответствует ожидаемому типу body
 
 ### Решение
-Изменить на:
+
+**Паттерн для типизации error:**
 ```typescript
-const { data, error } = await supabase.functions.invoke('verify-passcode', {
-  body: { passcode }  // ✅ передаём объект напрямую
-});
+} catch (error: unknown) {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  return new Response(
+    JSON.stringify({ error: errorMessage }),
+    { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
+}
 ```
 
-### Файл для изменения
-- `src/store/authStore.ts` — строки 152-155
+---
+
+### Файл 1: `supabase/functions/admin-operations/index.ts`
+
+**Изменения (строки с ошибками: 146, 185, 222, 253, 355, 387, 427, 452, 480):**
+
+| Строка | Было | Стало |
+|--------|------|-------|
+| 143 | `} catch (error) {` | `} catch (error: unknown) {` |
+| 146 | `error: error.message` | `error: error instanceof Error ? error.message : String(error)` |
+| 182 | `} catch (error) {` | `} catch (error: unknown) {` |
+| 185 | `error: error.message` | `error: error instanceof Error ? error.message : String(error)` |
+| 219 | `} catch (error) {` | `} catch (error: unknown) {` |
+| 222 | `error: error.message` | `error: error instanceof Error ? error.message : String(error)` |
+| 250 | `} catch (error) {` | `} catch (error: unknown) {` |
+| 253 | `error: error.message` | `error: error instanceof Error ? error.message : String(error)` |
+| 352 | `} catch (error) {` | `} catch (error: unknown) {` |
+| 355 | `error: error.message` | `error: error instanceof Error ? error.message : String(error)` |
+| 384 | `} catch (error) {` | `} catch (error: unknown) {` |
+| 387 | `error: error.message` | `error: error instanceof Error ? error.message : String(error)` |
+| 424 | `} catch (error) {` | `} catch (error: unknown) {` |
+| 427 | `error: error.message` | `error: error instanceof Error ? error.message : String(error)` |
+| 449 | `} catch (error) {` | `} catch (error: unknown) {` |
+| 452 | `error: error.message` | `error: error instanceof Error ? error.message : String(error)` |
+| 477 | `} catch (error) {` | `} catch (error: unknown) {` |
+| 480 | `error: error.message` | `error: error instanceof Error ? error.message : String(error)` |
 
 ---
 
-## Проблема 2: Пустая транскрипция (0 utterances)
+### Файл 2: `supabase/functions/deepgram-transcribe/index.ts`
 
-### Диагноз
-Логи показывают:
-- Deepgram обработал аудио (20.51 сек, 0.31 MB)
-- Вернул `Has transcript: true`, `Has utterances: true`
-- Но `Utterance count: 0`, `Transcript length: 0 characters`
-
-### Возможные причины
-1. Аудио содержит только тишину или нераспознаваемый шум
-2. Проблема с мерджингом аудио (8 kHz sample rate слишком низкий)
-3. Исходный файл повреждён
-
-### Рекомендации (не в этом плане)
-- Проверить исходный аудио файл вручную
-- Рассмотреть увеличение sample rate до 16 kHz (см. предыдущий план улучшений)
-- Добавить валидацию: если транскрипция пустая, показывать предупреждение пользователю
-
----
-
-## Проблема 3: Создание тестового пользователя
-
-### Текущая архитектура
-Система уже правильно настроена для разделения доступа:
-
-1. **Таблица `profiles`** — создаётся автоматически через trigger `handle_new_user`
-   - Новые пользователи получают `role: 'supervisor'` по умолчанию
-   
-2. **Таблица `user_roles`** — хранит роли отдельно (admin/supervisor)
-   - Используется функция `has_role()` для проверки
-
-3. **RLS политики на `dialogs`:**
-   - Supervisor: `auth.uid() = user_id` — видит только свои диалоги
-   - Admin: `get_current_user_role() = 'admin'` — видит все диалоги
-
-### Что нужно сделать
-После исправления проблемы #1:
-
-1. **Зарегистрировать тестового пользователя через UI:**
-   - Перейти на `/auth`
-   - Вкладка "Sign Up"
-   - Ввести email, пароль, имя
-   - Passcode: `QC2025!`
-
-2. **Подтвердить email** (если включено в Supabase)
-
-3. **Пользователь автоматически получит:**
-   - Запись в `profiles` с `role: 'supervisor'`
-   - Запись в `user_roles` с `role: 'supervisor'`
-   - Доступ только к своим диалогам
-
-### Альтернатива: Создать через Admin Dashboard
-Если вы залогинены как admin, можно создать пользователя через:
-- `/admin-dashboard` → раздел управления пользователями
-- Это использует edge function `admin-operations` с service role
-
----
-
-## Технический план изменений
-
-### Шаг 1: Исправить двойную сериализацию JSON
-
-**Файл:** `src/store/authStore.ts`
-
-**Текущий код (строки 147-155):**
+**Проблема 1 (строка 230):** `storageFile` может быть `undefined`
 ```typescript
-verifyPasscode: async (passcode: string) => {
-  try {
-    console.log('Security Event: Passcode verification request initiated');
-    
-    const { data, error } = await supabase.functions.invoke('verify-passcode', {
-      body: JSON.stringify({ passcode }),
-      headers: { 'Content-Type': 'application/json' }
-    });
+// Было:
+.createSignedUrl(storageFile, 3600);
+
+// Стало (storageFile уже проверен в if выше):
+.createSignedUrl(storageFile!, 3600);
 ```
 
-**Исправленный код:**
+**Проблема 2 (строки 103, 266, 379):** `audioBuffer` не инициализирован корректно
 ```typescript
-verifyPasscode: async (passcode: string) => {
-  try {
-    console.log('Security Event: Passcode verification request initiated');
-    
-    const { data, error } = await supabase.functions.invoke('verify-passcode', {
-      body: { passcode }
-    });
-```
+// Строка 103 - изменить:
+let audioBuffer: Uint8Array | null = null;
 
-### Ожидаемый результат
-- Регистрация новых пользователей начнёт работать
-- Edge function получит корректный JSON `{ "passcode": "..." }`
-- Passcode будет верифицирован успешно
+// Строка 266 - изменить:
+body: new Blob([audioBuffer!]).stream(),
+// Или альтернативно:
+body: audioBuffer!.buffer,
+
+// Строка 379 - изменить:
+const fileSizeBytes = audioBuffer?.length ?? 0;
+```
 
 ---
 
-## Краткое резюме
+### Файл 3: `supabase/functions/dialog-cleanup/index.ts`
 
-| Проблема | Причина | Решение | Сложность |
-|----------|---------|---------|-----------|
-| Регистрация не работает | Двойная JSON сериализация | Убрать `JSON.stringify()` | Низкая (1 строка) |
-| Пустая транскрипция | Проблема с исходным аудио | Проверить файл, увеличить sample rate | Средняя |
-| Создать тестового пользователя | — | Использовать UI после фикса #1 | — |
+**Изменение (строка 219-222):**
+```typescript
+} catch (error: unknown) {
+  console.error('Dialog cleanup error:', error);
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  return new Response(
+    JSON.stringify({ error: errorMessage }),
+```
 
+---
+
+### Файл 4: `supabase/functions/openai-evaluate-background/index.ts`
+
+**Изменение 1 (строка 97-98):**
+```typescript
+} catch (error: unknown) {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  console.warn('⚠️ Could not load AI instructions from storage, using default prompt:', errorMessage);
+}
+```
+
+**Изменение 2 (строка 282-284):**
+```typescript
+} catch (utterErr: unknown) {
+  const errMsg = utterErr instanceof Error ? utterErr.message : String(utterErr);
+  console.warn('⚠️ Error while updating dialog_speaker_utterances:', errMsg);
+}
+```
+
+**Изменение 3 (строка 300-304):**
+```typescript
+} catch (error: unknown) {
+  console.error('❌ AI analysis failed:', error);
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  return new Response(
+    JSON.stringify({ 
+      error: errorMessage,
+```
+
+---
+
+### Файл 5: `supabase/functions/openai-evaluate/index.ts`
+
+**Изменение (строки 224-231):**
+```typescript
+} catch (error: unknown) {
+  console.error('❌ Error in evaluate function:', error);
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  const errorStack = error instanceof Error ? error.stack : undefined;
+  console.error('❌ Error stack:', errorStack);
+  return new Response(
+    JSON.stringify({ 
+      error: errorMessage,
+      details: errorStack,
+```
+
+---
+
+## Часть 2: Изоляция агентов между аккаунтами Supervisor
+
+### Текущее состояние
+
+Таблица `agents` имеет RLS-политики:
+- `SELECT`: Все аутентифицированные пользователи видят всех агентов
+- `INSERT/UPDATE/DELETE`: Только создатель (`auth.uid() = user_id`)
+
+### Проблема
+Supervisor видит агентов, созданных другими пользователями. Нужна изоляция.
+
+### Архитектура решения
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                      agents table                               │
+├────────────────────────────────────────────────────────────────┤
+│  RLS Policies (обновлённые):                                   │
+│                                                                │
+│  SELECT:                                                       │
+│    - Admin: видит ВСЕ агенты (has_role(auth.uid(), 'admin'))  │
+│    - Supervisor: только свои (auth.uid() = user_id)           │
+│                                                                │
+│  INSERT: auth.uid() = user_id (без изменений)                 │
+│  UPDATE: auth.uid() = user_id (без изменений)                 │
+│  DELETE: auth.uid() = user_id (без изменений)                 │
+└────────────────────────────────────────────────────────────────┘
+```
+
+### SQL миграция
+
+```sql
+-- Удалить старую политику SELECT для authenticated
+DROP POLICY IF EXISTS "Authenticated users can view agents" ON public.agents;
+
+-- Создать новые политики SELECT
+-- 1. Supervisors видят только свои агенты
+CREATE POLICY "Users can view their own agents"
+  ON public.agents FOR SELECT
+  USING (auth.uid() = user_id);
+
+-- 2. Admins видят всех агентов
+CREATE POLICY "Admins can view all agents"
+  ON public.agents FOR SELECT
+  USING (public.has_role(auth.uid(), 'admin'::app_role));
+```
+
+### Влияние на код
+
+**Файл: `src/services/agentService.ts`**
+- Никаких изменений не требуется! 
+- Запрос `getAgents()` автоматически будет фильтроваться через RLS
+- Admin увидит всех агентов, Supervisor — только своих
+
+**Файл: `src/pages/AgentManagement.tsx`**
+- Никаких изменений
+- UI остаётся прежним, RLS делает фильтрацию на уровне БД
+
+---
+
+## Итоговый план изменений
+
+| # | Файл | Тип изменения | Описание |
+|---|------|---------------|----------|
+| 1 | `admin-operations/index.ts` | Исправление TS | Типизация error в 9 catch-блоках |
+| 2 | `deepgram-transcribe/index.ts` | Исправление TS | Исправить audioBuffer и storageFile |
+| 3 | `dialog-cleanup/index.ts` | Исправление TS | Типизация error в 1 catch-блоке |
+| 4 | `openai-evaluate-background/index.ts` | Исправление TS | Типизация error в 3 местах |
+| 5 | `openai-evaluate/index.ts` | Исправление TS | Типизация error в 1 catch-блоке |
+| 6 | SQL миграция | RLS политика | Изоляция агентов по user_id |
+
+---
+
+## Ожидаемый результат
+
+После применения изменений:
+1. **Build успешен** — все TypeScript ошибки исправлены
+2. **Supervisor видит только своих агентов** — RLS фильтрует на уровне БД
+3. **Admin видит всех агентов** — через отдельную RLS политику
+4. **Никаких изменений в UI** — изоляция прозрачна для фронтенда
