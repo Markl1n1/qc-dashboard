@@ -1,226 +1,223 @@
 
-# План исправления build-ошибок и изоляции агентов
+# План: Кнопка "Validate Diarization" с ролевым доступом
 
-## Часть 1: Исправление TypeScript ошибок в Edge Functions
+## Обзор задачи
 
-### Анализ ошибок
-Все 19 ошибок относятся к двум типам:
+1. **Исправить build-ошибки** в `deepgram-transcribe/index.ts`
+2. **Создать Edge Function** `diarization-fix` для GPT-валидации
+3. **Добавить кнопку** "Validate Diarization" в компонент `EnhancedSpeakerDialog`
+4. **Ролевой доступ**: только admin может нажать, supervisor видит затемнённую кнопку с tooltip
 
-1. **TS18046: 'error' is of type 'unknown'** (17 ошибок)
-   - В catch-блоках TypeScript требует явную типизацию error
-   - Файлы: `admin-operations`, `dialog-cleanup`, `openai-evaluate-background`, `openai-evaluate`
+## Часть 1: Исправление build-ошибок
 
-2. **TS2345/TS2769/TS2454: Проблемы с типами в deepgram-transcribe** (3 ошибки)
-   - `storageFile` может быть undefined — нужна проверка
-   - `audioBuffer` используется до присвоения
-   - `Uint8Array` не соответствует ожидаемому типу body
+### Файл: `supabase/functions/deepgram-transcribe/index.ts`
 
-### Решение
+**Проблема 1:** `audioBuffer` типа `Uint8Array` не совместим с `body` в fetch (Deno требует `Blob` или `ArrayBuffer`).
 
-**Паттерн для типизации error:**
+**Проблема 2:** `deepgramResponse` используется до присвоения — нужна проверка после блока else-if.
+
+**Решение:**
+
 ```typescript
-} catch (error: unknown) {
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  return new Response(
-    JSON.stringify({ error: errorMessage }),
-    { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
+// Строка 222: явная типизация
+let deepgramResponse: Response | undefined;
+
+// Строка 266: конвертация Uint8Array → Blob
+body: audioBuffer ? new Blob([audioBuffer]) : undefined,
+
+// После строки 277: добавить проверку
+if (!deepgramResponse) {
+  console.error('❌ [ERROR] No deepgramResponse - neither storage URL nor audio buffer processed');
+  throw new Error('No audio data was processed');
 }
 ```
 
 ---
 
-### Файл 1: `supabase/functions/admin-operations/index.ts`
+## Часть 2: Создание Edge Function `diarization-fix`
 
-**Изменения (строки с ошибками: 146, 185, 222, 253, 355, 387, 427, 452, 480):**
+### Файл: `supabase/functions/diarization-fix/index.ts`
 
-| Строка | Было | Стало |
-|--------|------|-------|
-| 143 | `} catch (error) {` | `} catch (error: unknown) {` |
-| 146 | `error: error.message` | `error: error instanceof Error ? error.message : String(error)` |
-| 182 | `} catch (error) {` | `} catch (error: unknown) {` |
-| 185 | `error: error.message` | `error: error instanceof Error ? error.message : String(error)` |
-| 219 | `} catch (error) {` | `} catch (error: unknown) {` |
-| 222 | `error: error.message` | `error: error instanceof Error ? error.message : String(error)` |
-| 250 | `} catch (error) {` | `} catch (error: unknown) {` |
-| 253 | `error: error.message` | `error: error instanceof Error ? error.message : String(error)` |
-| 352 | `} catch (error) {` | `} catch (error: unknown) {` |
-| 355 | `error: error.message` | `error: error instanceof Error ? error.message : String(error)` |
-| 384 | `} catch (error) {` | `} catch (error: unknown) {` |
-| 387 | `error: error.message` | `error: error instanceof Error ? error.message : String(error)` |
-| 424 | `} catch (error) {` | `} catch (error: unknown) {` |
-| 427 | `error: error.message` | `error: error instanceof Error ? error.message : String(error)` |
-| 449 | `} catch (error) {` | `} catch (error: unknown) {` |
-| 452 | `error: error.message` | `error: error instanceof Error ? error.message : String(error)` |
-| 477 | `} catch (error) {` | `} catch (error: unknown) {` |
-| 480 | `error: error.message` | `error: error instanceof Error ? error.message : String(error)` |
+**Функционал:**
+- Принимает `utterances` от клиента
+- Отправляет в OpenAI для анализа и исправления диаризации
+- Возвращает исправленные реплики и форматированный текст
+
+**Промпт для GPT:**
+
+```text
+You are an expert in analyzing and correcting speaker diarization in customer service conversations.
+
+TASK: Analyze the following transcript and correct any diarization issues.
+
+CONTEXT:
+- These are customer service phone calls between an Agent and a Customer
+- Deepgram has performed automatic speaker diarization but it may contain errors
+- Your job is to analyze the conversation flow and correct speaker assignments
+
+COMMON DIARIZATION ERRORS:
+1. All speech assigned to single speaker
+2. Speaker labels swapped (Agent marked as Customer and vice versa)
+3. Incorrect speaker changes mid-sentence
+
+HOW TO IDENTIFY AGENT VS CUSTOMER:
+Agent patterns:
+- Greetings: "Добрый день", "Здравствуйте", "Компания X, чем могу помочь?"
+- Formal speech, professional tone
+- Provides information, instructions
+- Asks clarifying questions about customer needs
+
+Customer patterns:
+- Responds to greetings
+- Asks questions about services/products
+- Provides personal information
+- Expresses problems or requests
+
+RESPOND WITH JSON:
+{
+  "needs_correction": true/false,
+  "confidence": 0.0-1.0,
+  "analysis": "Brief explanation of detected issues",
+  "corrected_utterances": [
+    {
+      "speaker": "Agent" or "Customer",
+      "original_speaker": "Speaker X",
+      "text": "original text",
+      "start": original_start,
+      "end": original_end
+    }
+  ],
+  "formatted_dialog": "Agent:\n- текст\n\nCustomer:\n- текст\n..."
+}
+
+RULES:
+- NEVER modify the text content
+- NEVER modify timing (start/end values)
+- ONLY reassign speaker labels
+- Format output as "Agent" and "Customer" (not Speaker 0/1)
+```
 
 ---
 
-### Файл 2: `supabase/functions/deepgram-transcribe/index.ts`
+## Часть 3: Компонент кнопки с ролевым доступом
 
-**Проблема 1 (строка 230):** `storageFile` может быть `undefined`
+### Новый файл: `src/components/ValidateDiarizationButton.tsx`
+
 ```typescript
+interface Props {
+  utterances: SpeakerUtterance[];
+  disabled?: boolean;
+}
+```
+
+**Логика:**
+1. Использует `useOptimizedUserRole()` для проверки роли
+2. Если `isAdmin` → кнопка активна
+3. Если не admin → кнопка затемнена (`opacity-50 cursor-not-allowed`)
+4. При наведении на неактивную кнопку → Tooltip "Функционал ещё тестируется"
+
+**При клике:**
+1. Показывает loading state "Validating..."
+2. Вызывает `supabase.functions.invoke('diarization-fix', { body: { utterances } })`
+3. Получает результат
+4. Скачивает `.txt` файл с `formatted_dialog`
+
+---
+
+## Часть 4: Интеграция в EnhancedSpeakerDialog
+
+### Файл: `src/components/EnhancedSpeakerDialog.tsx`
+
+**Изменения в строке 207:**
+
+```tsx
 // Было:
-.createSignedUrl(storageFile, 3600);
+<Button variant="outline" size="sm" onClick={handleCopyDialog}>
+  <Copy className="h-4 w-4 mr-2" />
+  Copy Dialog
+</Button>
 
-// Стало (storageFile уже проверен в if выше):
-.createSignedUrl(storageFile!, 3600);
-```
-
-**Проблема 2 (строки 103, 266, 379):** `audioBuffer` не инициализирован корректно
-```typescript
-// Строка 103 - изменить:
-let audioBuffer: Uint8Array | null = null;
-
-// Строка 266 - изменить:
-body: new Blob([audioBuffer!]).stream(),
-// Или альтернативно:
-body: audioBuffer!.buffer,
-
-// Строка 379 - изменить:
-const fileSizeBytes = audioBuffer?.length ?? 0;
+// Станет:
+<div className="flex gap-2">
+  <ValidateDiarizationButton utterances={mergedUtterances} />
+  <Button variant="outline" size="sm" onClick={handleCopyDialog}>
+    <Copy className="h-4 w-4 mr-2" />
+    Copy Dialog
+  </Button>
+</div>
 ```
 
 ---
 
-### Файл 3: `supabase/functions/dialog-cleanup/index.ts`
+## Часть 5: Обновление config.toml
 
-**Изменение (строка 219-222):**
-```typescript
-} catch (error: unknown) {
-  console.error('Dialog cleanup error:', error);
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  return new Response(
-    JSON.stringify({ error: errorMessage }),
+### Файл: `supabase/config.toml`
+
+```toml
+[functions.diarization-fix]
+verify_jwt = false
 ```
 
 ---
 
-### Файл 4: `supabase/functions/openai-evaluate-background/index.ts`
+## Архитектура решения
 
-**Изменение 1 (строка 97-98):**
-```typescript
-} catch (error: unknown) {
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  console.warn('⚠️ Could not load AI instructions from storage, using default prompt:', errorMessage);
-}
-```
-
-**Изменение 2 (строка 282-284):**
-```typescript
-} catch (utterErr: unknown) {
-  const errMsg = utterErr instanceof Error ? utterErr.message : String(utterErr);
-  console.warn('⚠️ Error while updating dialog_speaker_utterances:', errMsg);
-}
-```
-
-**Изменение 3 (строка 300-304):**
-```typescript
-} catch (error: unknown) {
-  console.error('❌ AI analysis failed:', error);
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  return new Response(
-    JSON.stringify({ 
-      error: errorMessage,
-```
-
----
-
-### Файл 5: `supabase/functions/openai-evaluate/index.ts`
-
-**Изменение (строки 224-231):**
-```typescript
-} catch (error: unknown) {
-  console.error('❌ Error in evaluate function:', error);
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  const errorStack = error instanceof Error ? error.stack : undefined;
-  console.error('❌ Error stack:', errorStack);
-  return new Response(
-    JSON.stringify({ 
-      error: errorMessage,
-      details: errorStack,
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    EnhancedSpeakerDialog Component                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   ┌──────────────────────┐  ┌──────────────────┐                            │
+│   │ ValidateDiarization  │  │   Copy Dialog    │                            │
+│   │      Button          │  │     Button       │                            │
+│   └──────────┬───────────┘  └──────────────────┘                            │
+│              │                                                               │
+│              ▼                                                               │
+│   ┌──────────────────────────────────────────────────────┐                  │
+│   │              useOptimizedUserRole()                  │                  │
+│   │   isAdmin? → активная кнопка                         │                  │
+│   │   !isAdmin → затемнённая + Tooltip                   │                  │
+│   └──────────────────────────────────────────────────────┘                  │
+│              │ (только для admin)                                            │
+│              ▼                                                               │
+│   ┌──────────────────────────────────────────────────────┐                  │
+│   │        supabase.functions.invoke('diarization-fix')  │                  │
+│   └──────────────────────────────────────────────────────┘                  │
+│              │                                                               │
+│              ▼                                                               │
+│   ┌──────────────────────────────────────────────────────┐                  │
+│   │           Edge Function: diarization-fix             │                  │
+│   │   - Проверка JWT                                     │                  │
+│   │   - Вызов OpenAI API                                 │                  │
+│   │   - Возврат исправленного диалога                    │                  │
+│   └──────────────────────────────────────────────────────┘                  │
+│              │                                                               │
+│              ▼                                                               │
+│   ┌──────────────────────────────────────────────────────┐                  │
+│   │           Скачивание .txt файла                      │                  │
+│   │   validated_dialog_[timestamp].txt                   │                  │
+│   └──────────────────────────────────────────────────────┘                  │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Часть 2: Изоляция агентов между аккаунтами Supervisor
+## Итоговый список изменений
 
-### Текущее состояние
-
-Таблица `agents` имеет RLS-политики:
-- `SELECT`: Все аутентифицированные пользователи видят всех агентов
-- `INSERT/UPDATE/DELETE`: Только создатель (`auth.uid() = user_id`)
-
-### Проблема
-Supervisor видит агентов, созданных другими пользователями. Нужна изоляция.
-
-### Архитектура решения
-
-```
-┌────────────────────────────────────────────────────────────────┐
-│                      agents table                               │
-├────────────────────────────────────────────────────────────────┤
-│  RLS Policies (обновлённые):                                   │
-│                                                                │
-│  SELECT:                                                       │
-│    - Admin: видит ВСЕ агенты (has_role(auth.uid(), 'admin'))  │
-│    - Supervisor: только свои (auth.uid() = user_id)           │
-│                                                                │
-│  INSERT: auth.uid() = user_id (без изменений)                 │
-│  UPDATE: auth.uid() = user_id (без изменений)                 │
-│  DELETE: auth.uid() = user_id (без изменений)                 │
-└────────────────────────────────────────────────────────────────┘
-```
-
-### SQL миграция
-
-```sql
--- Удалить старую политику SELECT для authenticated
-DROP POLICY IF EXISTS "Authenticated users can view agents" ON public.agents;
-
--- Создать новые политики SELECT
--- 1. Supervisors видят только свои агенты
-CREATE POLICY "Users can view their own agents"
-  ON public.agents FOR SELECT
-  USING (auth.uid() = user_id);
-
--- 2. Admins видят всех агентов
-CREATE POLICY "Admins can view all agents"
-  ON public.agents FOR SELECT
-  USING (public.has_role(auth.uid(), 'admin'::app_role));
-```
-
-### Влияние на код
-
-**Файл: `src/services/agentService.ts`**
-- Никаких изменений не требуется! 
-- Запрос `getAgents()` автоматически будет фильтроваться через RLS
-- Admin увидит всех агентов, Supervisor — только своих
-
-**Файл: `src/pages/AgentManagement.tsx`**
-- Никаких изменений
-- UI остаётся прежним, RLS делает фильтрацию на уровне БД
-
----
-
-## Итоговый план изменений
-
-| # | Файл | Тип изменения | Описание |
-|---|------|---------------|----------|
-| 1 | `admin-operations/index.ts` | Исправление TS | Типизация error в 9 catch-блоках |
-| 2 | `deepgram-transcribe/index.ts` | Исправление TS | Исправить audioBuffer и storageFile |
-| 3 | `dialog-cleanup/index.ts` | Исправление TS | Типизация error в 1 catch-блоке |
-| 4 | `openai-evaluate-background/index.ts` | Исправление TS | Типизация error в 3 местах |
-| 5 | `openai-evaluate/index.ts` | Исправление TS | Типизация error в 1 catch-блоке |
-| 6 | SQL миграция | RLS политика | Изоляция агентов по user_id |
+| # | Файл | Действие | Описание |
+|---|------|----------|----------|
+| 1 | `supabase/functions/deepgram-transcribe/index.ts` | Исправление | Fix Uint8Array → Blob, проверка deepgramResponse |
+| 2 | `supabase/functions/diarization-fix/index.ts` | Создание | Новая edge function для GPT валидации |
+| 3 | `supabase/config.toml` | Обновление | Добавить `[functions.diarization-fix]` |
+| 4 | `src/components/ValidateDiarizationButton.tsx` | Создание | Кнопка с ролевым доступом |
+| 5 | `src/components/EnhancedSpeakerDialog.tsx` | Обновление | Интеграция кнопки |
 
 ---
 
 ## Ожидаемый результат
 
-После применения изменений:
-1. **Build успешен** — все TypeScript ошибки исправлены
-2. **Supervisor видит только своих агентов** — RLS фильтрует на уровне БД
-3. **Admin видит всех агентов** — через отдельную RLS политику
-4. **Никаких изменений в UI** — изоляция прозрачна для фронтенда
+1. **Build успешен** — ошибки TypeScript исправлены
+2. **Admin видит активную кнопку** → при клике получает исправленный диалог в `.txt`
+3. **Supervisor видит неактивную кнопку** → при наведении видит "Функционал ещё тестируется"
+4. **Результаты не сохраняются в БД** — только скачивание файла (тестовый режим)
