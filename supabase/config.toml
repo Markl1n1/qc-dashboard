@@ -11,3 +11,6 @@ timeout_sec = 60
 [functions.dialog-cleanup]
 memory_mb = 256
 timeout_sec = 120
+
+[functions.diarization-fix]
+verify_jwt = false

@@ -9,6 +9,7 @@ import { copyToClipboard, formatDialogForCopy } from '../utils/dialogFormatting'
 import { toast } from 'sonner';
 import { useSpeakerMapping } from '../hooks/useSpeakerMapping';
 import { useLanguageStore } from '../store/languageStore';
+import ValidateDiarizationButton from './ValidateDiarizationButton';
 
 interface DetectedIssue {
   rule_category?: string;
@@ -27,6 +28,7 @@ interface EnhancedSpeakerDialogProps {
   detectedLanguage?: { language: string; confidence: number };
   metadata?: { duration: number; model: string };
   analysisData?: { speaker_0?: string; speaker_1?: string; role_0?: string; role_1?: string };
+  fileName?: string;
 }
 
 const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
@@ -36,7 +38,8 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
   onNavigateToAnalysis,
   detectedLanguage,
   metadata,
-  analysisData
+  analysisData,
+  fileName
 }) => {
   const { commentLanguage } = useLanguageStore();
   const { mapSpeakerName } = useSpeakerMapping(analysisData);
@@ -203,11 +206,14 @@ const assignments = useMemo(() => {
                   {mistakes.length} issues
                 </Badge>
               )}
-            </CardTitle>
-            <Button variant="outline" size="sm" onClick={handleCopyDialog}>
-              <Copy className="h-4 w-4 mr-2" />
-              Copy Dialog
-            </Button>
+          </CardTitle>
+            <div className="flex gap-2">
+              <ValidateDiarizationButton utterances={mergedUtterances} fileName={fileName} />
+              <Button variant="outline" size="sm" onClick={handleCopyDialog}>
+                <Copy className="h-4 w-4 mr-2" />
+                Copy Dialog
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
