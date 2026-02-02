@@ -219,7 +219,7 @@ Deno.serve(async (req) => {
     console.log('⏰ [DEEPGRAM] Call started at:', new Date().toISOString());
     console.log('⏱️  [DEEPGRAM] Timeout set to: 14 minutes (840 seconds)');
 
-    let deepgramResponse: Response;
+    let deepgramResponse: Response | undefined;
     const deepgramCallStart = Date.now();
 
     if (useSignedUrl && storageFile) {
@@ -274,6 +274,12 @@ Deno.serve(async (req) => {
         }
         throw fetchError;
       }
+    }
+
+    // Ensure deepgramResponse is assigned
+    if (!deepgramResponse) {
+      console.error('❌ [ERROR] No deepgramResponse - neither storage URL nor audio buffer processed');
+      throw new Error('No audio data was processed');
     }
 
     const deepgramCallDuration = ((Date.now() - deepgramCallStart) / 1000).toFixed(2);
