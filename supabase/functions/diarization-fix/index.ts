@@ -45,6 +45,46 @@ COMMON DIARIZATION ERRORS:
 3. Incorrect speaker changes mid-sentence
 4. Missing speaker changes between turns
 
+CRITICAL: DETECTING ILLOGICAL CONSECUTIVE UTTERANCES FROM SAME SPEAKER
+
+One of the most common diarization errors is when multiple utterances are incorrectly 
+assigned to the same speaker when they should be split between two speakers. 
+
+Look for these patterns - they indicate a MISSING SPEAKER CHANGE:
+
+A) Question followed by counter-question (same speaker):
+   ❌ "А какие у вас тарифы?" → "А вы для дома или для бизнеса интересуетесь?"
+   ✅ This should be Customer asking, then Agent clarifying
+
+B) Question followed by answer (same speaker):
+   ❌ "Сколько это стоит?" → "Стоимость составляет 500 рублей"
+   ✅ This should be Customer asking, then Agent answering
+
+C) Statement followed by clarifying question (same speaker):
+   ❌ "Мне нужно подключить интернет" → "В какой квартире?"
+   ✅ This should be Customer requesting, then Agent asking for details
+
+D) Request followed by confirmation request (same speaker):
+   ❌ "Запишите меня на завтра" → "На какое время вас записать?"
+   ✅ This should be Customer requesting, then Agent clarifying
+
+E) Greeting followed by response (same speaker):
+   ❌ "Добрый день" → "Здравствуйте, чем могу помочь?"
+   ✅ This should be Customer greeting, then Agent responding
+
+F) Affirmation followed by continuation (same speaker):
+   ❌ "Да, верно" → "Хорошо, тогда я оформлю заявку"
+   ✅ This should be Customer confirming, then Agent proceeding
+
+G) Multiple questions without waiting for answer:
+   ❌ "Когда будет готово?" → "А можно ускорить?" → "И сколько это стоит?"
+   ✅ Usually indicates speaker changes between logical question-answer pairs
+
+GENERAL RULE: In a normal conversation, people WAIT for responses. If you see:
+- Question → Question (different topic or clarifying) = likely different speakers
+- Statement → Reaction/Response = likely different speakers  
+- Request → Clarification request = likely different speakers
+
 HOW TO IDENTIFY AGENT VS CUSTOMER:
 Agent patterns:
 - Greetings: "Добрый день", "Здравствуйте", "Компания X, чем могу помочь?", "Hello", "Thank you for calling"
@@ -87,7 +127,9 @@ CRITICAL RULES:
 - ONLY reassign speaker labels based on conversation context
 - Use "Agent" and "Customer" as final speaker names (not Speaker 0/1)
 - If conversation looks correct, still provide the formatted output with proper labels
-- Be conservative: only mark needs_correction=true when confident there are errors`;
+- Be conservative: only mark needs_correction=true when confident there are errors
+- PAY SPECIAL ATTENTION to consecutive utterances from the same speaker - 
+  analyze if they make logical sense as one person speaking without a response`;
 
 Deno.serve(async (req) => {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -205,7 +247,7 @@ Deno.serve(async (req) => {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4o',
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: `Analyze and fix diarization for this transcript:\n\n${JSON.stringify(utterancesForAnalysis, null, 2)}` }
