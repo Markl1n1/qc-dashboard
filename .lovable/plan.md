@@ -1,49 +1,22 @@
 
-# План: Кнопка "Validate Diarization" с ролевым доступом
 
-## Обзор задачи
+# План: Улучшение промпта и модели для валидации диаризации
 
-1. **Исправить build-ошибки** в `deepgram-transcribe/index.ts`
-2. **Создать Edge Function** `diarization-fix` для GPT-валидации
-3. **Добавить кнопку** "Validate Diarization" в компонент `EnhancedSpeakerDialog`
-4. **Ролевой доступ**: только admin может нажать, supervisor видит затемнённую кнопку с tooltip
-
-## Часть 1: Исправление build-ошибок
-
-### Файл: `supabase/functions/deepgram-transcribe/index.ts`
-
-**Проблема 1:** `audioBuffer` типа `Uint8Array` не совместим с `body` в fetch (Deno требует `Blob` или `ArrayBuffer`).
-
-**Проблема 2:** `deepgramResponse` используется до присвоения — нужна проверка после блока else-if.
-
-**Решение:**
-
-```typescript
-// Строка 222: явная типизация
-let deepgramResponse: Response | undefined;
-
-// Строка 266: конвертация Uint8Array → Blob
-body: audioBuffer ? new Blob([audioBuffer]) : undefined,
-
-// После строки 277: добавить проверку
-if (!deepgramResponse) {
-  console.error('❌ [ERROR] No deepgramResponse - neither storage URL nor audio buffer processed');
-  throw new Error('No audio data was processed');
-}
-```
-
----
-
-## Часть 2: Создание Edge Function `diarization-fix`
+## Изменения
 
 ### Файл: `supabase/functions/diarization-fix/index.ts`
 
-**Функционал:**
-- Принимает `utterances` от клиента
-- Отправляет в OpenAI для анализа и исправления диаризации
-- Возвращает исправленные реплики и форматированный текст
+#### 1. Смена модели
 
-**Промпт для GPT:**
+| Было | Станет |
+|------|--------|
+| `gpt-4o-mini` | `gpt-4o` |
+
+GPT-4o лучше понимает контекст разговора и логические связи между репликами.
+
+#### 2. Расширенный промпт
+
+**Новый SYSTEM_PROMPT:**
 
 ```text
 You are an expert in analyzing and correcting speaker diarization in customer service conversations.
@@ -56,168 +29,148 @@ CONTEXT:
 - Your job is to analyze the conversation flow and correct speaker assignments
 
 COMMON DIARIZATION ERRORS:
-1. All speech assigned to single speaker
+1. All speech assigned to single speaker (very common with low-quality audio)
 2. Speaker labels swapped (Agent marked as Customer and vice versa)
 3. Incorrect speaker changes mid-sentence
+4. Missing speaker changes between turns
+
+CRITICAL: DETECTING ILLOGICAL CONSECUTIVE UTTERANCES FROM SAME SPEAKER
+
+One of the most common diarization errors is when multiple utterances are incorrectly 
+assigned to the same speaker when they should be split between two speakers. 
+
+Look for these patterns - they indicate a MISSING SPEAKER CHANGE:
+
+A) Question followed by counter-question (same speaker):
+   ❌ "А какие у вас тарифы?" → "А вы для дома или для бизнеса интересуетесь?"
+   ✅ This should be Customer asking, then Agent clarifying
+
+B) Question followed by answer (same speaker):
+   ❌ "Сколько это стоит?" → "Стоимость составляет 500 рублей"
+   ✅ This should be Customer asking, then Agent answering
+
+C) Statement followed by clarifying question (same speaker):
+   ❌ "Мне нужно подключить интернет" → "В какой квартире?"
+   ✅ This should be Customer requesting, then Agent asking for details
+
+D) Request followed by confirmation request (same speaker):
+   ❌ "Запишите меня на завтра" → "На какое время вас записать?"
+   ✅ This should be Customer requesting, then Agent clarifying
+
+E) Greeting followed by response (same speaker):
+   ❌ "Добрый день" → "Здравствуйте, чем могу помочь?"
+   ✅ This should be Customer greeting, then Agent responding
+
+F) Affirmation followed by continuation (same speaker):
+   ❌ "Да, верно" → "Хорошо, тогда я оформлю заявку"
+   ✅ This should be Customer confirming, then Agent proceeding
+
+G) Multiple questions without waiting for answer:
+   ❌ "Когда будет готово?" → "А можно ускорить?" → "И сколько это стоит?"
+   ✅ Usually indicates speaker changes between logical question-answer pairs
+
+GENERAL RULE: In a normal conversation, people WAIT for responses. If you see:
+- Question → Question (different topic or clarifying) = likely different speakers
+- Statement → Reaction/Response = likely different speakers  
+- Request → Clarification request = likely different speakers
 
 HOW TO IDENTIFY AGENT VS CUSTOMER:
 Agent patterns:
-- Greetings: "Добрый день", "Здравствуйте", "Компания X, чем могу помочь?"
+- Greetings: "Добрый день", "Здравствуйте", "Компания X, чем могу помочь?", "Hello", "Thank you for calling"
 - Formal speech, professional tone
-- Provides information, instructions
+- Provides information, instructions, answers
 - Asks clarifying questions about customer needs
+- Says goodbye formally, offers further assistance
 
 Customer patterns:
-- Responds to greetings
+- Responds to greetings (not initiates formal company greetings)
 - Asks questions about services/products
-- Provides personal information
-- Expresses problems or requests
+- Provides personal information (name, phone, address)
+- Expresses problems, complaints, or requests
+- Confirms or denies information
 
-RESPOND WITH JSON:
+RESPOND WITH VALID JSON ONLY (no markdown, no code blocks):
 {
-  "needs_correction": true/false,
-  "confidence": 0.0-1.0,
-  "analysis": "Brief explanation of detected issues",
+  "needs_correction": true or false,
+  "confidence": 0.0 to 1.0,
+  "analysis": "Brief explanation of detected issues or why no correction needed",
   "corrected_utterances": [
     {
       "speaker": "Agent" or "Customer",
       "original_speaker": "Speaker X",
-      "text": "original text",
-      "start": original_start,
-      "end": original_end
+      "text": "original text unchanged",
+      "start": original_start_time,
+      "end": original_end_time
     }
   ],
-  "formatted_dialog": "Agent:\n- текст\n\nCustomer:\n- текст\n..."
+  "formatted_dialog": "Agent:\n- text\n\nCustomer:\n- text\n...",
+  "speaker_mapping": {
+    "Speaker 0": "Agent or Customer",
+    "Speaker 1": "Agent or Customer"
+  }
 }
 
-RULES:
-- NEVER modify the text content
-- NEVER modify timing (start/end values)
-- ONLY reassign speaker labels
-- Format output as "Agent" and "Customer" (not Speaker 0/1)
+CRITICAL RULES:
+- NEVER modify the text content - keep it exactly as provided
+- NEVER modify timing (start/end values) - keep them exactly as provided
+- ONLY reassign speaker labels based on conversation context
+- Use "Agent" and "Customer" as final speaker names (not Speaker 0/1)
+- If conversation looks correct, still provide the formatted output with proper labels
+- Be conservative: only mark needs_correction=true when confident there are errors
+- PAY SPECIAL ATTENTION to consecutive utterances from the same speaker - 
+  analyze if they make logical sense as one person speaking without a response
 ```
 
 ---
 
-## Часть 3: Компонент кнопки с ролевым доступом
+## Детальные изменения в коде
 
-### Новый файл: `src/components/ValidateDiarizationButton.tsx`
+### Строка 33-90: Замена SYSTEM_PROMPT
+
+Полностью заменить текущий промпт на расширенную версию выше.
+
+### Строка 208: Смена модели
 
 ```typescript
-interface Props {
-  utterances: SpeakerUtterance[];
-  disabled?: boolean;
-}
-```
-
-**Логика:**
-1. Использует `useOptimizedUserRole()` для проверки роли
-2. Если `isAdmin` → кнопка активна
-3. Если не admin → кнопка затемнена (`opacity-50 cursor-not-allowed`)
-4. При наведении на неактивную кнопку → Tooltip "Функционал ещё тестируется"
-
-**При клике:**
-1. Показывает loading state "Validating..."
-2. Вызывает `supabase.functions.invoke('diarization-fix', { body: { utterances } })`
-3. Получает результат
-4. Скачивает `.txt` файл с `formatted_dialog`
-
----
-
-## Часть 4: Интеграция в EnhancedSpeakerDialog
-
-### Файл: `src/components/EnhancedSpeakerDialog.tsx`
-
-**Изменения в строке 207:**
-
-```tsx
 // Было:
-<Button variant="outline" size="sm" onClick={handleCopyDialog}>
-  <Copy className="h-4 w-4 mr-2" />
-  Copy Dialog
-</Button>
+model: 'gpt-4o-mini',
 
 // Станет:
-<div className="flex gap-2">
-  <ValidateDiarizationButton utterances={mergedUtterances} />
-  <Button variant="outline" size="sm" onClick={handleCopyDialog}>
-    <Copy className="h-4 w-4 mr-2" />
-    Copy Dialog
-  </Button>
-</div>
+model: 'gpt-4o',
 ```
 
 ---
 
-## Часть 5: Обновление config.toml
+## Сравнение моделей
 
-### Файл: `supabase/config.toml`
+| Параметр | gpt-4o-mini | gpt-4o |
+|----------|-------------|--------|
+| Стоимость | $0.15/$0.60 за 1M токенов | $2.50/$10 за 1M токенов |
+| Качество рассуждений | Базовое | Продвинутое |
+| Понимание контекста | Хорошее | Отличное |
+| Скорость | Быстрее | Медленнее (~2-3 сек) |
 
-```toml
-[functions.diarization-fix]
-verify_jwt = false
-```
-
----
-
-## Архитектура решения
-
-```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                    EnhancedSpeakerDialog Component                           │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│   ┌──────────────────────┐  ┌──────────────────┐                            │
-│   │ ValidateDiarization  │  │   Copy Dialog    │                            │
-│   │      Button          │  │     Button       │                            │
-│   └──────────┬───────────┘  └──────────────────┘                            │
-│              │                                                               │
-│              ▼                                                               │
-│   ┌──────────────────────────────────────────────────────┐                  │
-│   │              useOptimizedUserRole()                  │                  │
-│   │   isAdmin? → активная кнопка                         │                  │
-│   │   !isAdmin → затемнённая + Tooltip                   │                  │
-│   └──────────────────────────────────────────────────────┘                  │
-│              │ (только для admin)                                            │
-│              ▼                                                               │
-│   ┌──────────────────────────────────────────────────────┐                  │
-│   │        supabase.functions.invoke('diarization-fix')  │                  │
-│   └──────────────────────────────────────────────────────┘                  │
-│              │                                                               │
-│              ▼                                                               │
-│   ┌──────────────────────────────────────────────────────┐                  │
-│   │           Edge Function: diarization-fix             │                  │
-│   │   - Проверка JWT                                     │                  │
-│   │   - Вызов OpenAI API                                 │                  │
-│   │   - Возврат исправленного диалога                    │                  │
-│   └──────────────────────────────────────────────────────┘                  │
-│              │                                                               │
-│              ▼                                                               │
-│   ┌──────────────────────────────────────────────────────┐                  │
-│   │           Скачивание .txt файла                      │                  │
-│   │   validated_dialog_[timestamp].txt                   │                  │
-│   └──────────────────────────────────────────────────────┘                  │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+**Рекомендация:** Для задачи валидации диаризации важно качество анализа, поэтому GPT-4o оправдан.
 
 ---
 
-## Итоговый список изменений
+## Ключевые паттерны в промпте
 
-| # | Файл | Действие | Описание |
-|---|------|----------|----------|
-| 1 | `supabase/functions/deepgram-transcribe/index.ts` | Исправление | Fix Uint8Array → Blob, проверка deepgramResponse |
-| 2 | `supabase/functions/diarization-fix/index.ts` | Создание | Новая edge function для GPT валидации |
-| 3 | `supabase/config.toml` | Обновление | Добавить `[functions.diarization-fix]` |
-| 4 | `src/components/ValidateDiarizationButton.tsx` | Создание | Кнопка с ролевым доступом |
-| 5 | `src/components/EnhancedSpeakerDialog.tsx` | Обновление | Интеграция кнопки |
+Добавлена секция **DETECTING ILLOGICAL CONSECUTIVE UTTERANCES** с конкретными примерами:
+
+1. **Вопрос → Встречный вопрос** (разные спикеры)
+2. **Вопрос → Ответ** (разные спикеры)
+3. **Запрос → Уточняющий вопрос** (разные спикеры)
+4. **Приветствие → Ответное приветствие** (разные спикеры)
+5. **Подтверждение → Действие** (разные спикеры)
+6. **Множество вопросов подряд** без ожидания ответа — сигнал ошибки
 
 ---
 
-## Ожидаемый результат
+## Итог изменений
 
-1. **Build успешен** — ошибки TypeScript исправлены
-2. **Admin видит активную кнопку** → при клике получает исправленный диалог в `.txt`
-3. **Supervisor видит неактивную кнопку** → при наведении видит "Функционал ещё тестируется"
-4. **Результаты не сохраняются в БД** — только скачивание файла (тестовый режим)
+| Изменение | Файл | Строки |
+|-----------|------|--------|
+| Смена модели на `gpt-4o` | `diarization-fix/index.ts` | 208 |
+| Расширенный промпт с паттернами | `diarization-fix/index.ts` | 33-90 |
+
