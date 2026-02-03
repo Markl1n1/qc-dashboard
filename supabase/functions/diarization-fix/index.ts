@@ -240,23 +240,42 @@ Deno.serve(async (req) => {
     console.log('🤖 [GPT] Sending to OpenAI for analysis...');
     const gptStart = Date.now();
 
-    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: `Analyze and fix diarization for this transcript:\n\n${JSON.stringify(utterancesForAnalysis, null, 2)}` }
-        ],
-        temperature: 0.3,
-        max_tokens: 16000,
-        response_format: { type: 'json_object' }
-      })
-    });
+    // Create abort controller with 50 second timeout (edge function limit is ~60s)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 50000);
+
+    let openaiResponse: Response;
+    try {
+      openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${OPENAI_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o',
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: `Analyze and fix diarization for this transcript:\n\n${JSON.stringify(utterancesForAnalysis, null, 2)}` }
+          ],
+          temperature: 0.3,
+          max_tokens: 8000,
+          response_format: { type: 'json_object' }
+        }),
+        signal: controller.signal
+      });
+    } catch (fetchError: unknown) {
+      clearTimeout(timeoutId);
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+        console.error('❌ [TIMEOUT] OpenAI request timed out after 50 seconds');
+        return new Response(
+          JSON.stringify({ error: 'Request timed out. Try with a shorter dialog.' }),
+          { status: 504, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      throw fetchError;
+    }
+    clearTimeout(timeoutId);
 
     const gptDuration = ((Date.now() - gptStart) / 1000).toFixed(2);
     console.log('✅ [GPT] Response received in', gptDuration, 'seconds');
