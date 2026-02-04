@@ -13,4 +13,6 @@ memory_mb = 256
 timeout_sec = 120
 
 [functions.diarization-fix]
+memory_mb = 512
+timeout_sec = 120
 verify_jwt = false
