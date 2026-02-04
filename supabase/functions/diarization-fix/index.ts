@@ -301,8 +301,8 @@ Deno.serve(async (req) => {
             { role: 'user', content: `Analyze and fix diarization for this transcript (keep original text unchanged; output only labels array):\n\n${JSON.stringify(utterancesForAnalysis)}` }
           ],
           temperature: 0.3,
-          // Keep completion small (labels only) to reduce latency and timeouts.
-          max_tokens: 1500,
+          // Labels array for 160 utterances ~ 800 tokens + analysis ~ 200 = ~1000, add buffer
+          max_tokens: 4000,
           response_format: { type: 'json_object' }
         }),
         signal: controller.signal
@@ -375,10 +375,17 @@ Deno.serve(async (req) => {
         end: (u as any).end ?? 0,
       }));
     } else if (Array.isArray(result.labels)) {
-      if (result.labels.length !== utterances.length) {
-        throw new Error(
-          `Invalid GPT labels length: expected ${utterances.length}, got ${result.labels.length}`
-        );
+      // Handle truncated or mismatched labels gracefully
+      if (result.labels.length < utterances.length) {
+        console.warn(`⚠️ [LABELS] Padding labels: got ${result.labels.length}, expected ${utterances.length}`);
+        // Pad with last known label or alternate Agent/Customer
+        const lastLabel = result.labels[result.labels.length - 1] || 'Agent';
+        while (result.labels.length < utterances.length) {
+          result.labels.push(lastLabel === 'Agent' ? 'Customer' : 'Agent');
+        }
+      } else if (result.labels.length > utterances.length) {
+        console.warn(`⚠️ [LABELS] Truncating labels: got ${result.labels.length}, expected ${utterances.length}`);
+        result.labels = result.labels.slice(0, utterances.length);
       }
 
       correctedUtterances = utterances.map((u, i) => ({
