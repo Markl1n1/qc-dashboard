@@ -32,97 +32,24 @@ interface DiarizationFixResult {
   speaker_mapping?: Record<string, string>;
 }
 
-const SYSTEM_PROMPT = `You are an expert in analyzing and correcting speaker diarization in customer service conversations.
+// Keep the system prompt SHORT and the completion STRICT to avoid truncated JSON (which causes non-2xx errors).
+const SYSTEM_PROMPT = `You correct speaker diarization for customer service calls between exactly two roles: Agent and Customer.
 
-TASK: Analyze the following transcript and correct any diarization issues.
-
-CONTEXT:
-- These are customer service phone calls between an Agent and a Customer
-- Deepgram has performed automatic speaker diarization but it may contain errors
-- Your job is to analyze the conversation flow and correct speaker assignments
-
-COMMON DIARIZATION ERRORS:
-1. All speech assigned to single speaker (very common with low-quality audio)
-2. Speaker labels swapped (Agent marked as Customer and vice versa)
-3. Incorrect speaker changes mid-sentence
-4. Missing speaker changes between turns
-
-CRITICAL: DETECTING ILLOGICAL CONSECUTIVE UTTERANCES FROM SAME SPEAKER
-
-One of the most common diarization errors is when multiple utterances are incorrectly 
-assigned to the same speaker when they should be split between two speakers. 
-
-Look for these patterns - they indicate a MISSING SPEAKER CHANGE:
-
-A) Question followed by counter-question (same speaker):
-   ❌ "А какие у вас тарифы?" → "А вы для дома или для бизнеса интересуетесь?"
-   ✅ This should be Customer asking, then Agent clarifying
-
-B) Question followed by answer (same speaker):
-   ❌ "Сколько это стоит?" → "Стоимость составляет 500 рублей"
-   ✅ This should be Customer asking, then Agent answering
-
-C) Statement followed by clarifying question (same speaker):
-   ❌ "Мне нужно подключить интернет" → "В какой квартире?"
-   ✅ This should be Customer requesting, then Agent asking for details
-
-D) Request followed by confirmation request (same speaker):
-   ❌ "Запишите меня на завтра" → "На какое время вас записать?"
-   ✅ This should be Customer requesting, then Agent clarifying
-
-E) Greeting followed by response (same speaker):
-   ❌ "Добрый день" → "Здравствуйте, чем могу помочь?"
-   ✅ This should be Customer greeting, then Agent responding
-
-F) Affirmation followed by continuation (same speaker):
-   ❌ "Да, верно" → "Хорошо, тогда я оформлю заявку"
-   ✅ This should be Customer confirming, then Agent proceeding
-
-G) Multiple questions without waiting for answer:
-   ❌ "Когда будет готово?" → "А можно ускорить?" → "И сколько это стоит?"
-   ✅ Usually indicates speaker changes between logical question-answer pairs
-
-GENERAL RULE: In a normal conversation, people WAIT for responses. If you see:
-- Question → Question (different topic or clarifying) = likely different speakers
-- Statement → Reaction/Response = likely different speakers  
-- Request → Clarification request = likely different speakers
-
-HOW TO IDENTIFY AGENT VS CUSTOMER:
-Agent patterns:
-- Greetings: "Добрый день", "Здравствуйте", "Компания X, чем могу помочь?", "Hello", "Thank you for calling"
-- Formal speech, professional tone
-- Provides information, instructions, answers
-- Asks clarifying questions about customer needs
-- Says goodbye formally, offers further assistance
-
-Customer patterns:
-- Responds to greetings (not initiates formal company greetings)
-- Asks questions about services/products
-- Provides personal information (name, phone, address)
-- Expresses problems, complaints, or requests
-- Confirms or denies information
-
-RESPOND WITH VALID JSON ONLY (no markdown, no code blocks):
+INPUT: a list of utterances with fields {index, speaker, text} in order.
+OUTPUT: JSON only (no markdown) with EXACT keys:
 {
-  "needs_correction": true or false,
-  "confidence": 0.0 to 1.0,
-  "analysis": "Brief explanation of detected issues or why no correction needed",
-  "labels": ["Agent" or "Customer", ...],
-  "speaker_mapping": {
-    "Speaker 0": "Agent or Customer",
-    "Speaker 1": "Agent or Customer"
-  }
+  "needs_correction": boolean,
+  "confidence": number,
+  "analysis": string,
+  "labels": ["Agent"|"Customer", ...],
+  "speaker_mapping": { "<original speaker>": "Agent"|"Customer", ... }
 }
 
-CRITICAL RULES:
-- NEVER modify the text content - keep it exactly as provided
-- NEVER modify timing (start/end values) - keep them exactly as provided
-- ONLY reassign speaker labels based on conversation context
-- Use "Agent" and "Customer" as final speaker names (not Speaker 0/1)
-- The server will build corrected_utterances and formatted dialog from your labels; do NOT output formatted_dialog.
-- Be conservative: only mark needs_correction=true when confident there are errors
-- PAY SPECIAL ATTENTION to consecutive utterances from the same speaker - 
-  analyze if they make logical sense as one person speaking without a response`;
+STRICT RULES:
+- The "labels" array MUST have exactly N items (N is provided).
+- "analysis" MUST be <= 180 characters and contain NO newlines.
+- Do not include any other keys.
+- If unsure, be conservative: set needs_correction=false and keep labels consistent with the original speaker labels (map each original speaker consistently).`;
 
 function normalizeFinalSpeaker(input: unknown): 'Agent' | 'Customer' {
   const raw = String(input ?? '').trim().toLowerCase();
@@ -286,9 +213,16 @@ Deno.serve(async (req) => {
     const model = utterances.length > 80 ? 'gpt-4o-mini' : 'gpt-4o';
     console.log('🧠 [GPT] Model selected:', model);
 
-    let openaiResponse: Response;
-    try {
-      openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+    const makeOpenAIRequest = async (mode: 'normal' | 'minimal') => {
+      const N = utterancesForAnalysis.length;
+
+      const userPrompt = mode === 'minimal'
+        ? `Return VALID JSON only. Keys: labels, speaker_mapping.\n\nRules:\n- labels length MUST be exactly ${N}\n- labels values ONLY: Agent or Customer\n- do NOT include any other keys\n\nUtterances:\n${JSON.stringify(utterancesForAnalysis)}`
+        : `Return VALID JSON only. Keys: needs_correction, confidence, analysis, labels, speaker_mapping.\n\nRules:\n- labels length MUST be exactly ${N}\n- analysis <= 180 characters, no newlines\n- labels values ONLY: Agent or Customer\n- do NOT include any other keys\n\nUtterances:\n${JSON.stringify(utterancesForAnalysis)}`;
+
+      const maxTokens = mode === 'minimal' ? 1200 : 1600;
+
+      return await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${OPENAI_API_KEY}`,
@@ -298,22 +232,28 @@ Deno.serve(async (req) => {
           model,
           messages: [
             { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: `Analyze and fix diarization for this transcript (keep original text unchanged; output only labels array):\n\n${JSON.stringify(utterancesForAnalysis)}` }
+            { role: 'user', content: userPrompt }
           ],
-          temperature: 0.3,
-          // Labels array for 160 utterances ~ 800 tokens + analysis ~ 200 = ~1000, add buffer
-          max_tokens: 4000,
+          // Keep temperature low to reduce variance and verbosity.
+          temperature: mode === 'minimal' ? 0.0 : 0.2,
+          max_tokens: maxTokens,
           response_format: { type: 'json_object' }
         }),
         signal: controller.signal
       });
+    };
+
+    let openaiResponse: Response;
+    try {
+      openaiResponse = await makeOpenAIRequest('normal');
     } catch (fetchError: unknown) {
       clearTimeout(timeoutId);
       if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-        console.error('❌ [TIMEOUT] OpenAI request timed out after 50 seconds');
+        console.error('❌ [TIMEOUT] OpenAI request timed out (~105s)');
         return new Response(
-          JSON.stringify({ error: 'Request timed out. Try with a shorter dialog.' }),
-          { status: 504, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          JSON.stringify({ success: false, error: 'Request timed out. Try again or use a shorter dialog.' }),
+          // Return 200 to avoid generic client-side FunctionsHttpError.
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       throw fetchError;
@@ -326,9 +266,10 @@ Deno.serve(async (req) => {
     if (!openaiResponse.ok) {
       const errorText = await openaiResponse.text();
       console.error('❌ [GPT] OpenAI API error:', openaiResponse.status, errorText);
+      // Return 200 to avoid generic FunctionsHttpError on the client; UI already expects {success:false}.
       return new Response(
-        JSON.stringify({ error: 'OpenAI API error', details: errorText }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ success: false, error: 'OpenAI API error', details: errorText }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -345,16 +286,70 @@ Deno.serve(async (req) => {
 
     console.log('📄 [GPT] Raw response length:', content.length, 'chars');
 
-    // Parse GPT response
-    let result: DiarizationFixResult;
-    try {
-      result = JSON.parse(content);
-    } catch (parseError: unknown) {
-      console.error('❌ [PARSE] Failed to parse GPT response:', parseError instanceof Error ? parseError.message : String(parseError));
-      console.error('❌ [PARSE] Raw content:', content.substring(0, 500));
+    const tryParseJson = (raw: string): DiarizationFixResult | null => {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        // Attempt to salvage if the model accidentally wrapped JSON with extra text
+        const start = raw.indexOf('{');
+        const end = raw.lastIndexOf('}');
+        if (start >= 0 && end > start) {
+          try {
+            return JSON.parse(raw.slice(start, end + 1));
+          } catch {
+            return null;
+          }
+        }
+        return null;
+      }
+    };
+
+    // Parse GPT response (with one fallback attempt that requests a minimal JSON)
+    let result: DiarizationFixResult | null = tryParseJson(content);
+
+    if (!result) {
+      console.warn('⚠️ [PARSE] First parse failed. Retrying with minimal JSON schema...');
+      try {
+        const retryController = new AbortController();
+        const retryTimeoutId = setTimeout(() => retryController.abort(), 25000);
+        const retryResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${OPENAI_API_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: 'system', content: SYSTEM_PROMPT },
+              { role: 'user', content: `Return VALID JSON only with keys: labels, speaker_mapping. labels length MUST be exactly ${utterancesForAnalysis.length}. Values only Agent/Customer. Utterances:\n${JSON.stringify(utterancesForAnalysis)}` }
+            ],
+            temperature: 0.0,
+            max_tokens: 1200,
+            response_format: { type: 'json_object' }
+          }),
+          signal: retryController.signal
+        });
+        clearTimeout(retryTimeoutId);
+
+        if (retryResponse.ok) {
+          const retryJson = await retryResponse.json();
+          const retryContent = retryJson.choices?.[0]?.message?.content;
+          if (retryContent) {
+            result = tryParseJson(retryContent);
+          }
+        }
+      } catch (retryError: unknown) {
+        console.warn('⚠️ [PARSE] Retry failed:', retryError instanceof Error ? retryError.message : String(retryError));
+      }
+    }
+
+    if (!result) {
+      console.error('❌ [PARSE] Failed to parse GPT response after retry');
+      // Return 200 so the UI can show a useful error instead of generic non-2xx.
       return new Response(
-        JSON.stringify({ error: 'Failed to parse GPT response', raw: content.substring(0, 500) }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ success: false, error: 'GPT returned invalid JSON. Please retry Validate Diarization.' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -435,8 +430,9 @@ Deno.serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error('❌ [ERROR] Diarization fix failed:', errorMessage);
     return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      // Return 200 to avoid generic client-side FunctionsHttpError.
+      JSON.stringify({ success: false, error: errorMessage }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
