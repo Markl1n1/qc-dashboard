@@ -25,9 +25,11 @@ interface DiarizationFixResult {
   needs_correction: boolean;
   confidence: number;
   analysis: string;
-  corrected_utterances: CorrectedUtterance[];
-  formatted_dialog: string;
-  speaker_mapping: Record<string, string>;
+  // GPT may return either full corrected utterances OR just speaker labels per utterance index.
+  corrected_utterances?: CorrectedUtterance[];
+  labels?: Array<'Agent' | 'Customer' | string>;
+  formatted_dialog?: string;
+  speaker_mapping?: Record<string, string>;
 }
 
 const SYSTEM_PROMPT = `You are an expert in analyzing and correcting speaker diarization in customer service conversations.
@@ -105,16 +107,7 @@ RESPOND WITH VALID JSON ONLY (no markdown, no code blocks):
   "needs_correction": true or false,
   "confidence": 0.0 to 1.0,
   "analysis": "Brief explanation of detected issues or why no correction needed",
-  "corrected_utterances": [
-    {
-      "speaker": "Agent" or "Customer",
-      "original_speaker": "Speaker X",
-      "text": "original text unchanged",
-      "start": original_start_time,
-      "end": original_end_time
-    }
-  ],
-  "formatted_dialog": "Agent:\\n- text\\n\\nCustomer:\\n- text\\n...",
+  "labels": ["Agent" or "Customer", ...],
   "speaker_mapping": {
     "Speaker 0": "Agent or Customer",
     "Speaker 1": "Agent or Customer"
@@ -126,10 +119,56 @@ CRITICAL RULES:
 - NEVER modify timing (start/end values) - keep them exactly as provided
 - ONLY reassign speaker labels based on conversation context
 - Use "Agent" and "Customer" as final speaker names (not Speaker 0/1)
-- If conversation looks correct, still provide the formatted output with proper labels
+- The server will build corrected_utterances and formatted dialog from your labels; do NOT output formatted_dialog.
 - Be conservative: only mark needs_correction=true when confident there are errors
 - PAY SPECIAL ATTENTION to consecutive utterances from the same speaker - 
   analyze if they make logical sense as one person speaking without a response`;
+
+function normalizeFinalSpeaker(input: unknown): 'Agent' | 'Customer' {
+  const raw = String(input ?? '').trim().toLowerCase();
+  if (raw === 'agent') return 'Agent';
+  if (raw === 'customer') return 'Customer';
+  // Fallback: be conservative and default to Agent (common call-center baseline)
+  return 'Agent';
+}
+
+function buildFormattedDialog(correctedUtterances: CorrectedUtterance[]): string {
+  if (!correctedUtterances?.length) return '';
+
+  let currentSpeaker = '';
+  const lines: string[] = [];
+
+  for (const u of correctedUtterances) {
+    if (u.speaker !== currentSpeaker) {
+      if (lines.length > 0) lines.push('');
+      lines.push(`${u.speaker}:`);
+      currentSpeaker = u.speaker;
+    }
+    lines.push(`- ${u.text}`);
+  }
+
+  return lines.join('\n');
+}
+
+function buildSpeakerMapping(
+  originalUtterances: SpeakerUtterance[],
+  correctedUtterances: CorrectedUtterance[]
+): Record<string, string> {
+  const counts: Record<string, { Agent: number; Customer: number }> = {};
+
+  for (let i = 0; i < Math.min(originalUtterances.length, correctedUtterances.length); i++) {
+    const originalSpeaker = originalUtterances[i]?.speaker ?? 'Unknown';
+    const finalSpeaker = correctedUtterances[i]?.speaker;
+    if (!counts[originalSpeaker]) counts[originalSpeaker] = { Agent: 0, Customer: 0 };
+    counts[originalSpeaker][finalSpeaker] += 1;
+  }
+
+  const mapping: Record<string, string> = {};
+  for (const [orig, c] of Object.entries(counts)) {
+    mapping[orig] = c.Agent >= c.Customer ? 'Agent' : 'Customer';
+  }
+  return mapping;
+}
 
 Deno.serve(async (req) => {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -230,19 +269,22 @@ Deno.serve(async (req) => {
     }
 
     // Prepare utterances for GPT analysis
-    const utterancesForAnalysis = utterances.map(u => ({
+    const utterancesForAnalysis = utterances.map((u, index) => ({
+      index,
       speaker: u.speaker,
       text: u.text,
-      start: u.start,
-      end: u.end
     }));
 
     console.log('🤖 [GPT] Sending to OpenAI for analysis...');
     const gptStart = Date.now();
 
-    // Create abort controller with 50 second timeout (edge function limit is ~60s)
+    // Create abort controller with timeout slightly below the function timeout.
+    // (Configured in supabase/config.toml; keep safety margin for auth + parsing.)
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 50000);
+    const timeoutId = setTimeout(() => controller.abort(), 105000);
+
+    const model = utterances.length > 80 ? 'gpt-4o-mini' : 'gpt-4o';
+    console.log('🧠 [GPT] Model selected:', model);
 
     let openaiResponse: Response;
     try {
@@ -253,13 +295,14 @@ Deno.serve(async (req) => {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: 'gpt-4o',
+          model,
           messages: [
             { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: `Analyze and fix diarization for this transcript:\n\n${JSON.stringify(utterancesForAnalysis, null, 2)}` }
+            { role: 'user', content: `Analyze and fix diarization for this transcript (keep original text unchanged; output only labels array):\n\n${JSON.stringify(utterancesForAnalysis)}` }
           ],
           temperature: 0.3,
-          max_tokens: 8000,
+          // Keep completion small (labels only) to reduce latency and timeouts.
+          max_tokens: 1500,
           response_format: { type: 'json_object' }
         }),
         signal: controller.signal
@@ -320,8 +363,44 @@ Deno.serve(async (req) => {
     console.log('📊 [RESULT] Needs correction:', result.needs_correction);
     console.log('📊 [RESULT] Confidence:', result.confidence);
     console.log('📊 [RESULT] Analysis:', result.analysis);
-    console.log('📊 [RESULT] Corrected utterances:', result.corrected_utterances?.length || 0);
-    console.log('📊 [RESULT] Speaker mapping:', result.speaker_mapping);
+    // Build corrected utterances deterministically server-side to keep GPT completion small
+    let correctedUtterances: CorrectedUtterance[];
+
+    if (Array.isArray(result.corrected_utterances) && result.corrected_utterances.length > 0) {
+      correctedUtterances = result.corrected_utterances.map((u) => ({
+        speaker: normalizeFinalSpeaker((u as any).speaker),
+        original_speaker: (u as any).original_speaker ?? 'Unknown',
+        text: (u as any).text ?? '',
+        start: (u as any).start ?? 0,
+        end: (u as any).end ?? 0,
+      }));
+    } else if (Array.isArray(result.labels)) {
+      if (result.labels.length !== utterances.length) {
+        throw new Error(
+          `Invalid GPT labels length: expected ${utterances.length}, got ${result.labels.length}`
+        );
+      }
+
+      correctedUtterances = utterances.map((u, i) => ({
+        speaker: normalizeFinalSpeaker(result.labels?.[i]),
+        original_speaker: u.speaker,
+        text: u.text,
+        start: u.start,
+        end: u.end,
+      }));
+    } else {
+      throw new Error('GPT response missing labels or corrected_utterances');
+    }
+
+    const speakerMapping =
+      result.speaker_mapping && Object.keys(result.speaker_mapping).length > 0
+        ? result.speaker_mapping
+        : buildSpeakerMapping(utterances, correctedUtterances);
+
+    const formattedDialog = buildFormattedDialog(correctedUtterances);
+
+    console.log('📊 [RESULT] Corrected utterances:', correctedUtterances.length);
+    console.log('📊 [RESULT] Speaker mapping:', speakerMapping);
 
     // Token usage logging
     if (openaiResult.usage) {
@@ -335,7 +414,12 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        ...result
+        needs_correction: Boolean(result.needs_correction),
+        confidence: typeof result.confidence === 'number' ? result.confidence : 0,
+        analysis: typeof result.analysis === 'string' ? result.analysis : 'N/A',
+        corrected_utterances: correctedUtterances,
+        formatted_dialog: formattedDialog,
+        speaker_mapping: speakerMapping,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
