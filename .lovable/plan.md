@@ -1,176 +1,99 @@
 
+# План: Исправление обрезания длинных диалогов (лимит 1000 строк PostgREST)
 
-# План: Улучшение промпта и модели для валидации диаризации
+## Диагноз
 
-## Изменения
+**Причина проблемы:**
+- Supabase PostgREST по умолчанию возвращает максимум **1000 строк** в одном запросе
+- В диалоге `4c4df69f-6f7f-4848-af19-156b38867391` есть **1205 реплик** (до 59:58)
+- Без явного `.limit()` или пагинации, API возвращает только первые 1000 (до 48:58)
+- Реплики с индексами 1000-1204 (от 49:00 до 59:58) не загружаются
 
-### Файл: `supabase/functions/diarization-fix/index.ts`
+**Доказательства:**
+| Метрика | Значение |
+|---------|----------|
+| Реплик в БД | 1205 |
+| Последняя реплика (#1204) | 59:58 |
+| Реплика #999 | 48:58 — **это то, что видит пользователь** |
 
-#### 1. Смена модели
+---
 
-| Было | Станет |
-|------|--------|
-| `gpt-4o-mini` | `gpt-4o` |
+## Решение
 
-GPT-4o лучше понимает контекст разговора и логические связи между репликами.
+Добавить **пагинацию** в метод `getUtterances` для загрузки всех реплик, даже если их больше 1000.
 
-#### 2. Расширенный промпт
+### Файл: `src/services/databaseService.ts`
 
-**Новый SYSTEM_PROMPT:**
+**Текущий код (строки 303-312):**
+```typescript
+async getUtterances(transcriptionId: string): Promise<DatabaseUtterance[]> {
+  const { data, error } = await supabase
+    .from('dialog_speaker_utterances')
+    .select('*')
+    .eq('transcription_id', transcriptionId)
+    .order('utterance_order', { ascending: true });
+
+  if (error) throw error;
+  return (data || []) as DatabaseUtterance[];
+}
+```
+
+**Новый код с пагинацией:**
+```typescript
+async getUtterances(transcriptionId: string): Promise<DatabaseUtterance[]> {
+  const PAGE_SIZE = 1000;
+  const allUtterances: DatabaseUtterance[] = [];
+  let offset = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from('dialog_speaker_utterances')
+      .select('*')
+      .eq('transcription_id', transcriptionId)
+      .order('utterance_order', { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+
+    if (error) throw error;
+
+    const batch = (data || []) as DatabaseUtterance[];
+    allUtterances.push(...batch);
+
+    // Если получили меньше PAGE_SIZE записей, значит достигли конца
+    hasMore = batch.length === PAGE_SIZE;
+    offset += PAGE_SIZE;
+  }
+
+  return allUtterances;
+}
+```
+
+---
+
+## Как это работает
 
 ```text
-You are an expert in analyzing and correcting speaker diarization in customer service conversations.
-
-TASK: Analyze the following transcript and correct any diarization issues.
-
-CONTEXT:
-- These are customer service phone calls between an Agent and a Customer
-- Deepgram has performed automatic speaker diarization but it may contain errors
-- Your job is to analyze the conversation flow and correct speaker assignments
-
-COMMON DIARIZATION ERRORS:
-1. All speech assigned to single speaker (very common with low-quality audio)
-2. Speaker labels swapped (Agent marked as Customer and vice versa)
-3. Incorrect speaker changes mid-sentence
-4. Missing speaker changes between turns
-
-CRITICAL: DETECTING ILLOGICAL CONSECUTIVE UTTERANCES FROM SAME SPEAKER
-
-One of the most common diarization errors is when multiple utterances are incorrectly 
-assigned to the same speaker when they should be split between two speakers. 
-
-Look for these patterns - they indicate a MISSING SPEAKER CHANGE:
-
-A) Question followed by counter-question (same speaker):
-   ❌ "А какие у вас тарифы?" → "А вы для дома или для бизнеса интересуетесь?"
-   ✅ This should be Customer asking, then Agent clarifying
-
-B) Question followed by answer (same speaker):
-   ❌ "Сколько это стоит?" → "Стоимость составляет 500 рублей"
-   ✅ This should be Customer asking, then Agent answering
-
-C) Statement followed by clarifying question (same speaker):
-   ❌ "Мне нужно подключить интернет" → "В какой квартире?"
-   ✅ This should be Customer requesting, then Agent asking for details
-
-D) Request followed by confirmation request (same speaker):
-   ❌ "Запишите меня на завтра" → "На какое время вас записать?"
-   ✅ This should be Customer requesting, then Agent clarifying
-
-E) Greeting followed by response (same speaker):
-   ❌ "Добрый день" → "Здравствуйте, чем могу помочь?"
-   ✅ This should be Customer greeting, then Agent responding
-
-F) Affirmation followed by continuation (same speaker):
-   ❌ "Да, верно" → "Хорошо, тогда я оформлю заявку"
-   ✅ This should be Customer confirming, then Agent proceeding
-
-G) Multiple questions without waiting for answer:
-   ❌ "Когда будет готово?" → "А можно ускорить?" → "И сколько это стоит?"
-   ✅ Usually indicates speaker changes between logical question-answer pairs
-
-GENERAL RULE: In a normal conversation, people WAIT for responses. If you see:
-- Question → Question (different topic or clarifying) = likely different speakers
-- Statement → Reaction/Response = likely different speakers  
-- Request → Clarification request = likely different speakers
-
-HOW TO IDENTIFY AGENT VS CUSTOMER:
-Agent patterns:
-- Greetings: "Добрый день", "Здравствуйте", "Компания X, чем могу помочь?", "Hello", "Thank you for calling"
-- Formal speech, professional tone
-- Provides information, instructions, answers
-- Asks clarifying questions about customer needs
-- Says goodbye formally, offers further assistance
-
-Customer patterns:
-- Responds to greetings (not initiates formal company greetings)
-- Asks questions about services/products
-- Provides personal information (name, phone, address)
-- Expresses problems, complaints, or requests
-- Confirms or denies information
-
-RESPOND WITH VALID JSON ONLY (no markdown, no code blocks):
-{
-  "needs_correction": true or false,
-  "confidence": 0.0 to 1.0,
-  "analysis": "Brief explanation of detected issues or why no correction needed",
-  "corrected_utterances": [
-    {
-      "speaker": "Agent" or "Customer",
-      "original_speaker": "Speaker X",
-      "text": "original text unchanged",
-      "start": original_start_time,
-      "end": original_end_time
-    }
-  ],
-  "formatted_dialog": "Agent:\n- text\n\nCustomer:\n- text\n...",
-  "speaker_mapping": {
-    "Speaker 0": "Agent or Customer",
-    "Speaker 1": "Agent or Customer"
-  }
-}
-
-CRITICAL RULES:
-- NEVER modify the text content - keep it exactly as provided
-- NEVER modify timing (start/end values) - keep them exactly as provided
-- ONLY reassign speaker labels based on conversation context
-- Use "Agent" and "Customer" as final speaker names (not Speaker 0/1)
-- If conversation looks correct, still provide the formatted output with proper labels
-- Be conservative: only mark needs_correction=true when confident there are errors
-- PAY SPECIAL ATTENTION to consecutive utterances from the same speaker - 
-  analyze if they make logical sense as one person speaking without a response
+┌──────────────────────────────────────────┐
+│         getUtterances(transcriptionId)   │
+├──────────────────────────────────────────┤
+│ 1) Запрос .range(0, 999) → 1000 записей  │
+│    ↓                                     │
+│ 2) batch.length === 1000 → hasMore=true  │
+│    ↓                                     │
+│ 3) Запрос .range(1000, 1999) → 205 записей│
+│    ↓                                     │
+│ 4) batch.length < 1000 → hasMore=false   │
+│    ↓                                     │
+│ 5) return allUtterances (1205 записей)   │
+└──────────────────────────────────────────┘
 ```
-
----
-
-## Детальные изменения в коде
-
-### Строка 33-90: Замена SYSTEM_PROMPT
-
-Полностью заменить текущий промпт на расширенную версию выше.
-
-### Строка 208: Смена модели
-
-```typescript
-// Было:
-model: 'gpt-4o-mini',
-
-// Станет:
-model: 'gpt-4o',
-```
-
----
-
-## Сравнение моделей
-
-| Параметр | gpt-4o-mini | gpt-4o |
-|----------|-------------|--------|
-| Стоимость | $0.15/$0.60 за 1M токенов | $2.50/$10 за 1M токенов |
-| Качество рассуждений | Базовое | Продвинутое |
-| Понимание контекста | Хорошее | Отличное |
-| Скорость | Быстрее | Медленнее (~2-3 сек) |
-
-**Рекомендация:** Для задачи валидации диаризации важно качество анализа, поэтому GPT-4o оправдан.
-
----
-
-## Ключевые паттерны в промпте
-
-Добавлена секция **DETECTING ILLOGICAL CONSECUTIVE UTTERANCES** с конкретными примерами:
-
-1. **Вопрос → Встречный вопрос** (разные спикеры)
-2. **Вопрос → Ответ** (разные спикеры)
-3. **Запрос → Уточняющий вопрос** (разные спикеры)
-4. **Приветствие → Ответное приветствие** (разные спикеры)
-5. **Подтверждение → Действие** (разные спикеры)
-6. **Множество вопросов подряд** без ожидания ответа — сигнал ошибки
 
 ---
 
 ## Итог изменений
 
-| Изменение | Файл | Строки |
-|-----------|------|--------|
-| Смена модели на `gpt-4o` | `diarization-fix/index.ts` | 208 |
-| Расширенный промпт с паттернами | `diarization-fix/index.ts` | 33-90 |
+| Файл | Изменение |
+|------|-----------|
+| `src/services/databaseService.ts` | Добавить пагинацию в `getUtterances` (строки 303-312) |
 
+**Результат:** Все 1205 реплик загрузятся, и пользователь увидит диалог до конца (59:58).
