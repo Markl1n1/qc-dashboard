@@ -301,14 +301,29 @@ class DatabaseService {
   }
 
   async getUtterances(transcriptionId: string): Promise<DatabaseUtterance[]> {
-    const { data, error } = await supabase
-      .from('dialog_speaker_utterances')
-      .select('*')
-      .eq('transcription_id', transcriptionId)
-      .order('utterance_order', { ascending: true });
+    const PAGE_SIZE = 1000;
+    const allUtterances: DatabaseUtterance[] = [];
+    let offset = 0;
+    let hasMore = true;
 
-    if (error) throw error;
-    return (data || []) as DatabaseUtterance[];
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from('dialog_speaker_utterances')
+        .select('*')
+        .eq('transcription_id', transcriptionId)
+        .order('utterance_order', { ascending: true })
+        .range(offset, offset + PAGE_SIZE - 1);
+
+      if (error) throw error;
+
+      const batch = (data || []) as DatabaseUtterance[];
+      allUtterances.push(...batch);
+
+      hasMore = batch.length === PAGE_SIZE;
+      offset += PAGE_SIZE;
+    }
+
+    return allUtterances;
   }
 
   // Analysis operations
