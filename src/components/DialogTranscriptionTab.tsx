@@ -33,7 +33,9 @@ const DialogTranscriptionTab: React.FC<DialogTranscriptionTabProps> = ({
         onNavigateToAnalysis={onNavigateToAnalysis}
         detectedLanguage={undefined} 
         metadata={undefined}
-        analysisData={dialog.openaiEvaluation as any} 
+        analysisData={dialog.openaiEvaluation as any}
+        dialogId={dialog.id}
+        fileName={dialog.fileName}
       />
     </div>
   );

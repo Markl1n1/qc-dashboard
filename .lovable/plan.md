@@ -1,68 +1,29 @@
 
+# Улучшение качества транскрипции: падежи и диаризация — ВЫПОЛНЕНО ✅
 
-# Validate Diarization: текущее состояние и возможные улучшения
+## Реализованные изменения
 
-## Что сейчас делает кнопка
+### Шаг 1: Sample rate 8 kHz → 16 kHz ✅
+- `src/lib/merge-audio-to-wav.ts`: TARGET_SR = 16000
+- `src/services/serverAudioMergingService.ts`: outputSampleRate = 16000
 
-1. Отправляет все utterances диалога в edge function `diarization-fix`
-2. GPT (4o или 4o-mini для >80 utterances) анализирует и переназначает спикеров (Agent/Customer)
-3. Результат скачивается как `.txt` файл
-4. **Коррекция НЕ сохраняется в базу** — только файл на скачивание
+### Шаг 2: ru/pl переведены на Nova-3 ✅
+- `supabase/functions/deepgram-transcribe/index.ts`: дефолт nova3Languages теперь включает pl и ru
 
-## Проблемы
+### Шаг 3: Авто-ретрай при 1 спикере ✅
+- `src/services/deepgramService.ts`: при uniqueSpeakers === 1 и utterances > 10 → автоматический ретрай с detect_language=true
 
-| Проблема | Описание |
-|----------|----------|
-| Результат не применяется | Коррекция только в .txt, не обновляет utterances в БД |
-| Нет визуального превью | Пользователь не видит что изменилось до скачивания |
-| Лимит utterances | Для диалогов >200 utterances GPT может обрезать labels (уже есть padding, но ненадёжно) |
-| Только для админов | Супервайзеры не могут использовать |
+## Validate Diarization: улучшения — ВЫПОЛНЕНО ✅
 
-## Предлагаемые улучшения
+### Модальное окно с превью результатов ✅
+- `src/components/DiarizationResultsModal.tsx`: новый компонент с speaker mapping, confidence, списком изменённых utterances
 
-### 1. Применение коррекции в БД (главное улучшение)
+### Применение коррекции в БД ✅
+- `src/services/databaseService.ts`: метод `updateUtteranceSpeakers()` — batch update speaker labels
+- `src/components/ValidateDiarizationButton.tsx`: кнопка Apply → обновляет utterances в БД
 
-После получения `corrected_utterances` от GPT — обновить `dialog_speaker_utterances` в базе, заменив speaker labels. Добавить кнопку "Apply corrections" в UI вместо автоматического скачивания.
+### Батчинг для длинных диалогов ✅
+- `supabase/functions/diarization-fix/index.ts`: диалоги >150 utterances разбиваются на чанки по 120 с перекрытием 5
 
-### 2. Превью результатов в модальном окне
-
-Вместо скачивания .txt — показать модальное окно с:
-- Статистикой (needs_correction, confidence, analysis)
-- Таблицей маппинга спикеров
-- Превью исправленного диалога (с подсветкой изменений)
-- Кнопками: "Apply to dialog" / "Download .txt" / "Cancel"
-
-### 3. Батчинг для длинных диалогов
-
-Для диалогов >150 utterances — разбивать на чанки по 100-120 utterances с перекрытием контекста (последние 5 utterances предыдущего чанка), отправлять параллельно, затем объединять labels.
-
----
-
-## План реализации
-
-### Файл: `src/components/ValidateDiarizationButton.tsx`
-- Заменить автоскачивание на открытие модального окна с результатами
-- Добавить state для хранения результатов валидации
-- Добавить кнопку "Apply corrections" которая обновляет utterances в БД через `databaseService`
-
-### Новый файл: `src/components/DiarizationResultsModal.tsx`
-- Модальное окно с превью результатов:
-  - Speaker mapping таблица
-  - Confidence / analysis
-  - Список utterances с подсветкой изменённых спикеров (было → стало)
-  - Кнопки действий: Apply / Download / Cancel
-
-### Файл: `src/services/databaseService.ts`
-- Добавить метод `updateUtteranceSpeakers(transcriptionId, corrections)` — batch update speaker labels в `dialog_speaker_utterances`
-
-### Файл: `supabase/functions/diarization-fix/index.ts`
-- Добавить батчинг: если utterances > 150, разбить на чанки и обработать параллельно
-- Объединить labels из всех чанков в один массив
-
-| Файл | Изменение |
-|------|-----------|
-| `src/components/ValidateDiarizationButton.tsx` | Модальное окно вместо скачивания, кнопка Apply |
-| `src/components/DiarizationResultsModal.tsx` | Новый компонент превью результатов |
-| `src/services/databaseService.ts` | Метод `updateUtteranceSpeakers` |
-| `supabase/functions/diarization-fix/index.ts` | Батчинг для длинных диалогов |
-
+## Следующие шаги (опционально)
+- LLM-постобработка для исправления падежей (edge function fix-transcription)

@@ -659,6 +659,46 @@ class DatabaseService {
       speaker: this.mapSpeakerName(utterance.speaker, speakersData)
     }));
   }
+
+  /**
+   * Update speaker labels for utterances in batch (used by diarization validation)
+   */
+  async updateUtteranceSpeakers(
+    transcriptionId: string,
+    corrections: Array<{ utterance_order: number; speaker: string }>
+  ): Promise<number> {
+    try {
+      validateUuid(transcriptionId, 'transcriptionId');
+      if (!corrections || corrections.length === 0) return 0;
+
+      // Get existing utterances to map order → id
+      const utterances = await this.getUtterances(transcriptionId);
+      const orderToId = new Map(utterances.map(u => [u.utterance_order, u.id]));
+
+      let updatedCount = 0;
+      // Batch updates in groups of 50
+      const BATCH_SIZE = 50;
+      for (let i = 0; i < corrections.length; i += BATCH_SIZE) {
+        const batch = corrections.slice(i, i + BATCH_SIZE);
+        const promises = batch.map(async (c) => {
+          const id = orderToId.get(c.utterance_order);
+          if (!id) return;
+          const { error } = await supabase
+            .from('dialog_speaker_utterances')
+            .update({ speaker: c.speaker })
+            .eq('id', id);
+          if (!error) updatedCount++;
+        });
+        await Promise.all(promises);
+      }
+
+      logger.info('Utterance speakers updated', { transcriptionId, updatedCount });
+      return updatedCount;
+    } catch (error) {
+      logger.error('Failed to update utterance speakers', error as Error, { transcriptionId });
+      throw error;
+    }
+  }
 }
 
 export const databaseService = new DatabaseService();

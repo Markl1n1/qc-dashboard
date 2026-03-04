@@ -29,6 +29,8 @@ interface EnhancedSpeakerDialogProps {
   metadata?: { duration: number; model: string };
   analysisData?: { speaker_0?: string; speaker_1?: string; role_0?: string; role_1?: string };
   fileName?: string;
+  dialogId?: string;
+  onCorrectionsApplied?: () => void;
 }
 
 const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
@@ -39,7 +41,9 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
   detectedLanguage,
   metadata,
   analysisData,
-  fileName
+  fileName,
+  dialogId,
+  onCorrectionsApplied
 }) => {
   const { commentLanguage } = useLanguageStore();
   const { mapSpeakerName } = useSpeakerMapping(analysisData);
@@ -208,7 +212,7 @@ const assignments = useMemo(() => {
               )}
           </CardTitle>
             <div className="flex gap-2">
-              <ValidateDiarizationButton utterances={mergedUtterances} fileName={fileName} />
+              <ValidateDiarizationButton utterances={mergedUtterances} fileName={fileName} dialogId={dialogId} onCorrectionsApplied={onCorrectionsApplied} />
               <Button variant="outline" size="sm" onClick={handleCopyDialog}>
                 <Copy className="h-4 w-4 mr-2" />
                 Copy Dialog
