@@ -62,8 +62,16 @@ const ValidateDiarizationButton: React.FC<ValidateDiarizationButtonProps> = ({
   };
 
   const handleApply = async () => {
-    if (!validationResult || !transcriptionId) {
-      toast.error('Cannot apply: missing transcription ID');
+    if (!validationResult || !dialogId) {
+      toast.error('Cannot apply: missing dialog ID');
+      return;
+    }
+
+    // Look up the speaker transcription ID for this dialog
+    const transcriptions = await databaseService.getTranscriptions(dialogId);
+    const speakerTranscription = transcriptions.find(t => t.transcription_type === 'speaker');
+    if (!speakerTranscription) {
+      toast.error('Cannot apply: no speaker transcription found');
       return;
     }
 
@@ -72,7 +80,7 @@ const ValidateDiarizationButton: React.FC<ValidateDiarizationButtonProps> = ({
       speaker: u.speaker
     }));
 
-    const updatedCount = await databaseService.updateUtteranceSpeakers(transcriptionId, corrections);
+    const updatedCount = await databaseService.updateUtteranceSpeakers(speakerTranscription.id, corrections);
     toast.success(`Applied ${updatedCount} speaker corrections to database`);
     onCorrectionsApplied?.();
   };
