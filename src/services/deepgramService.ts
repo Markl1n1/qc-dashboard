@@ -272,11 +272,12 @@ class DeepgramService {
     return this.processTranscriptionResult(data, audioFile, startTime, apiCallDuration);
   }
 
-  private processTranscriptionResult(
+  private async processTranscriptionResult(
     data: any, 
     audioFile: File, 
     startTime: number,
-    apiCallDuration: number
+    apiCallDuration: number,
+    isRetry: boolean = false
   ) {
     const processingStartTime = Date.now();
     this.updateProgress('processing', 80, 'Processing speaker diarization...');
@@ -286,9 +287,33 @@ class DeepgramService {
     // Process utterances
     const speakerUtterances = this.processRawSpeakerUtterances(result.speakerUtterances);
     
-    // Check for single speaker warning
+    // Check for single speaker warning and auto-retry with detect_language
     const uniqueSpeakers = new Set(speakerUtterances.map(u => u.speaker)).size;
-    if (uniqueSpeakers === 1 && speakerUtterances.length > 5) {
+    if (uniqueSpeakers === 1 && speakerUtterances.length > 10 && !isRetry) {
+      console.warn('⚠️ [DIARIZATION] Only 1 speaker detected with', speakerUtterances.length, 'utterances. Retrying with detect_language=true...');
+      logger.warn('Diarization returned only 1 speaker - auto-retrying with language detection', {
+        fileName: audioFile.name,
+        utteranceCount: speakerUtterances.length
+      });
+      
+      this.updateProgress('processing', 50, 'Обнаружен только 1 спикер, повторная попытка с auto-detect...');
+      
+      try {
+        const retryResult = await this.retryWithLanguageDetection(audioFile, startTime);
+        if (retryResult) {
+          const retrySpeakers = new Set(retryResult.speakerUtterances.map(u => u.speaker)).size;
+          console.log(`🔄 [RETRY] Result: ${retrySpeakers} speakers (was 1)`);
+          if (retrySpeakers > 1) {
+            console.log('✅ [RETRY] Auto-retry improved diarization!');
+            return retryResult;
+          } else {
+            console.log('⚠️ [RETRY] Auto-retry did not improve diarization, using original result');
+          }
+        }
+      } catch (retryError) {
+        console.error('❌ [RETRY] Auto-retry failed, using original result:', retryError);
+      }
+    } else if (uniqueSpeakers === 1 && speakerUtterances.length > 5) {
       console.warn('⚠️ [DIARIZATION] Only 1 speaker detected with', speakerUtterances.length, 'utterances');
       logger.warn('Diarization returned only 1 speaker - potential issue', {
         fileName: audioFile.name,
