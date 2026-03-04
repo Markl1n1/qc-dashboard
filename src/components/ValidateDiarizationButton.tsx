@@ -13,7 +13,7 @@ interface ValidateDiarizationButtonProps {
   utterances: SpeakerUtterance[];
   disabled?: boolean;
   fileName?: string;
-  transcriptionId?: string;
+  dialogId?: string;
   onCorrectionsApplied?: () => void;
 }
 
