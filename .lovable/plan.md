@@ -13,5 +13,17 @@
 ### Шаг 3: Авто-ретрай при 1 спикере ✅
 - `src/services/deepgramService.ts`: при uniqueSpeakers === 1 и utterances > 10 → автоматический ретрай с detect_language=true
 
+## Validate Diarization: улучшения — ВЫПОЛНЕНО ✅
+
+### Модальное окно с превью результатов ✅
+- `src/components/DiarizationResultsModal.tsx`: новый компонент с speaker mapping, confidence, списком изменённых utterances
+
+### Применение коррекции в БД ✅
+- `src/services/databaseService.ts`: метод `updateUtteranceSpeakers()` — batch update speaker labels
+- `src/components/ValidateDiarizationButton.tsx`: кнопка Apply → обновляет utterances в БД
+
+### Батчинг для длинных диалогов ✅
+- `supabase/functions/diarization-fix/index.ts`: диалоги >150 utterances разбиваются на чанки по 120 с перекрытием 5
+
 ## Следующие шаги (опционально)
-- Шаг 4: LLM-постобработка для исправления падежей (edge function fix-transcription)
+- LLM-постобработка для исправления падежей (edge function fix-transcription)
