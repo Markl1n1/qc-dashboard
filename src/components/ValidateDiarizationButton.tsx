@@ -21,7 +21,7 @@ const ValidateDiarizationButton: React.FC<ValidateDiarizationButtonProps> = ({
   utterances,
   disabled = false,
   fileName,
-  transcriptionId,
+  dialogId,
   onCorrectionsApplied
 }) => {
   const { isAdmin, isLoading: isRoleLoading } = useOptimizedUserRole();
