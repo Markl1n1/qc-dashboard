@@ -1,99 +1,72 @@
 
-# План: Исправление обрезания длинных диалогов (лимит 1000 строк PostgREST)
 
-## Диагноз
+# Улучшение качества транскрипции: падежи и диаризация
 
-**Причина проблемы:**
-- Supabase PostgREST по умолчанию возвращает максимум **1000 строк** в одном запросе
-- В диалоге `4c4df69f-6f7f-4848-af19-156b38867391` есть **1205 реплик** (до 59:58)
-- Без явного `.limit()` или пагинации, API возвращает только первые 1000 (до 48:58)
-- Реплики с индексами 1000-1204 (от 49:00 до 59:58) не загружаются
+## Найденные проблемы в текущем пайплайне
 
-**Доказательства:**
-| Метрика | Значение |
-|---------|----------|
-| Реплик в БД | 1205 |
-| Последняя реплика (#1204) | 59:58 |
-| Реплика #999 | 48:58 — **это то, что видит пользователь** |
+### 1. Sample rate 8 kHz — главный виновник
+Файл `src/lib/merge-audio-to-wav.ts` даунсемплит аудио до **8000 Hz** при мерже нескольких файлов. Deepgram рекомендует минимум **16 kHz** для quality speech recognition. При 8 kHz:
+- Теряются высокочастотные согласные (с, ш, з, ц) → ошибки в падежных окончаниях
+- Хуже работает speaker embedding → деградация диаризации
 
----
+### 2. Nova-2 для русского/польского вместо Nova-3
+В edge function (`deepgram-transcribe/index.ts`, строка 137-141): русский и польский направляются на **Nova-2**, а Nova-3 (более точная модель) используется только для en/es/fr/de. Nova-3 поддерживает русский и польский и даёт лучшее качество.
 
-## Решение
-
-Добавить **пагинацию** в метод `getUtterances` для загрузки всех реплик, даже если их больше 1000.
-
-### Файл: `src/services/databaseService.ts`
-
-**Текущий код (строки 303-312):**
-```typescript
-async getUtterances(transcriptionId: string): Promise<DatabaseUtterance[]> {
-  const { data, error } = await supabase
-    .from('dialog_speaker_utterances')
-    .select('*')
-    .eq('transcription_id', transcriptionId)
-    .order('utterance_order', { ascending: true });
-
-  if (error) throw error;
-  return (data || []) as DatabaseUtterance[];
-}
-```
-
-**Новый код с пагинацией:**
-```typescript
-async getUtterances(transcriptionId: string): Promise<DatabaseUtterance[]> {
-  const PAGE_SIZE = 1000;
-  const allUtterances: DatabaseUtterance[] = [];
-  let offset = 0;
-  let hasMore = true;
-
-  while (hasMore) {
-    const { data, error } = await supabase
-      .from('dialog_speaker_utterances')
-      .select('*')
-      .eq('transcription_id', transcriptionId)
-      .order('utterance_order', { ascending: true })
-      .range(offset, offset + PAGE_SIZE - 1);
-
-    if (error) throw error;
-
-    const batch = (data || []) as DatabaseUtterance[];
-    allUtterances.push(...batch);
-
-    // Если получили меньше PAGE_SIZE записей, значит достигли конца
-    hasMore = batch.length === PAGE_SIZE;
-    offset += PAGE_SIZE;
-  }
-
-  return allUtterances;
-}
-```
+### 3. Нет автоматической коррекции при плохой диаризации
+Когда Deepgram возвращает только 1 спикера, система логирует warning, но не предпринимает действий.
 
 ---
 
-## Как это работает
+## План изменений
 
-```text
-┌──────────────────────────────────────────┐
-│         getUtterances(transcriptionId)   │
-├──────────────────────────────────────────┤
-│ 1) Запрос .range(0, 999) → 1000 записей  │
-│    ↓                                     │
-│ 2) batch.length === 1000 → hasMore=true  │
-│    ↓                                     │
-│ 3) Запрос .range(1000, 1999) → 205 записей│
-│    ↓                                     │
-│ 4) batch.length < 1000 → hasMore=false   │
-│    ↓                                     │
-│ 5) return allUtterances (1205 записей)   │
-└──────────────────────────────────────────┘
-```
+### Шаг 1: Поднять sample rate с 8 kHz до 16 kHz
+**Файл:** `src/lib/merge-audio-to-wav.ts`
+- Изменить `TARGET_SR = 8000` → `TARGET_SR = 16000`
+- Это удваивает размер WAV, но значительно улучшает распознавание морфологии и диаризацию
+
+**Файл:** `src/services/serverAudioMergingService.ts`
+- Обновить `outputSampleRate: 8000` → `outputSampleRate: 16000`
+
+### Шаг 2: Перевести русский и польский на Nova-3
+**Файл:** `supabase/functions/deepgram-transcribe/index.ts`
+- Перенести `pl` и `ru` из списка Nova-2 в Nova-3 (они поддерживаются)
+- Это даст keyterm support + улучшенную точность для этих языков
+- Обновить дефолтные значения: `nova2Languages` default → `'[]'`, `nova3Languages` default → `'["pl","ru","es","fr","de","en"]'`
+
+### Шаг 3: Авто-ретрай при одном спикере
+**Файл:** `src/services/deepgramService.ts` (метод `processTranscriptionResult`)
+- Если `uniqueSpeakers === 1` и utterances > 10 — автоматически повторить транскрипцию с `detect_language=true` (на случай, если язык был выбран неверно)
+- Максимум 1 ретрай, чтобы не зациклиться
+- Показать пользователю toast: "Обнаружен только 1 спикер, повторная попытка с auto-detect..."
+
+### Шаг 4: LLM-постобработка для исправления падежей (опционально)
+**Новый edge function:** `supabase/functions/fix-transcription/index.ts`
+- Принимает текст транскрипции + язык
+- Отправляет в GPT-4o-mini с промптом: "Fix grammatical cases, declensions, and word endings. Do NOT change meaning or add words."
+- Сохраняет исправленный текст как отдельную transcription_type = 'corrected'
+- Доступно как кнопка "Fix grammar" на странице диалога
 
 ---
 
-## Итог изменений
+## Ожидаемый эффект
+
+| Изменение | Влияние на падежи | Влияние на диаризацию |
+|-----------|-------------------|----------------------|
+| 16 kHz вместо 8 kHz | Значительное улучшение | Значительное улучшение |
+| Nova-3 для ru/pl | Заметное улучшение | Умеренное улучшение |
+| Авто-ретрай | — | Спасает случаи с неверным языком |
+| LLM-постобработка | Максимальное исправление | — |
+
+---
+
+## Что реализуем сейчас
+
+Шаги 1-3 — минимальные изменения с максимальным эффектом. Шаг 4 (LLM-постобработка) можно добавить отдельно позже.
 
 | Файл | Изменение |
 |------|-----------|
-| `src/services/databaseService.ts` | Добавить пагинацию в `getUtterances` (строки 303-312) |
+| `src/lib/merge-audio-to-wav.ts` | TARGET_SR: 8000 → 16000 |
+| `src/services/serverAudioMergingService.ts` | outputSampleRate: 8000 → 16000 |
+| `supabase/functions/deepgram-transcribe/index.ts` | Перевести ru/pl на Nova-3, обновить дефолты |
+| `src/services/deepgramService.ts` | Авто-ретрай при 1 спикере с detect_language |
 
-**Результат:** Все 1205 реплик загрузятся, и пользователь увидит диалог до конца (59:58).
