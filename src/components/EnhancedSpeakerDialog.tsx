@@ -29,6 +29,8 @@ interface EnhancedSpeakerDialogProps {
   metadata?: { duration: number; model: string };
   analysisData?: { speaker_0?: string; speaker_1?: string; role_0?: string; role_1?: string };
   fileName?: string;
+  dialogId?: string;
+  onCorrectionsApplied?: () => void;
 }
 
 const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
@@ -39,7 +41,9 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
   detectedLanguage,
   metadata,
   analysisData,
-  fileName
+  fileName,
+  dialogId,
+  onCorrectionsApplied
 }) => {
   const { commentLanguage } = useLanguageStore();
   const { mapSpeakerName } = useSpeakerMapping(analysisData);
