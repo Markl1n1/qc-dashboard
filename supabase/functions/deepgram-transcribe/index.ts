@@ -134,8 +134,8 @@ Deno.serve(async (req) => {
     console.log('✅ [CONFIG] Configuration fetched in', Date.now() - configFetchStart, 'ms');
     
     // Parse language configurations
-    const nova2Languages = modelConfig?.find(c => c.key === 'deepgram_nova2_languages')?.value || '["pl","ru"]';
-    const nova3Languages = modelConfig?.find(c => c.key === 'deepgram_nova3_languages')?.value || '["es","fr","de","en"]';
+    const nova2Languages = modelConfig?.find(c => c.key === 'deepgram_nova2_languages')?.value || '[]';
+    const nova3Languages = modelConfig?.find(c => c.key === 'deepgram_nova3_languages')?.value || '["pl","ru","es","fr","de","en"]';
     
     const nova2List = JSON.parse(nova2Languages);
     const nova3List = JSON.parse(nova3Languages);

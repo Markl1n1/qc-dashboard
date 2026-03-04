@@ -272,11 +272,12 @@ class DeepgramService {
     return this.processTranscriptionResult(data, audioFile, startTime, apiCallDuration);
   }
 
-  private processTranscriptionResult(
+  private async processTranscriptionResult(
     data: any, 
     audioFile: File, 
     startTime: number,
-    apiCallDuration: number
+    apiCallDuration: number,
+    isRetry: boolean = false
   ) {
     const processingStartTime = Date.now();
     this.updateProgress('processing', 80, 'Processing speaker diarization...');
@@ -286,9 +287,33 @@ class DeepgramService {
     // Process utterances
     const speakerUtterances = this.processRawSpeakerUtterances(result.speakerUtterances);
     
-    // Check for single speaker warning
+    // Check for single speaker warning and auto-retry with detect_language
     const uniqueSpeakers = new Set(speakerUtterances.map(u => u.speaker)).size;
-    if (uniqueSpeakers === 1 && speakerUtterances.length > 5) {
+    if (uniqueSpeakers === 1 && speakerUtterances.length > 10 && !isRetry) {
+      console.warn('⚠️ [DIARIZATION] Only 1 speaker detected with', speakerUtterances.length, 'utterances. Retrying with detect_language=true...');
+      logger.warn('Diarization returned only 1 speaker - auto-retrying with language detection', {
+        fileName: audioFile.name,
+        utteranceCount: speakerUtterances.length
+      });
+      
+      this.updateProgress('processing', 50, 'Обнаружен только 1 спикер, повторная попытка с auto-detect...');
+      
+      try {
+        const retryResult = await this.retryWithLanguageDetection(audioFile, startTime);
+        if (retryResult) {
+          const retrySpeakers = new Set(retryResult.speakerUtterances.map(u => u.speaker)).size;
+          console.log(`🔄 [RETRY] Result: ${retrySpeakers} speakers (was 1)`);
+          if (retrySpeakers > 1) {
+            console.log('✅ [RETRY] Auto-retry improved diarization!');
+            return retryResult;
+          } else {
+            console.log('⚠️ [RETRY] Auto-retry did not improve diarization, using original result');
+          }
+        }
+      } catch (retryError) {
+        console.error('❌ [RETRY] Auto-retry failed, using original result:', retryError);
+      }
+    } else if (uniqueSpeakers === 1 && speakerUtterances.length > 5) {
       console.warn('⚠️ [DIARIZATION] Only 1 speaker detected with', speakerUtterances.length, 'utterances');
       logger.warn('Diarization returned only 1 speaker - potential issue', {
         fileName: audioFile.name,
@@ -345,6 +370,66 @@ class DeepgramService {
       audioDurationMinutes: stats.audioDurationMinutes,
       stats
     };
+  }
+
+  private async retryWithLanguageDetection(
+    audioFile: File,
+    originalStartTime: number
+  ): Promise<{ text: string; speakerUtterances: SpeakerUtterance[]; audioDurationMinutes?: number; stats?: TranscriptionStats } | null> {
+    console.log('🔄 [RETRY] Starting retry with detect_language=true...');
+    
+    const fileSizeMB = audioFile.size / (1024 * 1024);
+    const isLargeFile = fileSizeMB > 8;
+    const retryStartTime = Date.now();
+
+    const retryOptions = {
+      diarize: true,
+      utterances: true,
+      detect_language: true,
+      punctuate: true,
+      smart_format: true,
+    };
+
+    let data: any;
+    let error: any;
+
+    if (isLargeFile) {
+      const fileName = `retry_${Date.now()}_${sanitizeFilename(audioFile.name)}`;
+      const { error: uploadError } = await supabase.storage
+        .from('audio-files')
+        .upload(fileName, audioFile);
+      if (uploadError) throw uploadError;
+
+      const result = await supabase.functions.invoke('deepgram-transcribe', {
+        body: {
+          storageFile: fileName,
+          mimeType: audioFile.type,
+          options: retryOptions
+        }
+      });
+      data = result.data;
+      error = result.error;
+      await audioCleanupService.cleanupSingleFile(fileName);
+    } else {
+      const base64Audio = await this.fileToBase64(audioFile);
+      const result = await supabase.functions.invoke('deepgram-transcribe', {
+        body: {
+          audio: base64Audio,
+          mimeType: audioFile.type,
+          options: retryOptions
+        }
+      });
+      data = result.data;
+      error = result.error;
+    }
+
+    if (error || !data?.success) {
+      console.error('❌ [RETRY] Retry transcription failed:', error?.message || data?.error);
+      return null;
+    }
+
+    const apiCallDuration = Date.now() - retryStartTime;
+    return this.processTranscriptionResult(data, audioFile, originalStartTime, apiCallDuration, true);
   }
 
   private async fileToBase64(file: File): Promise<string> {

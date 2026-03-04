@@ -71,7 +71,7 @@ export class ServerAudioMergingService {
       edgeMergeUrl: options?.edgeMergeUrl ?? envEdge,
       useSupabaseFunctionsInvoke: options?.useSupabaseFunctionsInvoke ?? !!supabaseClient,
       tempBucket: options?.tempBucket ?? "tmp-audio",
-      outputSampleRate: options?.outputSampleRate ?? 8000,
+      outputSampleRate: options?.outputSampleRate ?? 16000,
       normalizePeak: options?.normalizePeak ?? false,
       forceClientMerge: options?.forceClientMerge ?? false,
     };

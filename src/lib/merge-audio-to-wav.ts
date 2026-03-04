@@ -26,7 +26,7 @@ export async function mergeAudioFilesTo8kWav(
 ): Promise<MergeResult> {
   if (!files || files.length < 2) throw new Error("Provide at least 2 files to merge.");
 
-  const TARGET_SR = 8000;
+  const TARGET_SR = 16000;
   const TARGET_CH = 1;
 
   const AC: typeof AudioContext =
