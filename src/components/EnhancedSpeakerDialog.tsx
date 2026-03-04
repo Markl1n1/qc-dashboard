@@ -212,7 +212,7 @@ const assignments = useMemo(() => {
               )}
           </CardTitle>
             <div className="flex gap-2">
-              <ValidateDiarizationButton utterances={mergedUtterances} fileName={fileName} />
+              <ValidateDiarizationButton utterances={mergedUtterances} fileName={fileName} dialogId={dialogId} onCorrectionsApplied={onCorrectionsApplied} />
               <Button variant="outline" size="sm" onClick={handleCopyDialog}>
                 <Copy className="h-4 w-4 mr-2" />
                 Copy Dialog
