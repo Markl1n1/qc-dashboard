@@ -372,6 +372,66 @@ class DeepgramService {
     };
   }
 
+  private async retryWithLanguageDetection(
+    audioFile: File,
+    originalStartTime: number
+  ): Promise<{ text: string; speakerUtterances: SpeakerUtterance[]; audioDurationMinutes?: number; stats?: TranscriptionStats } | null> {
+    console.log('🔄 [RETRY] Starting retry with detect_language=true...');
+    
+    const fileSizeMB = audioFile.size / (1024 * 1024);
+    const isLargeFile = fileSizeMB > 8;
+    const retryStartTime = Date.now();
+
+    const retryOptions = {
+      diarize: true,
+      utterances: true,
+      detect_language: true,
+      punctuate: true,
+      smart_format: true,
+    };
+
+    let data: any;
+    let error: any;
+
+    if (isLargeFile) {
+      const fileName = `retry_${Date.now()}_${sanitizeFilename(audioFile.name)}`;
+      const { error: uploadError } = await supabase.storage
+        .from('audio-files')
+        .upload(fileName, audioFile);
+      if (uploadError) throw uploadError;
+
+      const result = await supabase.functions.invoke('deepgram-transcribe', {
+        body: {
+          storageFile: fileName,
+          mimeType: audioFile.type,
+          options: retryOptions
+        }
+      });
+      data = result.data;
+      error = result.error;
+      await audioCleanupService.cleanupSingleFile(fileName);
+    } else {
+      const base64Audio = await this.fileToBase64(audioFile);
+      const result = await supabase.functions.invoke('deepgram-transcribe', {
+        body: {
+          audio: base64Audio,
+          mimeType: audioFile.type,
+          options: retryOptions
+        }
+      });
+      data = result.data;
+      error = result.error;
+    }
+
+    if (error || !data?.success) {
+      console.error('❌ [RETRY] Retry transcription failed:', error?.message || data?.error);
+      return null;
+    }
+
+    const apiCallDuration = Date.now() - retryStartTime;
+    return this.processTranscriptionResult(data, audioFile, originalStartTime, apiCallDuration, true);
+  }
+
   private async fileToBase64(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
