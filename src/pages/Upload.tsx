@@ -6,10 +6,12 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Progress } from '../components/ui/progress';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Switch } from '../components/ui/switch';
 import { useDeepgramTranscription } from '../hooks/useDeepgramTranscription';
 import { useDatabaseDialogs } from '../hooks/useDatabaseDialogs';
 import { useAuthStore } from '../store/authStore';
-import { Mic, User, FileAudio, AlertCircle, Languages } from 'lucide-react';
+import { useSettingsStore } from '../store/settingsStore';
+import { Mic, User, FileAudio, AlertCircle, Volume2 } from 'lucide-react';
 import { DeepgramOptions } from '../types/deepgram';
 import { SpeakerUtterance } from '../types';
 import { toast } from 'sonner';
@@ -20,6 +22,7 @@ import MultiFileTranscriptionProgress from '../components/MultiFileTranscription
 import LanguageSelector from '../components/LanguageSelector';
 import { serverAudioMergingService, ServerMergingProgress } from '../services/serverAudioMergingService';
 import { generateFileName } from '../utils/hashGenerator';
+import { deepgramService } from '../services/deepgramService';
 
 interface UploadProps {}
 
@@ -32,6 +35,7 @@ const Upload: React.FC<UploadProps> = () => {
   const navigate = useNavigate();
 
   const { user } = useAuthStore();
+  const { noiseReduction, setNoiseReduction } = useSettingsStore();
   const { addDialog, updateDialog, saveTranscription, saveSpeakerTranscription } = useDatabaseDialogs();
 
   const { 
@@ -97,6 +101,9 @@ const Upload: React.FC<UploadProps> = () => {
       toast.error('You must be logged in to transcribe files.');
       return;
     }
+
+    // Set noise reduction preference before transcription
+    deepgramService.setNoiseReduction(noiseReduction);
 
     console.log('Starting transcription for files:', audioFiles.map(f => f.name));
     
@@ -230,11 +237,36 @@ const Upload: React.FC<UploadProps> = () => {
         </CardContent>
       </Card>
 
-      {/* Language Selection */}
-      <LanguageSelector
-        selectedLanguage={selectedLanguage}
-        onLanguageChange={setSelectedLanguage}
-      />
+      {/* Language Selection & Noise Reduction */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <LanguageSelector
+          selectedLanguage={selectedLanguage}
+          onLanguageChange={setSelectedLanguage}
+        />
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Volume2 className="h-5 w-5" />
+              Noise Reduction
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div>
+                <Label htmlFor="noise-reduction" className="font-medium">RNNoise denoising</Label>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Remove background noise before transcription to improve diarization quality
+                </p>
+              </div>
+              <Switch
+                id="noise-reduction"
+                checked={noiseReduction}
+                onCheckedChange={setNoiseReduction}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* File Upload */}
       <Card>
@@ -275,12 +307,12 @@ const Upload: React.FC<UploadProps> = () => {
 
           {/* Server-side merging info */}
           {audioFiles.length > 1 && (
-            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="mt-4 p-3 bg-accent border border-border rounded-lg">
               <div className="flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5" />
+                <AlertCircle className="h-4 w-4 text-primary mt-0.5" />
                 <div className="text-sm">
-                  <p className="font-medium text-blue-800">Server-side audio merging</p>
-                  <p className="text-blue-700">
+                  <p className="font-medium text-foreground">Server-side audio merging</p>
+                  <p className="text-muted-foreground">
                     Multiple files will be merged on the server before transcription.
                   </p>
                 </div>
@@ -346,7 +378,7 @@ const Upload: React.FC<UploadProps> = () => {
             <CardTitle>Transcription Error</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-red-500">{deepgramError}</p>
+            <p className="text-destructive">{deepgramError}</p>
           </CardContent>
         </Card>
       )}

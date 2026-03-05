@@ -76,14 +76,55 @@ const logTranscription = {
 
 class DeepgramService {
   private progressCallback: ((progress: UnifiedTranscriptionProgress) => void) | null = null;
+  private _noiseReduction: boolean = true;
 
   setProgressCallback(callback: (progress: UnifiedTranscriptionProgress) => void): void {
     this.progressCallback = callback;
   }
 
+  setNoiseReduction(enabled: boolean): void {
+    this._noiseReduction = enabled;
+  }
+
   private updateProgress(stage: UnifiedTranscriptionProgress['stage'], progress: number, message: string): void {
     if (this.progressCallback) {
       this.progressCallback({ stage, progress, message });
+    }
+  }
+
+  /**
+   * Denoise audio file via edge function. Returns the denoised storage path.
+   * If denoising fails, returns the original path (graceful fallback).
+   */
+  private async denoiseFile(storagePath: string): Promise<string> {
+    if (!this._noiseReduction) {
+      console.log('🔇 [DENOISE] Noise reduction disabled, skipping');
+      return storagePath;
+    }
+
+    try {
+      this.updateProgress('processing', 20, 'Applying noise reduction (RNNoise)...');
+      console.log('🔇 [DENOISE] Calling audio-denoise edge function for:', storagePath);
+
+      const { data, error } = await supabase.functions.invoke('audio-denoise', {
+        body: { storagePath, bucket: 'audio-files' }
+      });
+
+      if (error || !data?.success) {
+        console.warn('⚠️ [DENOISE] Denoise failed, using original file:', error?.message || data?.error);
+        return storagePath;
+      }
+
+      console.log(`✅ [DENOISE] Complete. Method: ${data.method}, Time: ${data.processingTimeMs}ms`);
+      
+      if (data.method === 'passthrough') {
+        console.log('ℹ️ [DENOISE] FFmpeg not available, file passed through without denoising');
+      }
+
+      return data.denoisedPath;
+    } catch (err) {
+      console.warn('⚠️ [DENOISE] Denoise call failed, using original file:', err instanceof Error ? err.message : String(err));
+      return storagePath;
     }
   }
 
@@ -153,11 +194,14 @@ class DeepgramService {
       uploadDuration: `${uploadDuration}ms` 
     });
 
+    // Apply noise reduction if enabled
+    const storageFileToTranscribe = await this.denoiseFile(fileName);
+
     this.updateProgress('processing', 30, 'Processing large audio file...');
 
     const apiCallStartTime = Date.now();
     logTranscription.apiCall('Calling Deepgram Edge Function (storage mode)', {
-      storageFile: fileName,
+      storageFile: storageFileToTranscribe,
       options: {
         model: options.model || 'nova-2-general',
         language: options.language,
@@ -167,7 +211,7 @@ class DeepgramService {
 
     const { data, error } = await supabase.functions.invoke('deepgram-transcribe', {
       body: {
-        storageFile: fileName,
+        storageFile: storageFileToTranscribe,
         mimeType: audioFile.type,
         options: {
           model: options.model || 'nova-2-general',
@@ -184,8 +228,8 @@ class DeepgramService {
 
     const apiCallDuration = logTranscription.timing('Deepgram API call (large file)', apiCallStartTime);
 
-    // Clean up storage file after transcription
-    await audioCleanupService.cleanupSingleFile(fileName);
+    // Clean up storage file after transcription (denoised or original)
+    await audioCleanupService.cleanupSingleFile(storageFileToTranscribe);
 
     if (error) {
       logTranscription.error('Edge function error (large file)', error, { fileName: audioFile.name });
@@ -210,6 +254,64 @@ class DeepgramService {
     options: DeepgramOptions,
     startTime: number
   ) {
+    // If noise reduction is enabled, upload to storage first for denoising
+    if (this._noiseReduction) {
+      this.updateProgress('uploading', 10, 'Uploading file for noise reduction...');
+      
+      const fileName = `audio_${Date.now()}_${sanitizeFilename(audioFile.name)}`;
+      const { error: uploadError } = await supabase.storage
+        .from('audio-files')
+        .upload(fileName, audioFile);
+
+      if (uploadError) {
+        console.warn('⚠️ [DENOISE] Upload for denoise failed, falling back to base64:', uploadError.message);
+        return this.transcribeSmallFileBase64(audioFile, options, startTime);
+      }
+
+      const storageFileToTranscribe = await this.denoiseFile(fileName);
+      
+      this.updateProgress('processing', 30, 'Processing audio with Deepgram...');
+
+      const apiCallStartTime = Date.now();
+      const { data, error } = await supabase.functions.invoke('deepgram-transcribe', {
+        body: {
+          storageFile: storageFileToTranscribe,
+          mimeType: audioFile.type,
+          options: {
+            model: options.model || 'nova-2-general',
+            language: options.language_detection ? undefined : options.language,
+            detect_language: options.language_detection || false,
+            diarize: options.speaker_labels || false,
+            punctuate: true,
+            utterances: options.speaker_labels || false,
+            smart_format: options.smart_formatting !== false,
+            profanity_filter: options.profanity_filter || false
+          }
+        }
+      });
+
+      const apiCallDuration = logTranscription.timing('Deepgram API call (small file via storage)', apiCallStartTime);
+      await audioCleanupService.cleanupSingleFile(storageFileToTranscribe);
+
+      if (error) {
+        logTranscription.error('Edge function error', error, { fileName: audioFile.name });
+        throw new Error(`Deepgram transcription failed: ${error.message}`);
+      }
+      if (!data || !data.success) {
+        throw new Error(data?.error || 'Deepgram transcription failed');
+      }
+
+      return this.processTranscriptionResult(data, audioFile, startTime, apiCallDuration);
+    }
+
+    return this.transcribeSmallFileBase64(audioFile, options, startTime);
+  }
+
+  private async transcribeSmallFileBase64(
+    audioFile: File,
+    options: DeepgramOptions,
+    startTime: number
+  ) {
     this.updateProgress('uploading', 10, 'Processing audio with Deepgram...');
 
     const base64StartTime = Date.now();
@@ -228,15 +330,6 @@ class DeepgramService {
     this.updateProgress('processing', 30, 'Processing audio with Deepgram...');
 
     const apiCallStartTime = Date.now();
-    logTranscription.apiCall('Calling Deepgram Edge Function (base64 mode)', {
-      base64Size: `${(base64Audio.length / 1024 / 1024).toFixed(2)} MB`,
-      options: {
-        model: options.model || 'nova-2-general',
-        language: options.language,
-        diarize: options.speaker_labels
-      }
-    });
-
     const { data, error } = await supabase.functions.invoke('deepgram-transcribe', {
       body: {
         audio: base64Audio,
@@ -258,15 +351,10 @@ class DeepgramService {
 
     if (error) {
       logTranscription.error('Edge function error', error, { fileName: audioFile.name });
-      logger.error('Deepgram edge function error', error, { fileName: audioFile.name });
       throw new Error(`Deepgram transcription failed: ${error.message}`);
     }
-
     if (!data || !data.success) {
-      const errorMsg = data?.error || 'Deepgram transcription failed';
-      logTranscription.error('Transcription failed', new Error(errorMsg), { response: data });
-      logger.error('Deepgram transcription failed', new Error(errorMsg), { fileName: audioFile.name });
-      throw new Error(errorMsg);
+      throw new Error(data?.error || 'Deepgram transcription failed');
     }
 
     return this.processTranscriptionResult(data, audioFile, startTime, apiCallDuration);
