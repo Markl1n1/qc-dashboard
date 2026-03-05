@@ -307,12 +307,12 @@ const Upload: React.FC<UploadProps> = () => {
 
           {/* Server-side merging info */}
           {audioFiles.length > 1 && (
-            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="mt-4 p-3 bg-accent border border-border rounded-lg">
               <div className="flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5" />
+                <AlertCircle className="h-4 w-4 text-primary mt-0.5" />
                 <div className="text-sm">
-                  <p className="font-medium text-blue-800">Server-side audio merging</p>
-                  <p className="text-blue-700">
+                  <p className="font-medium text-foreground">Server-side audio merging</p>
+                  <p className="text-muted-foreground">
                     Multiple files will be merged on the server before transcription.
                   </p>
                 </div>
