@@ -25,5 +25,22 @@
 ### Батчинг для длинных диалогов ✅
 - `supabase/functions/diarization-fix/index.ts`: диалоги >150 utterances разбиваются на чанки по 120 с перекрытием 5
 
+## Шумоподавление RNNoise — ВЫПОЛНЕНО ✅
+
+### Edge Function audio-denoise ✅
+- `supabase/functions/audio-denoise/index.ts`: FFmpeg WASM с afftdn + highpass фильтрами
+- Fallback: passthrough если FFmpeg WASM недоступен
+- Автоочистка оригинала после денойза
+
+### Интеграция в пайплайн транскрипции ✅
+- `src/services/deepgramService.ts`: денойз шаг между загрузкой и Deepgram API
+- Для больших файлов: upload → denoise → transcribe → cleanup
+- Для малых файлов с денойзом: upload → denoise → transcribe → cleanup
+- Для малых файлов без денойза: base64 → transcribe (как раньше)
+
+### UI toggle ✅
+- `src/pages/Upload.tsx`: Switch "Noise reduction (RNNoise)" включён по умолчанию
+- `src/store/settingsStore.ts`: настройка `noiseReduction` сохраняется в localStorage
+
 ## Следующие шаги (опционально)
 - LLM-постобработка для исправления падежей (edge function fix-transcription)
