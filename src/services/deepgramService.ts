@@ -76,14 +76,55 @@ const logTranscription = {
 
 class DeepgramService {
   private progressCallback: ((progress: UnifiedTranscriptionProgress) => void) | null = null;
+  private _noiseReduction: boolean = true;
 
   setProgressCallback(callback: (progress: UnifiedTranscriptionProgress) => void): void {
     this.progressCallback = callback;
   }
 
+  setNoiseReduction(enabled: boolean): void {
+    this._noiseReduction = enabled;
+  }
+
   private updateProgress(stage: UnifiedTranscriptionProgress['stage'], progress: number, message: string): void {
     if (this.progressCallback) {
       this.progressCallback({ stage, progress, message });
+    }
+  }
+
+  /**
+   * Denoise audio file via edge function. Returns the denoised storage path.
+   * If denoising fails, returns the original path (graceful fallback).
+   */
+  private async denoiseFile(storagePath: string): Promise<string> {
+    if (!this._noiseReduction) {
+      console.log('🔇 [DENOISE] Noise reduction disabled, skipping');
+      return storagePath;
+    }
+
+    try {
+      this.updateProgress('processing', 20, 'Applying noise reduction (RNNoise)...');
+      console.log('🔇 [DENOISE] Calling audio-denoise edge function for:', storagePath);
+
+      const { data, error } = await supabase.functions.invoke('audio-denoise', {
+        body: { storagePath, bucket: 'audio-files' }
+      });
+
+      if (error || !data?.success) {
+        console.warn('⚠️ [DENOISE] Denoise failed, using original file:', error?.message || data?.error);
+        return storagePath;
+      }
+
+      console.log(`✅ [DENOISE] Complete. Method: ${data.method}, Time: ${data.processingTimeMs}ms`);
+      
+      if (data.method === 'passthrough') {
+        console.log('ℹ️ [DENOISE] FFmpeg not available, file passed through without denoising');
+      }
+
+      return data.denoisedPath;
+    } catch (err) {
+      console.warn('⚠️ [DENOISE] Denoise call failed, using original file:', err instanceof Error ? err.message : String(err));
+      return storagePath;
     }
   }
 
