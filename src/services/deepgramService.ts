@@ -254,6 +254,64 @@ class DeepgramService {
     options: DeepgramOptions,
     startTime: number
   ) {
+    // If noise reduction is enabled, upload to storage first for denoising
+    if (this._noiseReduction) {
+      this.updateProgress('uploading', 10, 'Uploading file for noise reduction...');
+      
+      const fileName = `audio_${Date.now()}_${sanitizeFilename(audioFile.name)}`;
+      const { error: uploadError } = await supabase.storage
+        .from('audio-files')
+        .upload(fileName, audioFile);
+
+      if (uploadError) {
+        console.warn('⚠️ [DENOISE] Upload for denoise failed, falling back to base64:', uploadError.message);
+        return this.transcribeSmallFileBase64(audioFile, options, startTime);
+      }
+
+      const storageFileToTranscribe = await this.denoiseFile(fileName);
+      
+      this.updateProgress('processing', 30, 'Processing audio with Deepgram...');
+
+      const apiCallStartTime = Date.now();
+      const { data, error } = await supabase.functions.invoke('deepgram-transcribe', {
+        body: {
+          storageFile: storageFileToTranscribe,
+          mimeType: audioFile.type,
+          options: {
+            model: options.model || 'nova-2-general',
+            language: options.language_detection ? undefined : options.language,
+            detect_language: options.language_detection || false,
+            diarize: options.speaker_labels || false,
+            punctuate: true,
+            utterances: options.speaker_labels || false,
+            smart_format: options.smart_formatting !== false,
+            profanity_filter: options.profanity_filter || false
+          }
+        }
+      });
+
+      const apiCallDuration = logTranscription.timing('Deepgram API call (small file via storage)', apiCallStartTime);
+      await audioCleanupService.cleanupSingleFile(storageFileToTranscribe);
+
+      if (error) {
+        logTranscription.error('Edge function error', error, { fileName: audioFile.name });
+        throw new Error(`Deepgram transcription failed: ${error.message}`);
+      }
+      if (!data || !data.success) {
+        throw new Error(data?.error || 'Deepgram transcription failed');
+      }
+
+      return this.processTranscriptionResult(data, audioFile, startTime, apiCallDuration);
+    }
+
+    return this.transcribeSmallFileBase64(audioFile, options, startTime);
+  }
+
+  private async transcribeSmallFileBase64(
+    audioFile: File,
+    options: DeepgramOptions,
+    startTime: number
+  ) {
     this.updateProgress('uploading', 10, 'Processing audio with Deepgram...');
 
     const base64StartTime = Date.now();
@@ -272,15 +330,6 @@ class DeepgramService {
     this.updateProgress('processing', 30, 'Processing audio with Deepgram...');
 
     const apiCallStartTime = Date.now();
-    logTranscription.apiCall('Calling Deepgram Edge Function (base64 mode)', {
-      base64Size: `${(base64Audio.length / 1024 / 1024).toFixed(2)} MB`,
-      options: {
-        model: options.model || 'nova-2-general',
-        language: options.language,
-        diarize: options.speaker_labels
-      }
-    });
-
     const { data, error } = await supabase.functions.invoke('deepgram-transcribe', {
       body: {
         audio: base64Audio,
@@ -302,15 +351,10 @@ class DeepgramService {
 
     if (error) {
       logTranscription.error('Edge function error', error, { fileName: audioFile.name });
-      logger.error('Deepgram edge function error', error, { fileName: audioFile.name });
       throw new Error(`Deepgram transcription failed: ${error.message}`);
     }
-
     if (!data || !data.success) {
-      const errorMsg = data?.error || 'Deepgram transcription failed';
-      logTranscription.error('Transcription failed', new Error(errorMsg), { response: data });
-      logger.error('Deepgram transcription failed', new Error(errorMsg), { fileName: audioFile.name });
-      throw new Error(errorMsg);
+      throw new Error(data?.error || 'Deepgram transcription failed');
     }
 
     return this.processTranscriptionResult(data, audioFile, startTime, apiCallDuration);
