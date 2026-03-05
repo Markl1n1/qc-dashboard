@@ -237,11 +237,36 @@ const Upload: React.FC<UploadProps> = () => {
         </CardContent>
       </Card>
 
-      {/* Language Selection */}
-      <LanguageSelector
-        selectedLanguage={selectedLanguage}
-        onLanguageChange={setSelectedLanguage}
-      />
+      {/* Language Selection & Noise Reduction */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <LanguageSelector
+          selectedLanguage={selectedLanguage}
+          onLanguageChange={setSelectedLanguage}
+        />
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Volume2 className="h-5 w-5" />
+              Noise Reduction
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div>
+                <Label htmlFor="noise-reduction" className="font-medium">RNNoise denoising</Label>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Remove background noise before transcription to improve diarization quality
+                </p>
+              </div>
+              <Switch
+                id="noise-reduction"
+                checked={noiseReduction}
+                onCheckedChange={setNoiseReduction}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* File Upload */}
       <Card>
