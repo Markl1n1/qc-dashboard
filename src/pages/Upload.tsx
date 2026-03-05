@@ -102,6 +102,9 @@ const Upload: React.FC<UploadProps> = () => {
       return;
     }
 
+    // Set noise reduction preference before transcription
+    deepgramService.setNoiseReduction(noiseReduction);
+
     console.log('Starting transcription for files:', audioFiles.map(f => f.name));
     
     let dialogId: string | null = null;
