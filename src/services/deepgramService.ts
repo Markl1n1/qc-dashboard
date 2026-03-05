@@ -194,11 +194,14 @@ class DeepgramService {
       uploadDuration: `${uploadDuration}ms` 
     });
 
+    // Apply noise reduction if enabled
+    const storageFileToTranscribe = await this.denoiseFile(fileName);
+
     this.updateProgress('processing', 30, 'Processing large audio file...');
 
     const apiCallStartTime = Date.now();
     logTranscription.apiCall('Calling Deepgram Edge Function (storage mode)', {
-      storageFile: fileName,
+      storageFile: storageFileToTranscribe,
       options: {
         model: options.model || 'nova-2-general',
         language: options.language,
@@ -208,7 +211,7 @@ class DeepgramService {
 
     const { data, error } = await supabase.functions.invoke('deepgram-transcribe', {
       body: {
-        storageFile: fileName,
+        storageFile: storageFileToTranscribe,
         mimeType: audioFile.type,
         options: {
           model: options.model || 'nova-2-general',
@@ -225,8 +228,8 @@ class DeepgramService {
 
     const apiCallDuration = logTranscription.timing('Deepgram API call (large file)', apiCallStartTime);
 
-    // Clean up storage file after transcription
-    await audioCleanupService.cleanupSingleFile(fileName);
+    // Clean up storage file after transcription (denoised or original)
+    await audioCleanupService.cleanupSingleFile(storageFileToTranscribe);
 
     if (error) {
       logTranscription.error('Edge function error (large file)', error, { fileName: audioFile.name });
