@@ -6,10 +6,12 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Progress } from '../components/ui/progress';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Switch } from '../components/ui/switch';
 import { useDeepgramTranscription } from '../hooks/useDeepgramTranscription';
 import { useDatabaseDialogs } from '../hooks/useDatabaseDialogs';
 import { useAuthStore } from '../store/authStore';
-import { Mic, User, FileAudio, AlertCircle, Languages } from 'lucide-react';
+import { useSettingsStore } from '../store/settingsStore';
+import { Mic, User, FileAudio, AlertCircle, Volume2 } from 'lucide-react';
 import { DeepgramOptions } from '../types/deepgram';
 import { SpeakerUtterance } from '../types';
 import { toast } from 'sonner';
@@ -20,6 +22,7 @@ import MultiFileTranscriptionProgress from '../components/MultiFileTranscription
 import LanguageSelector from '../components/LanguageSelector';
 import { serverAudioMergingService, ServerMergingProgress } from '../services/serverAudioMergingService';
 import { generateFileName } from '../utils/hashGenerator';
+import { deepgramService } from '../services/deepgramService';
 
 interface UploadProps {}
 
