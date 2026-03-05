@@ -35,6 +35,7 @@ const Upload: React.FC<UploadProps> = () => {
   const navigate = useNavigate();
 
   const { user } = useAuthStore();
+  const { noiseReduction, setNoiseReduction } = useSettingsStore();
   const { addDialog, updateDialog, saveTranscription, saveSpeakerTranscription } = useDatabaseDialogs();
 
   const { 
