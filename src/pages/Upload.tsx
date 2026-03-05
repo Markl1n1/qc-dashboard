@@ -378,7 +378,7 @@ const Upload: React.FC<UploadProps> = () => {
             <CardTitle>Transcription Error</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-red-500">{deepgramError}</p>
+            <p className="text-destructive">{deepgramError}</p>
           </CardContent>
         </Card>
       )}
