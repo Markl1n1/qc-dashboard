@@ -24,7 +24,7 @@ const ValidateDiarizationButton: React.FC<ValidateDiarizationButtonProps> = ({
   dialogId,
   onCorrectionsApplied
 }) => {
-  const { isAdmin, isLoading: isRoleLoading } = useOptimizedUserRole();
+  // Access available to all authenticated users
   const [isValidating, setIsValidating] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [validationResult, setValidationResult] = useState<DiarizationResult | null>(null);
