@@ -30,7 +30,7 @@ const ValidateDiarizationButton: React.FC<ValidateDiarizationButtonProps> = ({
   const [validationResult, setValidationResult] = useState<DiarizationResult | null>(null);
 
   const handleValidate = async () => {
-    if (!isAdmin || disabled || utterances.length === 0) return;
+    if (disabled || utterances.length === 0) return;
 
     setIsValidating(true);
     toast.info('Validating diarization...', { duration: 3000 });
