@@ -120,35 +120,6 @@ const ValidateDiarizationButton: React.FC<ValidateDiarizationButtonProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  if (isRoleLoading) {
-    return (
-      <Button variant="outline" size="sm" disabled>
-        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-        Loading...
-      </Button>
-    );
-  }
-
-  if (!isAdmin) {
-    return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span>
-              <Button variant="outline" size="sm" disabled className="opacity-50 cursor-not-allowed">
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Validate Diarization
-              </Button>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Функционал ещё тестируется</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    );
-  }
-
   return (
     <>
       <Button
