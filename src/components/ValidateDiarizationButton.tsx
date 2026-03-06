@@ -4,7 +4,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/t
 import { CheckCircle, Loader2 } from 'lucide-react';
 import { SpeakerUtterance } from '../types';
 import { supabase } from '../integrations/supabase/client';
-import { useOptimizedUserRole } from '../hooks/useOptimizedUserRole';
+import { databaseService } from '../services/databaseService';
 import { databaseService } from '../services/databaseService';
 import { toast } from 'sonner';
 import DiarizationResultsModal, { DiarizationResult } from './DiarizationResultsModal';
