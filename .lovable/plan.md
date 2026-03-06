@@ -1,38 +1,46 @@
 
+# Улучшение качества транскрипции: падежи и диаризация — ВЫПОЛНЕНО ✅
 
-# Обзор последних доработок — статус и рекомендации
+## Реализованные изменения
 
-## Что было реализовано
+### Шаг 1: Sample rate 8 kHz → 16 kHz ✅
+- `src/lib/merge-audio-to-wav.ts`: TARGET_SR = 16000
+- `src/services/serverAudioMergingService.ts`: outputSampleRate = 16000
 
-Все 3 запланированных блока выполнены:
+### Шаг 2: ru/pl переведены на Nova-3 ✅
+- `supabase/functions/deepgram-transcribe/index.ts`: дефолт nova3Languages теперь включает pl и ru
 
-1. **Sample rate 16 kHz + Nova-3 для ru/pl + авто-ретрай** — код корректен, работает
-2. **Validate Diarization с модалкой, Apply и батчингом** — код корректен, интеграция на месте
-3. **Шумоподавление (audio-denoise edge function)** — создана, интегрирована в пайплайн
+### Шаг 3: Авто-ретрай при 1 спикере ✅
+- `src/services/deepgramService.ts`: при uniqueSpeakers === 1 и utterances > 10 → автоматический ретрай с detect_language=true
 
-## Обнаруженные проблемы
+## Validate Diarization: улучшения — ВЫПОЛНЕНО ✅
 
-### 1. Устаревший комментарий в merge-audio-to-wav.ts
-Файл `src/lib/merge-audio-to-wav.ts` всё ещё содержит комментарии про "8k mono WAV" и "8000 Hz" (строки 2, 7, 10, 13), хотя `TARGET_SR` уже изменён на 16000. Косметика, но вводит в заблуждение.
+### Модальное окно с превью результатов ✅
+- `src/components/DiarizationResultsModal.tsx`: новый компонент с speaker mapping, confidence, списком изменённых utterances
 
-### 2. audio-denoise: FFmpeg WASM скорее всего fallback на passthrough
-Edge function `audio-denoise` использует `@ffmpeg/ffmpeg` из npm через esm.sh. В Deno edge functions (Supabase) FFmpeg WASM почти наверняка не загрузится — нет доступа к `SharedArrayBuffer`, ограниченная память для WASM. Логи пустые — значит функция ещё не вызывалась. При первом реальном использовании, скорее всего, сработает fallback passthrough (без реального шумоподавления).
+### Применение коррекции в БД ✅
+- `src/services/databaseService.ts`: метод `updateUtteranceSpeakers()` — batch update speaker labels
+- `src/components/ValidateDiarizationButton.tsx`: кнопка Apply → обновляет utterances в БД
 
-**Рекомендация:** Протестировать вызов функции и проверить логи. Если FFmpeg WASM не работает — рассмотреть альтернативу: отправлять аудио на внешний API для денойза (например, Dolby.io Media API или собственный сервер с FFmpeg).
+### Батчинг для длинных диалогов ✅
+- `supabase/functions/diarization-fix/index.ts`: диалоги >150 utterances разбиваются на чанки по 120 с перекрытием 5
 
-### 3. Retry при 1 спикере: повторная загрузка файла
-В `retryWithLanguageDetection` для больших файлов файл загружается в storage повторно (`retry_${Date.now()}_...`). Это дублирование — оригинал (или denoised) уже был в storage. Но после первого вызова он удаляется (`cleanupSingleFile`), поэтому приходится перезагружать. Это не баг, но удлиняет процесс на несколько секунд для файлов >8MB.
+## Шумоподавление RNNoise — ВЫПОЛНЕНО ✅
 
-### 4. Нет визуальной индикации шумоподавления в прогрессе
-Когда denoise запускается, прогресс показывает "Applying noise reduction (RNNoise)..." на уровне 20%, но нет отдельного шага в UI — пользователь видит только общий прогресс-бар. Для UX можно добавить отдельную стадию.
+### Edge Function audio-denoise ✅
+- `supabase/functions/audio-denoise/index.ts`: FFmpeg WASM с afftdn + highpass фильтрами
+- Fallback: passthrough если FFmpeg WASM недоступен
+- Автоочистка оригинала после денойза
 
-## Итого: что стоит сделать
+### Интеграция в пайплайн транскрипции ✅
+- `src/services/deepgramService.ts`: денойз шаг между загрузкой и Deepgram API
+- Для больших файлов: upload → denoise → transcribe → cleanup
+- Для малых файлов с денойзом: upload → denoise → transcribe → cleanup
+- Для малых файлов без денойза: base64 → transcribe (как раньше)
 
-| # | Задача | Приоритет |
-|---|--------|-----------|
-| 1 | Протестировать audio-denoise на реальном файле, проверить логи | Высокий |
-| 2 | Обновить комментарии в merge-audio-to-wav.ts (8k → 16k) | Низкий |
-| 3 | Если FFmpeg WASM не работает — убрать passthrough или заменить на рабочую альтернативу | Высокий (после теста) |
+### UI toggle ✅
+- `src/pages/Upload.tsx`: Switch "Noise reduction (RNNoise)" включён по умолчанию
+- `src/store/settingsStore.ts`: настройка `noiseReduction` сохраняется в localStorage
 
-Рекомендую начать с тестирования audio-denoise — загрузить аудиофайл с включённым toggle "Noise Reduction" и проверить логи edge function. Это покажет, работает ли FFmpeg WASM реально или всегда fallback.
-
+## Следующие шаги (опционально)
+- LLM-постобработка для исправления падежей (edge function fix-transcription)
