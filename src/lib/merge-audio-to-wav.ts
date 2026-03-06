@@ -1,15 +1,15 @@
 // frontend/src/lib/merge-audio-to-wav.ts
-// Merge N audio files (mp3/m4a/flac/ogg/wav) → one 8k mono WAV Blob (speech-optimized).
+// Merge N audio files (mp3/m4a/flac/ogg/wav) → one 16k mono WAV Blob (speech-optimized).
 // Works in modern browsers without SharedArrayBuffer.
 //
 // Notes:
-// - Uses Web Audio API to decode, resample to 8000 Hz mono, and concatenate sequentially.
+// - Uses Web Audio API to decode, resample to 16000 Hz mono, and concatenate sequentially.
 // - For long recordings, memory grows with total duration (Float32 arrays). Consider warning users if inputs are hours long.
 
 export type MergeResult = {
-  blob: Blob;           // final 8 kHz mono WAV (audio/wav)
+  blob: Blob;           // final 16 kHz mono WAV (audio/wav)
   durationSec: number;  // total duration (seconds)
-  sampleRate: number;   // 8000
+  sampleRate: number;   // 16000
   channels: number;     // 1
   samples: number;      // total mono PCM samples
 };
