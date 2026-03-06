@@ -4,7 +4,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/t
 import { CheckCircle, Loader2 } from 'lucide-react';
 import { SpeakerUtterance } from '../types';
 import { supabase } from '../integrations/supabase/client';
-import { useOptimizedUserRole } from '../hooks/useOptimizedUserRole';
 import { databaseService } from '../services/databaseService';
 import { toast } from 'sonner';
 import DiarizationResultsModal, { DiarizationResult } from './DiarizationResultsModal';
@@ -24,13 +23,13 @@ const ValidateDiarizationButton: React.FC<ValidateDiarizationButtonProps> = ({
   dialogId,
   onCorrectionsApplied
 }) => {
-  const { isAdmin, isLoading: isRoleLoading } = useOptimizedUserRole();
+  // Access available to all authenticated users
   const [isValidating, setIsValidating] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [validationResult, setValidationResult] = useState<DiarizationResult | null>(null);
 
   const handleValidate = async () => {
-    if (!isAdmin || disabled || utterances.length === 0) return;
+    if (disabled || utterances.length === 0) return;
 
     setIsValidating(true);
     toast.info('Validating diarization...', { duration: 3000 });
@@ -119,35 +118,6 @@ const ValidateDiarizationButton: React.FC<ValidateDiarizationButtonProps> = ({
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
-
-  if (isRoleLoading) {
-    return (
-      <Button variant="outline" size="sm" disabled>
-        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-        Loading...
-      </Button>
-    );
-  }
-
-  if (!isAdmin) {
-    return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span>
-              <Button variant="outline" size="sm" disabled className="opacity-50 cursor-not-allowed">
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Validate Diarization
-              </Button>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Функционал ещё тестируется</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    );
-  }
 
   return (
     <>
