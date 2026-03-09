@@ -202,7 +202,8 @@ Deno.serve(async (req) => {
       params.append('diarize', 'true');
       params.append('utterances', 'true');
       params.append('min_speakers', '2'); // Force minimum 2 speakers for call center dialogs
-      console.log('👥 [DIARIZATION] Enabled: diarize=true, utterances=true, min_speakers=2');
+      params.append('max_speakers', '2'); // Limit to 2 speakers — prevents phantom 3rd speaker from noise/echo
+      console.log('👥 [DIARIZATION] Enabled: diarize=true, utterances=true, min_speakers=2, max_speakers=2');
     }
 
     // Additional options
