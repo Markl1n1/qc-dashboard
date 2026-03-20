@@ -257,6 +257,13 @@ const DialogDetail = () => {
             />
           </ErrorBoundaryAnalysis>
         </TabsContent>
+
+        <TabsContent value="call-quality" className="mt-6">
+          <CallQualityTab 
+            dialog={dialog}
+            onNavigateToSpeaker={(timestamp) => navigateToSpeaker(timestamp)}
+          />
+        </TabsContent>
       </Tabs>
     </div>
   );
