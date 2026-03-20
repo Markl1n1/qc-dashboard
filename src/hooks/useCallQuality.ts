@@ -40,7 +40,7 @@ export function useCallQuality(dialogId: string) {
         .maybeSingle();
       
       if (error) throw error;
-      return data as CallQualityData | null;
+      return data as unknown as CallQualityData | null;
     },
     enabled: !!dialogId,
     staleTime: 5 * 60 * 1000,
