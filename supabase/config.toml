@@ -21,3 +21,8 @@ verify_jwt = false
 memory_mb = 1024
 timeout_sec = 300
 verify_jwt = false
+
+[functions.call-quality-analyze]
+memory_mb = 256
+timeout_sec = 120
+verify_jwt = false

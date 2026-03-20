@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Navigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Users, BarChart3, Play, Loader2 } from 'lucide-react';
+import { Users, BarChart3, Play, Loader2, PhoneCall } from 'lucide-react';
 import { DialogData } from '../types/unified';
 import { useDatabaseDialogs } from '../hooks/useDatabaseDialogs';
 import { useDialogAnalysis } from '../hooks/useDialogAnalysis';
@@ -14,6 +14,7 @@ import DialogDetailHeader from '../components/DialogDetailHeader';
 import DialogAnalysisTab from '../components/DialogAnalysisTab';
 import DialogResultsTab from '../components/DialogResultsTab';
 import DialogTranscriptionTab from '../components/DialogTranscriptionTab';
+import CallQualityTab from '../components/CallQualityTab';
 
 const DialogDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -198,7 +199,7 @@ const DialogDetail = () => {
 
       {/* Main Content */}
       <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="transcription" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
             Speaker Dialog
@@ -210,6 +211,10 @@ const DialogDetail = () => {
           <TabsTrigger value="results" className="flex items-center gap-2">
             <BarChart3 className="h-4 w-4" />
             Analysis Results
+          </TabsTrigger>
+          <TabsTrigger value="call-quality" className="flex items-center gap-2">
+            <PhoneCall className="h-4 w-4" />
+            Call Quality
           </TabsTrigger>
         </TabsList>
 
@@ -251,6 +256,20 @@ const DialogDetail = () => {
               onNavigateToAnalysis={navigateToAnalysis}
             />
           </ErrorBoundaryAnalysis>
+        </TabsContent>
+
+        <TabsContent value="call-quality" className="mt-6">
+          <CallQualityTab 
+            dialog={dialog}
+            onNavigateToSpeaker={(timestamp) => {
+              // Find the closest utterance to this timestamp
+              const closest = dialog.speakerTranscription?.reduce((best, u) => {
+                const dist = Math.abs(u.start - timestamp);
+                return dist < Math.abs(best.start - timestamp) ? u : best;
+              });
+              if (closest) navigateToSpeaker(closest.text);
+            }}
+          />
         </TabsContent>
       </Tabs>
     </div>

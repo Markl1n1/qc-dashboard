@@ -62,6 +62,44 @@ export type Database = {
         }
         Relationships: []
       }
+      call_quality_analysis: {
+        Row: {
+          categories: Json
+          created_at: string
+          details: Json
+          dialog_id: string
+          id: string
+          overall_score: number
+          updated_at: string
+        }
+        Insert: {
+          categories?: Json
+          created_at?: string
+          details?: Json
+          dialog_id: string
+          id?: string
+          overall_score?: number
+          updated_at?: string
+        }
+        Update: {
+          categories?: Json
+          created_at?: string
+          details?: Json
+          dialog_id?: string
+          id?: string
+          overall_score?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_quality_analysis_dialog_id_fkey"
+            columns: ["dialog_id"]
+            isOneToOne: true
+            referencedRelation: "dialogs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       deepgram_api_keys: {
         Row: {
           api_key: string
