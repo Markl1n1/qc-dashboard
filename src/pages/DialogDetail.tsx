@@ -14,6 +14,7 @@ import DialogDetailHeader from '../components/DialogDetailHeader';
 import DialogAnalysisTab from '../components/DialogAnalysisTab';
 import DialogResultsTab from '../components/DialogResultsTab';
 import DialogTranscriptionTab from '../components/DialogTranscriptionTab';
+import CallQualityTab from '../components/CallQualityTab';
 
 const DialogDetail = () => {
   const { id } = useParams<{ id: string }>();
