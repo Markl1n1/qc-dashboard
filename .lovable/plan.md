@@ -1,46 +1,33 @@
 
-# Улучшение качества транскрипции: падежи и диаризация — ВЫПОЛНЕНО ✅
 
-## Реализованные изменения
+# Анализ качества звонка (Call Quality Score)
 
-### Шаг 1: Sample rate 8 kHz → 16 kHz ✅
-- `src/lib/merge-audio-to-wav.ts`: TARGET_SR = 16000
-- `src/services/serverAudioMergingService.ts`: outputSampleRate = 16000
+## Подход
 
-### Шаг 2: ru/pl переведены на Nova-3 ✅
-- `supabase/functions/deepgram-transcribe/index.ts`: дефолт nova3Languages теперь включает pl и ru
+Два источника данных для анализа — оба уже доступны после транскрипции:
 
-### Шаг 3: Авто-ретрай при 1 спикере ✅
-- `src/services/deepgramService.ts`: при uniqueSpeakers === 1 и utterances > 10 → автоматический ретрай с detect_language=true
+1. **Метрики из Deepgram** (числовые, автоматические):
+   - Confidence scores по utterances → низкий confidence = плохой звук/неразборчивость
+   - Очень короткие utterances подряд → прерывания/обрывы
+   - Паузы >3 секунд между репликами → возможно кто-то не слышит
+   - Перекрытия (utterance одного спикера начинается до конца другого) → перебивания
 
-## Validate Diarization: улучшения — ВЫПОЛНЕНО ✅
+2. **Анализ текста через LLM** (семантический):
+   - "Алло? Вы меня слышите?" → проблемы со связью
+   - Повторения фраз → переспросы из-за плохой слышимости
+   - Незавершённые предложения → обрывы связи
 
-### Модальное окно с превью результатов ✅
-- `src/components/DiarizationResultsModal.tsx`: новый компонент с speaker mapping, confidence, списком изменённых utterances
+## Реализация
 
-### Применение коррекции в БД ✅
-- `src/services/databaseService.ts`: метод `updateUtteranceSpeakers()` — batch update speaker labels
-- `src/components/ValidateDiarizationButton.tsx`: кнопка Apply → обновляет utterances в БД
+### 1. Новая edge function: `supabase/functions/call-quality-analyze/index.ts`
 
-### Батчинг для длинных диалогов ✅
-- `supabase/functions/diarization-fix/index.ts`: диалоги >150 utterances разбиваются на чанки по 120 с перекрытием 5
+Принимает utterances диалога, вычисляет метрики + отправляет в LLM для семантического анализа. Возвращает:
 
-## Шумоподавление RNNoise — ВЫПОЛНЕНО ✅
-
-### Edge Function audio-denoise ✅
-- `supabase/functions/audio-denoise/index.ts`: FFmpeg WASM с afftdn + highpass фильтрами
-- Fallback: passthrough если FFmpeg WASM недоступен
-- Автоочистка оригинала после денойза
-
-### Интеграция в пайплайн транскрипции ✅
-- `src/services/deepgramService.ts`: денойз шаг между загрузкой и Deepgram API
-- Для больших файлов: upload → denoise → transcribe → cleanup
-- Для малых файлов с денойзом: upload → denoise → transcribe → cleanup
-- Для малых файлов без денойза: base64 → transcribe (как раньше)
-
-### UI toggle ✅
-- `src/pages/Upload.tsx`: Switch "Noise reduction (RNNoise)" включён по умолчанию
-- `src/store/settingsStore.ts`: настройка `noiseReduction` сохраняется в localStorage
-
-## Следующие шаги (опционально)
-- LLM-постобработка для исправления падежей (edge function fix-transcription)
+```json
+{
+  "overallScore": 78,
+  "categories": {
+    "audioClarity": { "score": 65, "issues": ["Low confidence in 12% of utterances"] },
+    "connectionStability": { "score": 80, "issues": ["2 gaps >5s detected"] },
+    "interruptions": { "score": 90, "issues": ["3 speaker overlaps"] },
+    "communication": { "score": 75, "issues": ["Agent asked 'Can
