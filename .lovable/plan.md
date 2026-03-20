@@ -42,5 +42,23 @@
 - `src/pages/Upload.tsx`: Switch "Noise reduction (RNNoise)" включён по умолчанию
 - `src/store/settingsStore.ts`: настройка `noiseReduction` сохраняется в localStorage
 
+## Call Quality Score — ВЫПОЛНЕНО ✅
+
+### Таблица call_quality_analysis ✅
+- Миграция: таблица с overall_score, categories (jsonb), details (jsonb)
+- RLS: доступ по user_id через dialogs, админы видят всё
+
+### Edge Function call-quality-analyze ✅
+- Метрики: confidence, gaps, overlaps, short fragments
+- LLM (Gemini Flash Lite): семантический анализ ("Вы меня слышите?", повторения)
+- Upsert результата в БД через service role
+
+### UI: таб "Call Quality" в DialogDetail ✅
+- `src/components/CallQualityTab.tsx`: overall score, 4 категории, timeline issues
+- `src/hooks/useCallQuality.ts`: react-query + mutation
+- Кнопка "Analyze Call Quality" / "Re-analyze"
+
 ## Следующие шаги (опционально)
 - LLM-постобработка для исправления падежей (edge function fix-transcription)
+- Автозапуск call quality после транскрипции
+- utt_split параметр для Deepgram (уменьшение гиперфрагментации)
