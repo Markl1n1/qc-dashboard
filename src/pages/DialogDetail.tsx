@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Navigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Users, BarChart3, Play, Loader2 } from 'lucide-react';
+import { Users, BarChart3, Play, Loader2, PhoneCall } from 'lucide-react';
 import { DialogData } from '../types/unified';
 import { useDatabaseDialogs } from '../hooks/useDatabaseDialogs';
 import { useDialogAnalysis } from '../hooks/useDialogAnalysis';
