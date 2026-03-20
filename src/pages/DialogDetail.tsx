@@ -199,7 +199,7 @@ const DialogDetail = () => {
 
       {/* Main Content */}
       <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="transcription" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
             Speaker Dialog
@@ -211,6 +211,10 @@ const DialogDetail = () => {
           <TabsTrigger value="results" className="flex items-center gap-2">
             <BarChart3 className="h-4 w-4" />
             Analysis Results
+          </TabsTrigger>
+          <TabsTrigger value="call-quality" className="flex items-center gap-2">
+            <PhoneCall className="h-4 w-4" />
+            Call Quality
           </TabsTrigger>
         </TabsList>
 
