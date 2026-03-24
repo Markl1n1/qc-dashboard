@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useDropzone, Accept } from 'react-dropzone';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -20,9 +20,11 @@ import AgentSelector from '../components/AgentSelector';
 import DraggableFileList from '../components/DraggableFileList';
 import MultiFileTranscriptionProgress from '../components/MultiFileTranscriptionProgress';
 import LanguageSelector from '../components/LanguageSelector';
+import AudioQualityIndicator from '../components/AudioQualityIndicator';
 import { serverAudioMergingService, ServerMergingProgress } from '../services/serverAudioMergingService';
 import { generateFileName } from '../utils/hashGenerator';
 import { deepgramService } from '../services/deepgramService';
+import { analyzeAudioSignal, AudioSignalMetrics } from '../utils/audioSignalAnalysis';
 
 interface UploadProps {}
 
@@ -32,6 +34,8 @@ const Upload: React.FC<UploadProps> = () => {
   const [selectedLanguage, setSelectedLanguage] = useState<string>('en');
   const [isMerging, setIsMerging] = useState(false);
   const [mergingProgress, setMergingProgress] = useState<ServerMergingProgress | null>(null);
+  const [signalMetrics, setSignalMetrics] = useState<AudioSignalMetrics | null>(null);
+  const [isAnalyzingAudio, setIsAnalyzingAudio] = useState(false);
   const navigate = useNavigate();
 
   const { user } = useAuthStore();
@@ -45,22 +49,43 @@ const Upload: React.FC<UploadProps> = () => {
     error: deepgramError
   } = useDeepgramTranscription();
 
-  // Expanded audio format support based on Deepgram's capabilities
   const acceptedFileTypes: Accept = {
     'audio/*': ['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac', '.mp4', '.webm', '.mp2', '.opus']
   };
 
-  // Maximum file size: 2GB per file (Deepgram limit)
   const MAX_FILE_SIZE_GB = 2;
   const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_GB * 1024 * 1024 * 1024;
 
+  // Run audio signal analysis when files change
+  useEffect(() => {
+    if (audioFiles.length === 0) {
+      setSignalMetrics(null);
+      return;
+    }
+
+    const runAnalysis = async () => {
+      setIsAnalyzingAudio(true);
+      try {
+        // Analyze first file (or if single file — that one)
+        const fileToAnalyze = audioFiles[0];
+        const metrics = await analyzeAudioSignal(fileToAnalyze);
+        setSignalMetrics(metrics);
+      } catch (e) {
+        console.warn('Audio analysis failed:', e);
+        setSignalMetrics(null);
+      } finally {
+        setIsAnalyzingAudio(false);
+      }
+    };
+
+    runAnalysis();
+  }, [audioFiles]);
+
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    // Validate file sizes
     const oversizedFiles = acceptedFiles.filter(f => f.size > MAX_FILE_SIZE_BYTES);
     if (oversizedFiles.length > 0) {
       const fileNames = oversizedFiles.map(f => `${f.name} (${(f.size / 1024 / 1024).toFixed(1)}MB)`).join(', ');
       toast.error(`Files too large (max ${MAX_FILE_SIZE_GB}GB): ${fileNames}`);
-      // Only add files that are within size limit
       const validFiles = acceptedFiles.filter(f => f.size <= MAX_FILE_SIZE_BYTES);
       if (validFiles.length > 0) {
         setAudioFiles(prev => [...prev, ...validFiles]);
@@ -102,7 +127,6 @@ const Upload: React.FC<UploadProps> = () => {
       return;
     }
 
-    // Set noise reduction preference before transcription
     deepgramService.setNoiseReduction(noiseReduction);
 
     console.log('Starting transcription for files:', audioFiles.map(f => f.name));
@@ -110,14 +134,12 @@ const Upload: React.FC<UploadProps> = () => {
     let dialogId: string | null = null;
     
     try {
-      // Generate new filename using agent name, date, and hash
       const originalFileName = audioFiles.length === 1 
         ? audioFiles[0].name 
         : `merged_${audioFiles.length}_files.mp3`;
       
       const newFileName = generateFileName(agentName.trim(), originalFileName);
 
-      // Create dialog record first with "processing" status
       dialogId = await addDialog({
         fileName: newFileName,
         status: 'processing',
@@ -132,16 +154,26 @@ const Upload: React.FC<UploadProps> = () => {
         currentLanguage: 'original'
       });
 
+      // Save audio quality metrics to dialog if available
+      if (signalMetrics && dialogId) {
+        try {
+          const { supabase } = await import('../integrations/supabase/client');
+          await (supabase as any).from('dialogs').update({
+            audio_quality_metrics: signalMetrics
+          }).eq('id', dialogId);
+        } catch (e) {
+          console.warn('Failed to save audio quality metrics:', e);
+        }
+      }
+
       let fileToTranscribe: File;
 
-      // If multiple files, merge them first using server-side merging
       if (audioFiles.length > 1) {
         console.log('Multiple files detected, merging on server...');
         
         setIsMerging(true);
         setMergingProgress(null);
 
-        // Set up merging progress callback
         serverAudioMergingService.setProgressCallback((progress) => {
           setMergingProgress(progress);
         });
@@ -153,7 +185,6 @@ const Upload: React.FC<UploadProps> = () => {
         fileToTranscribe = audioFiles[0];
       }
 
-      // Prepare Deepgram options with language selection
       const deepgramOptions: DeepgramOptions = {
         model: 'nova-2-general',
         language: selectedLanguage,
@@ -165,13 +196,11 @@ const Upload: React.FC<UploadProps> = () => {
 
       const result = await transcribeDeepgram(fileToTranscribe, deepgramOptions);
       
-      // Save transcription to database
       await saveTranscription(dialogId, result.text, 'plain');
       if (result.speakerUtterances && result.speakerUtterances.length > 0) {
         await saveSpeakerTranscription(dialogId, result.speakerUtterances, 'speaker');
       }
 
-      // Update dialog status to "completed" and save audio duration
       const audioDurationMinutes = (result as any).audioDurationMinutes || 0;
       await updateDialog(dialogId, {
         status: 'completed',
@@ -181,15 +210,11 @@ const Upload: React.FC<UploadProps> = () => {
       console.log('Dialog updated with audio duration:', audioDurationMinutes, 'minutes');
 
       toast.success('Transcription completed successfully!');
-      console.log('Transcription completed and saved to database');
-      
-      // Navigate to dialog details page
       navigate(`/dialog/${dialogId}`);
     } catch (err: any) {
       console.error('Transcription failed', err);
       toast.error(`Transcription failed: ${err.message}`);
       
-      // Update dialog status to "failed" on error
       if (dialogId) {
         await updateDialog(dialogId, {
           status: 'failed',
@@ -304,6 +329,16 @@ const Upload: React.FC<UploadProps> = () => {
             onReorder={handleFileReorder}
             onRemove={handleFileRemove}
           />
+
+          {/* Audio Quality Analysis */}
+          {(isAnalyzingAudio || signalMetrics) && audioFiles.length > 0 && (
+            <div className="mt-4">
+              <AudioQualityIndicator
+                signalMetrics={signalMetrics}
+                isAnalyzing={isAnalyzingAudio}
+              />
+            </div>
+          )}
 
           {/* Server-side merging info */}
           {audioFiles.length > 1 && (
