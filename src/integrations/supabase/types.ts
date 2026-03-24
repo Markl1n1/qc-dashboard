@@ -371,6 +371,7 @@ export type Database = {
           assigned_agent: string
           assigned_supervisor: string
           audio_length_minutes: number | null
+          audio_quality_metrics: Json | null
           created_at: string
           current_language: string | null
           error_message: string | null
@@ -392,6 +393,7 @@ export type Database = {
           assigned_agent: string
           assigned_supervisor: string
           audio_length_minutes?: number | null
+          audio_quality_metrics?: Json | null
           created_at?: string
           current_language?: string | null
           error_message?: string | null
@@ -413,6 +415,7 @@ export type Database = {
           assigned_agent?: string
           assigned_supervisor?: string
           audio_length_minutes?: number | null
+          audio_quality_metrics?: Json | null
           created_at?: string
           current_language?: string | null
           error_message?: string | null

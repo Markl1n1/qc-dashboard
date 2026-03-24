@@ -1,0 +1,1 @@
+ALTER TABLE public.dialogs ADD COLUMN IF NOT EXISTS audio_quality_metrics jsonb DEFAULT NULL;
