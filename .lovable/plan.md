@@ -1,64 +1,59 @@
 
-# Улучшение качества транскрипции: падежи и диаризация — ВЫПОЛНЕНО ✅
 
-## Реализованные изменения
+# Анализ качества аудио на уровне сигнала
 
-### Шаг 1: Sample rate 8 kHz → 16 kHz ✅
-- `src/lib/merge-audio-to-wav.ts`: TARGET_SR = 16000
-- `src/services/serverAudioMergingService.ts`: outputSampleRate = 16000
+## Ответ на вопрос
 
-### Шаг 2: ru/pl переведены на Nova-3 ✅
-- `supabase/functions/deepgram-transcribe/index.ts`: дефолт nova3Languages теперь включает pl и ru
+Да, есть бесплатный способ — **Web Audio API**, встроенный в браузер. Никаких внешних сервисов не нужно. Он позволяет декодировать аудиофайл и вычислить реальные метрики сигнала:
 
-### Шаг 3: Авто-ретрай при 1 спикере ✅
-- `src/services/deepgramService.ts`: при uniqueSpeakers === 1 и utterances > 10 → автоматический ретрай с detect_language=true
+- **SNR (Signal-to-Noise Ratio)** — отношение сигнал/шум
+- **Clipping** — процент сэмплов на максимуме (искажения/перегрузка)
+- **Silence ratio** — сколько % записи — тишина
+- **Peak/RMS levels** — громкость и динамический диапазон
+- **Spectral flatness** — насколько "шумный" сигнал (белый шум vs речь)
 
-## Validate Diarization: улучшения — ВЫПОЛНЕНО ✅
+Это работает **до загрузки на сервер**, бесплатно, быстро (несколько секунд даже для часовых записей).
 
-### Модальное окно с превью результатов ✅
-- `src/components/DiarizationResultsModal.tsx`: новый компонент с speaker mapping, confidence, списком изменённых utterances
+## Текущее состояние
 
-### Применение коррекции в БД ✅
-- `src/services/databaseService.ts`: метод `updateUtteranceSpeakers()` — batch update speaker labels
-- `src/components/ValidateDiarizationButton.tsx`: кнопка Apply → обновляет utterances в БД
+Сейчас `audioMetadataUtils.ts` читает только WAV-заголовок (sample rate, bit depth, channels). Для не-WAV файлов — просто "unknown". `AudioQualityIndicator.tsx` показывает бейдж на основе этих метаданных, но **реального анализа сигнала нет**.
 
-### Батчинг для длинных диалогов ✅
-- `supabase/functions/diarization-fix/index.ts`: диалоги >150 utterances разбиваются на чанки по 120 с перекрытием 5
+## План реализации
 
-## Шумоподавление RNNoise — ВЫПОЛНЕНО ✅
+### 1. Новый утилит: `src/utils/audioSignalAnalysis.ts`
 
-### Edge Function audio-denoise ✅
-- `supabase/functions/audio-denoise/index.ts`: FFmpeg WASM с afftdn + highpass фильтрами
-- Fallback: passthrough если FFmpeg WASM недоступен
-- Автоочистка оригинала после денойза
+Использует Web Audio API (`AudioContext.decodeAudioData`) для вычисления:
 
-### Интеграция в пайплайн транскрипции ✅
-- `src/services/deepgramService.ts`: денойз шаг между загрузкой и Deepgram API
-- Для больших файлов: upload → denoise → transcribe → cleanup
-- Для малых файлов с денойзом: upload → denoise → transcribe → cleanup
-- Для малых файлов без денойза: base64 → transcribe (как раньше)
+| Метрика | Как считается | Что показывает |
+|---------|---------------|----------------|
+| RMS Level | Среднеквадратичная амплитуда | Общая громкость |
+| Peak Level | Максимальная амплитуда | Перегрузка микрофона |
+| Clipping % | % сэмплов > 0.99 | Искажения |
+| Silence % | % окон с RMS < порога | Мёртвый эфир |
+| SNR estimate | Отношение средней громкости речевых участков к тихим | Уровень шума |
+| Dynamic Range | Peak - тихие участки в dB | Качество записи |
 
-### UI toggle ✅
-- `src/pages/Upload.tsx`: Switch "Noise reduction (RNNoise)" включён по умолчанию
-- `src/store/settingsStore.ts`: настройка `noiseReduction` сохраняется в localStorage
+### 2. Обновить `AudioQualityIndicator.tsx`
 
-## Call Quality Score — ВЫПОЛНЕНО ✅
+Расширить компонент: показывать и метаданные файла (sample rate, format) и сигнальные метрики (SNR, clipping, silence). Два раздела:
+- **File Info** — формат, sample rate, channels (как сейчас)
+- **Signal Quality** — SNR, clipping, silence ratio, peak level с цветовыми индикаторами
 
-### Таблица call_quality_analysis ✅
-- Миграция: таблица с overall_score, categories (jsonb), details (jsonb)
-- RLS: доступ по user_id через dialogs, админы видят всё
+### 3. Интеграция в Upload page
 
-### Edge Function call-quality-analyze ✅
-- Метрики: confidence, gaps, overlaps, short fragments
-- LLM (Gemini Flash Lite): семантический анализ ("Вы меня слышите?", повторения)
-- Upsert результата в БД через service role
+Запускать анализ сигнала сразу после drop файлов (до нажатия "Transcribe"). Показывать результат под списком файлов — пользователь видит качество записи до отправки.
 
-### UI: таб "Call Quality" в DialogDetail ✅
-- `src/components/CallQualityTab.tsx`: overall score, 4 категории, timeline issues
-- `src/hooks/useCallQuality.ts`: react-query + mutation
-- Кнопка "Analyze Call Quality" / "Re-analyze"
+### 4. Сохранение в БД (опционально, но полезно)
 
-## Следующие шаги (опционально)
-- LLM-постобработка для исправления падежей (edge function fix-transcription)
-- Автозапуск call quality после транскрипции
-- utt_split параметр для Deepgram (уменьшение гиперфрагментации)
+Добавить колонку `audio_quality_metrics` (jsonb) в таблицу `dialogs` — сохранять результаты анализа при создании диалога. Это позволит фильтровать/сортировать диалоги по качеству аудио на дашборде.
+
+## Файлы
+
+| # | Файл | Что делаем |
+|---|------|-----------|
+| 1 | `src/utils/audioSignalAnalysis.ts` | Новый: Web Audio API анализ (SNR, clipping, silence, RMS) |
+| 2 | `src/components/AudioQualityIndicator.tsx` | Расширить: показывать сигнальные метрики |
+| 3 | `src/pages/Upload.tsx` | Запускать анализ при drop файлов, показывать результат |
+| 4 | Миграция SQL | Добавить `audio_quality_metrics jsonb` в `dialogs` |
+| 5 | `src/services/databaseService.ts` | Сохранять метрики при создании диалога |
+
