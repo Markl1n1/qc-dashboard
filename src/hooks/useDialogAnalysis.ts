@@ -17,7 +17,7 @@ export const useDialogAnalysis = (dialogId: string) => {
     evaluateDialogMutation.mutate({
       dialogId: dialog.id,
       utterances: dialog.speakerTranscription,
-      modelId: 'gpt-5-mini'
+      modelId: 'gpt-5.4-mini'
     });
   }, [evaluateDialogMutation]);
 
