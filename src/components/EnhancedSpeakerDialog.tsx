@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { ResizableScrollArea } from './ui/resizable-scroll-area';
-import { Clock, Copy, User, Users, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Clock, Copy, Hash, User, Users, AlertTriangle, ExternalLink } from 'lucide-react';
 import { SpeakerUtterance } from '../types';
 import { copyToClipboard, formatDialogForCopy } from '../utils/dialogFormatting';
 import { toast } from 'sonner';
