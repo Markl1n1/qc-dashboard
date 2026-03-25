@@ -69,7 +69,7 @@ serve(async (req) => {
 
     console.log('Security Event: Background AI evaluation authorized for user:', user.id);
 
-    const { dialogId, utterances, modelId = 'gpt-5-mini' } = await req.json();
+    const { dialogId, utterances, modelId = 'gpt-5.4-mini' } = await req.json();
     
     if (!dialogId || !utterances) {
       throw new Error('Missing required parameters: dialogId and utterances');
