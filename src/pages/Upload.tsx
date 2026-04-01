@@ -209,17 +209,17 @@ const Upload: React.FC<UploadProps> = () => {
           });
 
           if (!diarizationError && diarizationResult?.success && diarizationResult.needs_correction) {
-            // Get transcription_id from database
             const transcriptions = await databaseService.getTranscriptions(dialogId);
             const speakerTranscription = transcriptions.find(t => t.transcription_type === 'speaker');
             if (speakerTranscription) {
-            const corrections = diarizationResult.corrected_utterances.map((u: any, i: number) => ({
-              utterance_order: i,
-              speaker: u.speaker
-            }));
-            const updatedCount = await databaseService.updateUtteranceSpeakers(transcriptionId, corrections);
-            if (updatedCount > 0) {
-              toast.success(`Diarization corrected: ${updatedCount} speaker fixes applied`);
+              const corrections = diarizationResult.corrected_utterances.map((u: any, i: number) => ({
+                utterance_order: i,
+                speaker: u.speaker
+              }));
+              const updatedCount = await databaseService.updateUtteranceSpeakers(speakerTranscription.id, corrections);
+              if (updatedCount > 0) {
+                toast.success(`Diarization corrected: ${updatedCount} speaker fixes applied`);
+              }
             }
           } else if (diarizationError) {
             console.warn('Diarization validation failed:', diarizationError);
