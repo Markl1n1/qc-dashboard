@@ -1,20 +1,49 @@
+
+
 # Две задачи
 
-## 1. Кнопка "Copy ID" между Validate Diarization и Copy Dialog
+## 1. Автоматическая валидация диаризации после транскрипции
 
-Добавить кнопку в `src/components/EnhancedSpeakerDialog.tsx` (строка 215-219) между `ValidateDiarizationButton` и кнопкой "Copy Dialog". Кнопка копирует `dialogId` в буфер обмена.
+**Суть:** После сохранения speaker utterances в БД — автоматически вызвать `diarization-fix` edge function и применить коррекции без участия пользователя (без модального окна).
 
-**Файл:** `src/components/EnhancedSpeakerDialog.tsx` — добавить кнопку с иконкой `Hash` между строками 215 и 216.
+**Изменения:**
 
-## 2. Модель GPT для анализа
+| # | Файл | Что |
+|---|------|-----|
+| 1 | `src/pages/Upload.tsx` | После `saveSpeakerTranscription` (строка 201) добавить вызов `diarization-fix` → получить corrected_utterances → вызвать `databaseService.updateUtteranceSpeakers()` для применения коррекций. Добавить toast уведомление о результате. |
+| 2 | `src/components/EnhancedSpeakerDialog.tsx` | Убрать импорт и использование `ValidateDiarizationButton` (строка 12, 215) |
 
-Сейчас используется `**gpt-5-mini**` (OpenAI) через прямой вызов `api.openai.com`. Это задано в двух местах:
+**Логика в Upload.tsx** (после строки 201):
+```text
+1. Получить transcription_id из saveSpeakerTranscription
+2. supabase.functions.invoke('diarization-fix', { body: { utterances } })
+3. Если needs_correction === true:
+   - Построить corrections из corrected_utterances
+   - databaseService.updateUtteranceSpeakers(transcriptionId, corrections)
+   - toast.success("Diarization corrected")
+4. Если ошибка — toast.warn, не блокировать основной процесс
+```
 
+Ошибки валидации НЕ должны блокировать завершение диалога — wrap в try/catch с warning.
 
-| Файл                                                     | Строка | Значение                |
-| -------------------------------------------------------- | ------ | ----------------------- |
-| `src/hooks/useDialogAnalysis.ts`                         | 20     | `modelId: 'gpt-5-mini'` |
-| `supabase/functions/openai-evaluate-background/index.ts` | 72     | default `'gpt-5-mini'`  |
+## 2. Автопереход на вкладку Results после AI Analysis
 
+**Проблема:** `useDialogNavigation` читает `?tab=` из URL только при первом рендере (useState initializer). Когда `useEvaluateDialog` делает `navigate(/dialog/id?tab=results)`, URL обновляется, но state `currentTab` не обновляется.
 
-Доступные модели OpenAI для замены - gpt-5.4-mini
+**Исправление:**
+
+| # | Файл | Что |
+|---|------|-----|
+| 1 | `src/hooks/useDialogNavigation.ts` | Добавить `useEffect` который слушает изменения `searchParams.get('tab')` и обновляет `currentTab` |
+
+```text
+useEffect(() => {
+  const tab = searchParams.get('tab');
+  if (tab) setCurrentTab(tab);
+}, [searchParams]);
+```
+
+## Файлы для удаления (опционально)
+- `src/components/ValidateDiarizationButton.tsx` — больше не используется
+- `src/components/DiarizationResultsModal.tsx` — больше не используется (модальное окно для ручного просмотра)
+
