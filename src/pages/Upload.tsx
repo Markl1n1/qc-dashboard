@@ -16,6 +16,8 @@ import { DeepgramOptions } from '../types/deepgram';
 import { SpeakerUtterance } from '../types';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../integrations/supabase/client';
+import { databaseService } from '../services/databaseService';
 import AgentSelector from '../components/AgentSelector';
 import DraggableFileList from '../components/DraggableFileList';
 import MultiFileTranscriptionProgress from '../components/MultiFileTranscriptionProgress';
