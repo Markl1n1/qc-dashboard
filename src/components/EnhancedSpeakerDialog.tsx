@@ -9,7 +9,7 @@ import { copyToClipboard, formatDialogForCopy } from '../utils/dialogFormatting'
 import { toast } from 'sonner';
 import { useSpeakerMapping } from '../hooks/useSpeakerMapping';
 import { useLanguageStore } from '../store/languageStore';
-import ValidateDiarizationButton from './ValidateDiarizationButton';
+
 
 interface DetectedIssue {
   rule_category?: string;
