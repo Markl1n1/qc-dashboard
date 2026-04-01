@@ -199,9 +199,8 @@ const Upload: React.FC<UploadProps> = () => {
       const result = await transcribeDeepgram(fileToTranscribe, deepgramOptions);
       
       await saveTranscription(dialogId, result.text, 'plain');
-      let transcriptionId: string | null = null;
       if (result.speakerUtterances && result.speakerUtterances.length > 0) {
-        transcriptionId = await saveSpeakerTranscription(dialogId, result.speakerUtterances, 'speaker');
+        await saveSpeakerTranscription(dialogId, result.speakerUtterances, 'speaker');
         
         // Auto-validate diarization
         try {
@@ -209,7 +208,11 @@ const Upload: React.FC<UploadProps> = () => {
             body: { utterances: result.speakerUtterances }
           });
 
-          if (!diarizationError && diarizationResult?.success && diarizationResult.needs_correction && transcriptionId) {
+          if (!diarizationError && diarizationResult?.success && diarizationResult.needs_correction) {
+            // Get transcription_id from database
+            const transcriptions = await databaseService.getTranscriptions(dialogId);
+            const speakerTranscription = transcriptions.find(t => t.transcription_type === 'speaker');
+            if (speakerTranscription) {
             const corrections = diarizationResult.corrected_utterances.map((u: any, i: number) => ({
               utterance_order: i,
               speaker: u.speaker
