@@ -16,6 +16,8 @@ import { DeepgramOptions } from '../types/deepgram';
 import { SpeakerUtterance } from '../types';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../integrations/supabase/client';
+import { databaseService } from '../services/databaseService';
 import AgentSelector from '../components/AgentSelector';
 import DraggableFileList from '../components/DraggableFileList';
 import MultiFileTranscriptionProgress from '../components/MultiFileTranscriptionProgress';
@@ -199,6 +201,32 @@ const Upload: React.FC<UploadProps> = () => {
       await saveTranscription(dialogId, result.text, 'plain');
       if (result.speakerUtterances && result.speakerUtterances.length > 0) {
         await saveSpeakerTranscription(dialogId, result.speakerUtterances, 'speaker');
+        
+        // Auto-validate diarization
+        try {
+          const { data: diarizationResult, error: diarizationError } = await supabase.functions.invoke('diarization-fix', {
+            body: { utterances: result.speakerUtterances }
+          });
+
+          if (!diarizationError && diarizationResult?.success && diarizationResult.needs_correction) {
+            const transcriptions = await databaseService.getTranscriptions(dialogId);
+            const speakerTranscription = transcriptions.find(t => t.transcription_type === 'speaker');
+            if (speakerTranscription) {
+              const corrections = diarizationResult.corrected_utterances.map((u: any, i: number) => ({
+                utterance_order: i,
+                speaker: u.speaker
+              }));
+              const updatedCount = await databaseService.updateUtteranceSpeakers(speakerTranscription.id, corrections);
+              if (updatedCount > 0) {
+                toast.success(`Diarization corrected: ${updatedCount} speaker fixes applied`);
+              }
+            }
+          } else if (diarizationError) {
+            console.warn('Diarization validation failed:', diarizationError);
+          }
+        } catch (diarizationErr) {
+          console.warn('Diarization validation error (non-blocking):', diarizationErr);
+        }
       }
 
       const audioDurationMinutes = (result as any).audioDurationMinutes || 0;

@@ -9,7 +9,7 @@ import { copyToClipboard, formatDialogForCopy } from '../utils/dialogFormatting'
 import { toast } from 'sonner';
 import { useSpeakerMapping } from '../hooks/useSpeakerMapping';
 import { useLanguageStore } from '../store/languageStore';
-import ValidateDiarizationButton from './ValidateDiarizationButton';
+
 
 interface DetectedIssue {
   rule_category?: string;
@@ -212,7 +212,7 @@ const assignments = useMemo(() => {
               )}
           </CardTitle>
             <div className="flex gap-2">
-              <ValidateDiarizationButton utterances={mergedUtterances} fileName={fileName} dialogId={dialogId} onCorrectionsApplied={onCorrectionsApplied} />
+              
               <Button variant="outline" size="sm" onClick={async () => {
                 const success = await copyToClipboard(dialogId);
                 if (success) toast.success('Dialog ID copied');

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 export const useDialogNavigation = () => {
@@ -6,6 +6,11 @@ export const useDialogNavigation = () => {
   const [currentTab, setCurrentTab] = useState(() => {
     return searchParams.get('tab') || 'transcription';
   });
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab) setCurrentTab(tab);
+  }, [searchParams]);
   const [highlightedUtterance, setHighlightedUtterance] = useState<string | null>(null);
 
   const navigateToAnalysis = useCallback((issueIndex: number) => {
