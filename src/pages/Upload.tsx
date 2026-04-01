@@ -199,8 +199,31 @@ const Upload: React.FC<UploadProps> = () => {
       const result = await transcribeDeepgram(fileToTranscribe, deepgramOptions);
       
       await saveTranscription(dialogId, result.text, 'plain');
+      let transcriptionId: string | null = null;
       if (result.speakerUtterances && result.speakerUtterances.length > 0) {
-        await saveSpeakerTranscription(dialogId, result.speakerUtterances, 'speaker');
+        transcriptionId = await saveSpeakerTranscription(dialogId, result.speakerUtterances, 'speaker');
+        
+        // Auto-validate diarization
+        try {
+          const { data: diarizationResult, error: diarizationError } = await supabase.functions.invoke('diarization-fix', {
+            body: { utterances: result.speakerUtterances }
+          });
+
+          if (!diarizationError && diarizationResult?.success && diarizationResult.needs_correction && transcriptionId) {
+            const corrections = diarizationResult.corrected_utterances.map((u: any, i: number) => ({
+              utterance_order: i,
+              speaker: u.speaker
+            }));
+            const updatedCount = await databaseService.updateUtteranceSpeakers(transcriptionId, corrections);
+            if (updatedCount > 0) {
+              toast.success(`Diarization corrected: ${updatedCount} speaker fixes applied`);
+            }
+          } else if (diarizationError) {
+            console.warn('Diarization validation failed:', diarizationError);
+          }
+        } catch (diarizationErr) {
+          console.warn('Diarization validation error (non-blocking):', diarizationErr);
+        }
       }
 
       const audioDurationMinutes = (result as any).audioDurationMinutes || 0;

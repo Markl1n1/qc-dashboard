@@ -212,7 +212,7 @@ const assignments = useMemo(() => {
               )}
           </CardTitle>
             <div className="flex gap-2">
-              <ValidateDiarizationButton utterances={mergedUtterances} fileName={fileName} dialogId={dialogId} onCorrectionsApplied={onCorrectionsApplied} />
+              
               <Button variant="outline" size="sm" onClick={async () => {
                 const success = await copyToClipboard(dialogId);
                 if (success) toast.success('Dialog ID copied');
