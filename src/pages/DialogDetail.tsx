@@ -261,7 +261,7 @@ const DialogDetail = () => {
         <TabsContent value="call-quality" className="mt-6">
           <CallQualityTab 
             dialog={dialog}
-            audioQualityMetrics={(dialog as any).audioQualityMetrics}
+            audioQualityMetrics={dialog.audioQualityMetrics}
             onNavigateToSpeaker={(timestamp) => {
               // Find the closest utterance to this timestamp
               const closest = dialog.speakerTranscription?.reduce((best, u) => {
