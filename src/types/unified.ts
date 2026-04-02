@@ -51,6 +51,7 @@ export interface DialogData {
   qualityScore?: number;
   error?: string;
   audioLengthMinutes?: number;
+  audioQualityMetrics?: Record<string, any> | null;
 }
 
 export interface AnalysisProgress {

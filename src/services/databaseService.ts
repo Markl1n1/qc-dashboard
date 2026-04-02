@@ -23,6 +23,7 @@ export interface DatabaseDialog {
   created_at: string;
   updated_at: string;
   expires_at?: string;
+  audio_quality_metrics?: Record<string, any> | null;
 }
 
 export interface DatabaseTranscription {

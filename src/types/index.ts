@@ -73,6 +73,7 @@ export interface Dialog {
   // Analysis properties - use unified types
   openaiEvaluation?: import('./unified').OpenAIEvaluationResult | null;
   qualityScore?: number;
+  audioQualityMetrics?: Record<string, any> | null;
 }
 
 // Remove over-engineered interfaces - replaced by unified types
