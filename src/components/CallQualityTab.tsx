@@ -53,7 +53,7 @@ function formatTimestamp(seconds: number) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-const CallQualityTab: React.FC<CallQualityTabProps> = ({ dialog, onNavigateToSpeaker }) => {
+const CallQualityTab: React.FC<CallQualityTabProps> = ({ dialog, audioQualityMetrics, onNavigateToSpeaker }) => {
   const { qualityData, isLoading, isAnalyzing, analyzeQuality } = useCallQuality(dialog.id);
 
   const handleAnalyze = () => {
