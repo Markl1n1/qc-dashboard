@@ -113,6 +113,10 @@ const CallQualityTab: React.FC<CallQualityTabProps> = ({ dialog, audioQualityMet
 
   return (
     <div className="space-y-6">
+      {/* Audio Signal Quality (from raw audio analysis) */}
+      {audioQualityMetrics && Object.keys(audioQualityMetrics).length > 0 && (
+        <AudioSignalQualityCard metrics={audioQualityMetrics} />
+      )}
       {/* Overall Score */}
       <Card>
         <CardContent className="pt-6">
