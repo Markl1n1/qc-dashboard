@@ -47,6 +47,10 @@ export function useEvaluateDialog() {
         queryClient.setQueryData(['analysis', dialogId], result.analysis);
         console.log('💾 Analysis data cached successfully');
       }
+
+      // Invalidate dialog queries so speaker names refresh from DB
+      queryClient.invalidateQueries({ queryKey: ['dialog', dialogId] });
+      queryClient.invalidateQueries({ queryKey: ['dialogs'] });
       
       // Always provide toast notification with navigation link
       const currentPath = location.pathname;

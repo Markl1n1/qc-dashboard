@@ -6,9 +6,11 @@ import { Button } from './ui/button';
 import { PhoneCall, Volume2, Wifi, MessageSquareWarning, AlertTriangle, CheckCircle, Info, Loader2, BarChart3 } from 'lucide-react';
 import { useCallQuality, QualityIssue, CategoryScore } from '../hooks/useCallQuality';
 import { DialogData } from '../types/unified';
+import AudioSignalQualityCard from './AudioSignalQualityCard';
 
 interface CallQualityTabProps {
   dialog: DialogData;
+  audioQualityMetrics?: Record<string, any> | null;
   onNavigateToSpeaker?: (timestamp: number) => void;
 }
 
@@ -51,7 +53,7 @@ function formatTimestamp(seconds: number) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-const CallQualityTab: React.FC<CallQualityTabProps> = ({ dialog, onNavigateToSpeaker }) => {
+const CallQualityTab: React.FC<CallQualityTabProps> = ({ dialog, audioQualityMetrics, onNavigateToSpeaker }) => {
   const { qualityData, isLoading, isAnalyzing, analyzeQuality } = useCallQuality(dialog.id);
 
   const handleAnalyze = () => {
@@ -111,6 +113,10 @@ const CallQualityTab: React.FC<CallQualityTabProps> = ({ dialog, onNavigateToSpe
 
   return (
     <div className="space-y-6">
+      {/* Audio Signal Quality (from raw audio analysis) */}
+      {audioQualityMetrics && Object.keys(audioQualityMetrics).length > 0 && (
+        <AudioSignalQualityCard metrics={audioQualityMetrics} />
+      )}
       {/* Overall Score */}
       <Card>
         <CardContent className="pt-6">

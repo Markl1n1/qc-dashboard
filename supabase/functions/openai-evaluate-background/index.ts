@@ -278,6 +278,25 @@ serve(async (req) => {
 
           await updateSpeakerLabel('Speaker 0', speaker_0);
           await updateSpeakerLabel('Speaker 1', speaker_1);
+
+          // Also replace generic "Agent"/"Customer" labels with real names
+          // Only if the real names are different from these generic labels
+          const genericLabels = ['agent', 'customer', 'speaker 0', 'speaker 1'];
+          if (speaker_0 && !genericLabels.includes(speaker_0.toLowerCase())) {
+            // Find which role speaker_0 has to determine which generic label to replace
+            if (role_0?.toLowerCase() === 'agent' || role_0?.toLowerCase() === 'оператор') {
+              await updateSpeakerLabel('Agent', speaker_0);
+            } else if (role_0?.toLowerCase() === 'customer' || role_0?.toLowerCase() === 'клиент') {
+              await updateSpeakerLabel('Customer', speaker_0);
+            }
+          }
+          if (speaker_1 && !genericLabels.includes(speaker_1.toLowerCase())) {
+            if (role_1?.toLowerCase() === 'agent' || role_1?.toLowerCase() === 'оператор') {
+              await updateSpeakerLabel('Agent', speaker_1);
+            } else if (role_1?.toLowerCase() === 'customer' || role_1?.toLowerCase() === 'клиент') {
+              await updateSpeakerLabel('Customer', speaker_1);
+            }
+          }
         }
       }
     } catch (utterErr: unknown) {

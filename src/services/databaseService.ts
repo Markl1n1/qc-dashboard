@@ -23,6 +23,7 @@ export interface DatabaseDialog {
   created_at: string;
   updated_at: string;
   expires_at?: string;
+  audio_quality_metrics?: Record<string, any> | null;
 }
 
 export interface DatabaseTranscription {
@@ -497,6 +498,7 @@ class DatabaseService {
         estimatedCost: dbDialog.estimated_cost
       },
       qualityScore: dbDialog.quality_score,
+      audioQualityMetrics: dbDialog.audio_quality_metrics,
       isSegmented: dbDialog.is_segmented,
       parentDialogId: dbDialog.parent_dialog_id,
       segmentCount: dbDialog.segment_count,
