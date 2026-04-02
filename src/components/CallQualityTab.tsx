@@ -6,9 +6,11 @@ import { Button } from './ui/button';
 import { PhoneCall, Volume2, Wifi, MessageSquareWarning, AlertTriangle, CheckCircle, Info, Loader2, BarChart3 } from 'lucide-react';
 import { useCallQuality, QualityIssue, CategoryScore } from '../hooks/useCallQuality';
 import { DialogData } from '../types/unified';
+import AudioSignalQualityCard from './AudioSignalQualityCard';
 
 interface CallQualityTabProps {
   dialog: DialogData;
+  audioQualityMetrics?: Record<string, any> | null;
   onNavigateToSpeaker?: (timestamp: number) => void;
 }
 
