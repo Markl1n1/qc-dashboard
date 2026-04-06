@@ -384,6 +384,6 @@ export const en = {
     medium: 'Medium',
     high: 'High',
   },
-} as const;
+};
 
-export type TranslationKeys = typeof en;
+export type TranslationKeys = Record<string, Record<string, string>>;
