@@ -30,8 +30,6 @@ const DialogDetail = () => {
 
   useEffect(() => { if (id) loadDialog(id); }, [id]);
 
-  if (!id) return <Navigate to="/unified-dashboard" replace />;
-
   useEffect(() => {
     if (!id) return;
     const channel = supabase
