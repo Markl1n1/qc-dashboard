@@ -23,14 +23,14 @@ const DialogDetail = () => {
   const [dialog, setDialog] = useState<DialogData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   
-  if (!id) return <Navigate to="/unified-dashboard" replace />;
-  
   const { getDialog } = useDatabaseDialogs();
-  const { startAnalysis, analysisData, isAnalyzing } = useDialogAnalysis(id);
+  const { startAnalysis, analysisData, isAnalyzing } = useDialogAnalysis(id || '');
   const { currentTab, setCurrentTab, highlightedUtterance, navigateToAnalysis, navigateToSpeaker, navigateToResults } = useDialogNavigation();
   const { isExportingPDF, exportToPDF } = useDialogExport();
 
   useEffect(() => { if (id) loadDialog(id); }, [id]);
+
+  if (!id) return <Navigate to="/unified-dashboard" replace />;
 
   useEffect(() => {
     if (!id) return;
