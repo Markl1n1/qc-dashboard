@@ -8,15 +8,17 @@ import PasscodeManager from '../components/PasscodeManager';
 import PerformanceMonitor from '../components/PerformanceMonitor';
 import { useUserRole } from '../hooks/useUserRole';
 import { Navigate } from 'react-router-dom';
+import { useTranslation } from '../i18n';
 
 const AdminDashboard = () => {
   const { isAdmin, isLoading } = useUserRole();
+  const { t } = useTranslation();
 
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="flex items-center justify-center">
-          <div className="text-center">Loading...</div>
+          <div className="text-center">{t('common.loading')}</div>
         </div>
       </div>
     );
@@ -31,10 +33,10 @@ const AdminDashboard = () => {
       <div className="mb-8">
         <h1 className="text-3xl font-bold flex items-center gap-2">
           <Shield className="h-8 w-8 text-primary" />
-          Admin Dashboard
+          {t('admin.title')}
         </h1>
         <p className="text-muted-foreground mt-2">
-          Manage users, system settings, and security configurations
+          {t('admin.description')}
         </p>
       </div>
 
@@ -42,15 +44,15 @@ const AdminDashboard = () => {
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="users" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
-            User Management
+            {t('admin.userManagement')}
           </TabsTrigger>
           <TabsTrigger value="security" className="flex items-center gap-2">
             <Key className="h-4 w-4" />
-            Security
+            {t('admin.security')}
           </TabsTrigger>
           <TabsTrigger value="settings" className="flex items-center gap-2">
             <Settings className="h-4 w-4" />
-            System Settings
+            {t('admin.systemSettings')}
           </TabsTrigger>
         </TabsList>
 
@@ -62,41 +64,13 @@ const AdminDashboard = () => {
           <div className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Registration Passcode</CardTitle>
+                <CardTitle>{t('admin.registrationPasscode')}</CardTitle>
                 <CardDescription>
-                  Manage the passcode required for new user registration
+                  {t('admin.registrationPasscodeDesc')}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <PasscodeManager />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Password Management</CardTitle>
-                <CardDescription>
-                  Information about password storage and reset procedures
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div>
-                    <h4 className="font-medium mb-2">Password Storage</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Passwords are securely hashed and stored by Supabase Auth. The system never stores plaintext passwords.
-                    </p>
-                  </div>
-                  <div>
-                    <h4 className="font-medium mb-2">Password Reset Process</h4>
-                    <p className="text-sm text-muted-foreground">
-                      1. Admin creates a temporary password for the user<br/>
-                      2. User logs in with the temporary password<br/>
-                      3. System prompts user to set a new permanent password<br/>
-                      4. Temporary password is invalidated after successful reset
-                    </p>
-                  </div>
-                </div>
               </CardContent>
             </Card>
           </div>
@@ -106,20 +80,6 @@ const AdminDashboard = () => {
           <div className="space-y-6">
             <PerformanceMonitor />
             <DataRetentionManager />
-            
-            <Card>
-              <CardHeader>
-                <CardTitle>System Configuration</CardTitle>
-                <CardDescription>
-                  Global system settings and configurations
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  Additional system settings will be available here in future updates.
-                </p>
-              </CardContent>
-            </Card>
           </div>
         </TabsContent>
       </Tabs>
