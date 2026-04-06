@@ -1,60 +1,79 @@
 
 
-# Две задачи
+# Интернационализация (EN/RU) + удаление блоков
 
-## 1. Применение распознанных имён спикеров вместо Agent/Customer
+## Задача 1: Удалить блоки из Admin Dashboard
 
-**Проблема:** Edge function `diarization-fix` жёстко нормализует всех спикеров в `'Agent' | 'Customer'` (функция `normalizeFinalSpeaker`, строка 52-57). Когда позже AI анализ определяет реальные имена (например "Алиса Лоснева", "Денис"), они показываются только через `useSpeakerMapping` — визуальный маппинг на клиенте, но в БД остаются "Agent"/"Customer".
+**Файл:** `src/pages/AdminDashboard.tsx`
+- Удалить карточку "System Configuration" (строки 110-123)
+- Удалить карточку "Password Management" (строки 75-101)
 
-**На скриншоте видно 4 спикера** — это значит, что диаризация частично сработала (Deepgram нашёл >2 спикеров), а diarization-fix поправил только часть, оставив часть как Agent/Customer и часть как имена из анализа.
+## Задача 2: Система переводов
 
-**Решение:** После завершения AI анализа (который определяет speaker_0/speaker_1 и role_0/role_1), применять эти имена к utterances в БД — заменять "Agent" → реальное имя, "Customer" → реальное имя. Это делается на клиенте после получения результатов анализа.
+### Подход
+Легковесная система на базе Zustand (уже есть `languageStore.ts`) + JSON-словари. Без тяжёлых библиотек (react-i18next не нужен для 2 языков).
 
-### Изменения
+### Новые файлы
 
-| # | Файл | Что |
-|---|------|-----|
-| 1 | `supabase/functions/openai-evaluate-background/index.ts` | После сохранения результатов анализа — обновить speaker labels в utterances, заменяя "Agent"→speaker_0 name, "Customer"→speaker_1 name (если имена определены) |
-| 2 | `src/hooks/useEvaluateDialog.ts` | После успешного анализа — вызвать `updateUtteranceSpeakers` с маппингом из speakers результата |
+| Файл | Назначение |
+|------|-----------|
+| `src/i18n/translations/en.ts` | Словарь EN — все строки интерфейса |
+| `src/i18n/translations/ru.ts` | Словарь RU — русские переводы |
+| `src/i18n/useTranslation.ts` | Хук `useTranslation()` → возвращает функцию `t('key')` |
+| `src/i18n/index.ts` | Экспорт |
 
-Логика:
-1. AI анализ возвращает `speakers: [{ speaker_0: "Денис", role_0: "Agent" }, { speaker_1: "Алиса Лоснева", role_1: "Customer" }]`
-2. Строим маппинг: `"Agent" → "Денис"`, `"Customer" → "Алиса Лоснева"`
-3. Обновляем все utterances где speaker = "Agent" на "Денис", и "Customer" на "Алиса Лоснева"
-4. Invalidate query cache для обновления UI
+### Обновление languageStore.ts
+Расширить store: `uiLanguage: 'en' | 'ru'` + `setUiLanguage(...)`, persist в localStorage.
 
-**Безопасность:** Применяем только если speaker_0 и speaker_1 имеют реальные имена (не пустые, не "Agent"/"Customer"). Если имён нет — оставляем как есть.
+### Переключатель языка
+**Файл:** `src/components/AppSidebar.tsx` — добавить иконку `Languages` (из lucide) справа от логотипа VoiceQC в header. Клик переключает EN↔RU.
 
----
+### Файлы для перевода (основные страницы и компоненты)
 
-## 2. Анализ качества аудио при загрузке (аудио-дорожка, не текст)
+Все hardcoded строки заменяются на `t('key')`:
 
-**Проблема:** Текущий `call-quality-analyze` анализирует **текст utterances** (confidence, gaps, overlaps) — это анализ транскрипции, а не аудио. Уже есть `audioSignalAnalysis.ts` (Web Audio API) который считает SNR, clipping, silence, RMS — но результаты только показываются в UI при загрузке и сохраняются в `audio_quality_metrics`. Нужно интегрировать это в CallQualityTab.
+| Файл | Примеры строк |
+|------|--------------|
+| `src/components/AppSidebar.tsx` | Dashboard, Upload, Settings, Sign Out, Theme |
+| `src/pages/Upload.tsx` | Upload Audio, Agent Name, Transcribe, etc. |
+| `src/pages/UnifiedDashboard.tsx` | Search, Filter, Total, Completed, Failed |
+| `src/pages/DialogDetail.tsx` | Transcription, Analysis, Results, Call Quality |
+| `src/pages/AdminDashboard.tsx` | User Management, Security, System Settings |
+| `src/pages/Settings.tsx` | AI Analysis, System, Deepgram, AI Instructions |
+| `src/pages/Auth.tsx` | Sign In, Sign Up, Email, Password |
+| `src/pages/ChangePassword.tsx` | Change Password, New Password, Confirm |
+| `src/pages/AgentManagement.tsx` | Agent Management |
+| `src/components/EnhancedSpeakerDialog.tsx` | Copy Dialog, Copy ID, speakers |
+| `src/components/CallQualityTab.tsx` | Call Quality, Signal metrics labels |
+| `src/components/DialogDetailHeader.tsx` | Back, Export PDF, Analyze |
+| `src/components/DialogFilters.tsx` | Filter labels |
+| `src/components/LanguageSelector.tsx` | Audio Language |
+| `src/components/AgentSelector.tsx` | Select Agent |
+| `src/components/GenerateReportDialog.tsx` | Generate Report |
+| `src/components/DataRetentionManager.tsx` | Data Retention |
+| `src/components/PasscodeManager.tsx` | Passcode labels |
+| `src/components/OptimizedAdminManagement.tsx` | User management strings |
+| `src/components/BackgroundAnalysisIndicator.tsx` | Status labels |
+| `src/components/AudioSignalQualityCard.tsx` | Metric labels |
+| `src/components/KeytermManagement.tsx` | Keyterm labels |
+| `src/components/DeepgramModelSettings.tsx` | Model settings labels |
+| `src/components/AIInstructionsFileManager.tsx` | Instruction labels |
 
-**Решение:** Использовать уже имеющийся `audioSignalAnalysis.ts` — его метрики уже сохраняются в `dialogs.audio_quality_metrics`. Нужно показывать эти метрики в CallQualityTab вместо (или вместе с) текущим текстовым анализом.
+### Структура словаря (пример)
 
-### Изменения
+```text
+{
+  nav: { dashboard, upload, settings, agents, admin, changePassword, signOut, theme },
+  upload: { title, agentName, transcribe, dropzone, ... },
+  dashboard: { search, filter, total, completed, failed, ... },
+  dialog: { transcription, analysis, results, callQuality, copyDialog, copyId, ... },
+  auth: { signIn, signUp, email, password, ... },
+  settings: { aiAnalysis, system, deepgram, instructions, save, ... },
+  admin: { userManagement, security, ... },
+  common: { loading, error, save, cancel, delete, ... }
+}
+```
 
-| # | Файл | Что |
-|---|------|-----|
-| 1 | `src/components/CallQualityTab.tsx` | Добавить секцию "Audio Signal Quality" — читать `audio_quality_metrics` из диалога и показывать SNR, clipping, silence%, RMS, overall score |
-| 2 | `src/pages/DialogDetail.tsx` | Передавать `audio_quality_metrics` в CallQualityTab |
-
-Метрики которые уже считаются и сохраняются:
-- **SNR** (Signal-to-Noise Ratio) — шум
-- **Clipping %** — искажения/перегрузка
-- **Silence %** — тишина/прерывания
-- **RMS/Peak dB** — уровень громкости
-- **Dynamic Range** — динамический диапазон
-- **Overall Score** (0-100) — композитный балл
-
-Всё это уже есть в `audioSignalAnalysis.ts` и сохраняется при загрузке. Нужно только отобразить в CallQualityTab.
-
-### Файлы для изменения (итого)
-
-| # | Файл | Задача |
-|---|------|--------|
-| 1 | `src/hooks/useEvaluateDialog.ts` | Применять имена спикеров к utterances в БД после анализа |
-| 2 | `src/components/CallQualityTab.tsx` | Добавить секцию аудио-метрик из audio_quality_metrics |
-| 3 | `src/pages/DialogDetail.tsx` | Передать audio_quality_metrics в CallQualityTab |
+### Итого
+~25 файлов будут изменены + 4 новых файла для системы переводов.
 
