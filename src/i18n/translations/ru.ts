@@ -386,4 +386,4 @@ export const ru: TranslationKeys = {
     medium: 'Средний',
     high: 'Высокий',
   },
-} as const;
+};
