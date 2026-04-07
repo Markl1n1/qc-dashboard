@@ -3,8 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { toast } from 'sonner';
 import { supabase } from '../integrations/supabase/client';
+import { useTranslation } from '../i18n';
 
 const DataRetentionManager = () => {
+  const { t } = useTranslation();
   const [isRunningCleanup, setIsRunningCleanup] = useState(false);
   const [retentionDays, setRetentionDays] = useState(14);
 
@@ -12,10 +14,8 @@ const DataRetentionManager = () => {
     setIsRunningCleanup(true);
     try {
       const { data, error } = await supabase.functions.invoke('dialog-cleanup');
-      
       if (error) throw error;
-      
-      toast.success(`Cleanup completed. Deleted ${data.deletedCount} dialogs older than ${data.retentionDays} days.`);
+      toast.success(`${t('dataRetention.cleanupSuccess')} ${data.deletedCount} ${t('dataRetention.dialogsOlderThan')} ${data.retentionDays} ${t('dataRetention.days')}.`);
     } catch (error: any) {
       console.error('Cleanup error:', error);
       toast.error(error.message || 'Failed to run cleanup');
@@ -29,10 +29,8 @@ const DataRetentionManager = () => {
       const { error } = await supabase
         .from('system_config')
         .upsert({ key: 'data_retention_days', value: retentionDays.toString() }, { onConflict: 'key' });
-      
       if (error) throw error;
-      
-      toast.success(`Data retention period updated to ${retentionDays} days`);
+      toast.success(`${t('dataRetention.retentionUpdated')} ${retentionDays} ${t('dataRetention.days')}`);
     } catch (error: any) {
       console.error('Error updating retention period:', error);
       toast.error(error.message || 'Failed to update retention period');
@@ -42,11 +40,11 @@ const DataRetentionManager = () => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Data Retention Management</CardTitle>
+        <CardTitle>{t('dataRetention.title')}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center gap-4">
-          <label className="font-medium">Retention Period (days):</label>
+          <label className="font-medium">{t('dataRetention.retentionPeriod')}:</label>
           <input
             type="number"
             value={retentionDays}
@@ -56,20 +54,15 @@ const DataRetentionManager = () => {
             max="365"
           />
           <Button onClick={updateRetentionDays} size="sm">
-            Update
+            {t('dataRetention.update')}
           </Button>
         </div>
-        
         <div className="flex items-center gap-4">
-          <Button 
-            onClick={runManualCleanup} 
-            disabled={isRunningCleanup}
-            variant="outline"
-          >
-            {isRunningCleanup ? 'Running Cleanup...' : 'Run Manual Cleanup'}
+          <Button onClick={runManualCleanup} disabled={isRunningCleanup} variant="outline">
+            {isRunningCleanup ? t('dataRetention.runningCleanup') : t('dataRetention.runCleanup')}
           </Button>
           <span className="text-sm text-muted-foreground">
-            This will delete all dialogs older than {retentionDays} days
+            {t('dataRetention.deleteOlderThan')} {retentionDays} {t('dataRetention.days')}
           </span>
         </div>
       </CardContent>
