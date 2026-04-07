@@ -9,6 +9,7 @@ import { copyToClipboard, formatDialogForCopy } from '../utils/dialogFormatting'
 import { toast } from 'sonner';
 import { useSpeakerMapping } from '../hooks/useSpeakerMapping';
 import { useLanguageStore } from '../store/languageStore';
+import { useTranslation } from '../i18n';
 
 
 interface DetectedIssue {
@@ -45,11 +46,10 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
   dialogId,
   onCorrectionsApplied
 }) => {
+  const { t } = useTranslation();
   const { commentLanguage } = useLanguageStore();
   const { mapSpeakerName } = useSpeakerMapping(analysisData);
 
-  // ---------- 1) Нормализации ----------
-  // A) отображение (убираем переносы строк и NBSP, но ПУНКТУАЦИЮ не трогаем)
   const normalizeDisplay = (t: string) =>
     (t || '')
       .replace(/<br\s*\/?>/gi, ' ')
@@ -58,28 +58,22 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
       .replace(/\s+/g, ' ')
       .trim();
 
-  // B) сопоставление (строгое равенство для всех языков)
   const normalizeForMatch = (t: string) => {
     const s = (t || '')
       .normalize('NFKC')
-      // унификация кавычек и тире, разные дефисы → обычные
-      .replace(/[«»„“”‟"']/g, '"')
+      .replace(/[«»„""‟"']/g, '"')
       .replace(/[‐-‒–—−]/g, '-')
-      // переносы / NBSP
       .replace(/<br\s*\/?>/gi, ' ')
       .replace(/[\r\n\u0085\u2028\u2029]+/g, ' ')
       .replace(/\u00A0/g, ' ')
-      // схлоп пробелы
       .replace(/\s+/g, ' ')
       .trim()
       .toLowerCase();
 
-    // снять внешние кавычки/точки, которые часто присылает анализ
     const unquoted = s.replace(/^"+|"+$/g, '').replace(/^[.]+|[.]+$/g, '').trim();
     return unquoted.length ? unquoted : s;
   };
 
-  // ---------- 2) Служебные ----------
   const getDisplayComment = (mistake: DetectedIssue): string => {
     if (!mistake.comment) return mistake.description || '';
     if (typeof mistake.comment === 'object') {
@@ -104,7 +98,6 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
       { backgroundColor: 'hsl(30, 100%, 97%)', borderColor: 'hsl(30, 100%, 85%)', textColor: 'hsl(30, 100%, 25%)' }
     ];
     
-    // Use stable mapping based on mapped speaker names
     const uniqueSpeakers = Array.from(new Set(mergedUtterances.map(u => mapSpeakerName(u.speaker))));
     const speakerIndex = uniqueSpeakers.indexOf(mapSpeakerName(speaker));
     const colorIndex = speakerIndex >= 0 ? speakerIndex % speakerColors.length : 0;
@@ -112,7 +105,6 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
     return speakerColors[colorIndex];
   };
 
-  // ---------- 3) Склейка соседних реплик одного спикера ----------
   const mergeConsecutiveUtterances = (arr: SpeakerUtterance[]): SpeakerUtterance[] => {
     if (!arr || arr.length === 0) return [];
     const merged: SpeakerUtterance[] = [];
@@ -140,46 +132,32 @@ const EnhancedSpeakerDialog: React.FC<EnhancedSpeakerDialogProps> = ({
 
   const mergedUtterances = useMemo(() => mergeConsecutiveUtterances(utterances), [utterances]);
 
-  // ---------- 4) Строгое сопоставление ошибок к репликам (много ошибок на одну реплику допускается)
-const assignments = useMemo(() => {
-  const map = new Map<number, DetectedIssue[]>();
+  const assignments = useMemo(() => {
+    const map = new Map<number, DetectedIssue[]>();
+    const utNorm = mergedUtterances.map(u => normalizeForMatch(u.text));
 
-  // Предварительно нормализуем все объединённые реплики
-  const utNorm = mergedUtterances.map(u => normalizeForMatch(u.text));
+    mistakes.forEach((m) => {
+      const raw = (m.utterance || '').trim();
+      if (!raw) return;
+      const mNorm = normalizeForMatch(raw);
+      const candidates = utNorm
+        .map((u, i) => ({ i, pos: u.indexOf(mNorm), len: u.length }))
+        .filter(x => x.pos !== -1);
+      if (candidates.length === 0) return;
+      candidates.sort((a, b) => (a.len - b.len) || (a.pos - b.pos));
+      const targetIndex = candidates[0].i;
+      const list = map.get(targetIndex) ?? [];
+      list.push(m);
+      map.set(targetIndex, list);
+    });
 
-  mistakes.forEach((m) => {
-    const raw = (m.utterance || '').trim();
-    if (!raw) return;
-
-    const mNorm = normalizeForMatch(raw);
-
-    // Находим все реплики, где фрагмент встречается как ПОДСТРОКА (строгое вхождение)
-    const candidates = utNorm
-      .map((u, i) => ({ i, pos: u.indexOf(mNorm), len: u.length }))
-      .filter(x => x.pos !== -1);
-
-    if (candidates.length === 0) {
-      // Ничего не крепим — строгий режим без «фаззи»
-      return;
-    }
-
-    // Выбираем лучшую реплику: самая короткая подходящая, затем по более ранней позиции
-    candidates.sort((a, b) => (a.len - b.len) || (a.pos - b.pos));
-    const targetIndex = candidates[0].i;
-
-    // Добавляем ошибку к выбранной реплике (несколько ошибок на одну реплику — ОК)
-    const list = map.get(targetIndex) ?? [];
-    list.push(m);
-    map.set(targetIndex, list);
-  });
-
-  return map;
-}, [mistakes, mergedUtterances]);
+    return map;
+  }, [mistakes, mergedUtterances]);
 
   const handleCopyDialog = async () => {
     const formattedText = formatDialogForCopy(mergedUtterances);
     const success = await copyToClipboard(formattedText);
-    success ? toast.success('Dialog copied to clipboard') : toast.error('Failed to copy dialog');
+    success ? toast.success(t('transcription.dialogCopied')) : toast.error(t('transcription.copyFailed'));
   };
 
   const speakerStats = useMemo(
@@ -196,34 +174,32 @@ const assignments = useMemo(() => {
 
   return (
     <div className="space-y-4">
-      {/* Metadata Header */}
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-base">
               <Users className="h-4 w-4" />
-              Transcription Results
-              <Badge variant="outline">{mergedUtterances.length} segments</Badge>
+              {t('transcription.results')}
+              <Badge variant="outline">{mergedUtterances.length} {t('transcription.segments')}</Badge>
               {mistakes.length > 0 && (
                 <Badge variant="destructive" className="ml-2">
                   <AlertTriangle className="h-3 w-3 mr-1" />
-                  {mistakes.length} issues
+                  {mistakes.length} {t('transcription.issues')}
                 </Badge>
               )}
           </CardTitle>
             <div className="flex gap-2">
-              
               <Button variant="outline" size="sm" onClick={async () => {
                 const success = await copyToClipboard(dialogId);
-                if (success) toast.success('Dialog ID copied');
-                else toast.error('Failed to copy ID');
+                if (success) toast.success(t('transcription.idCopied'));
+                else toast.error(t('transcription.copyFailed'));
               }}>
                 <Hash className="h-4 w-4 mr-2" />
-                Copy ID
+                {t('transcription.copyId')}
               </Button>
               <Button variant="outline" size="sm" onClick={handleCopyDialog}>
                 <Copy className="h-4 w-4 mr-2" />
-                Copy Dialog
+                {t('transcription.copyDialog')}
               </Button>
             </div>
           </div>
@@ -232,9 +208,9 @@ const assignments = useMemo(() => {
           <div className="flex flex-wrap gap-4 text-sm">
             {detectedLanguage && (
               <div className="flex items-center gap-2">
-                <Badge variant="secondary">Language</Badge>
+                <Badge variant="secondary">{t('transcription.language')}</Badge>
                 <span>{detectedLanguage.language}</span>
-                <span className="text-foreground/70">({Math.round(detectedLanguage.confidence * 100)}% confidence)</span>
+                <span className="text-foreground/70">({Math.round(detectedLanguage.confidence * 100)}% {t('transcription.confidence')})</span>
               </div>
             )}
             {metadata && (
@@ -250,7 +226,6 @@ const assignments = useMemo(() => {
             )}
           </div>
 
-          {/* Speaker Statistics */}
           <div className="mt-4 flex flex-wrap gap-4">
             {Object.entries(speakerStats).map(([speaker, stats]) => {
               const style = getSpeakerStyle(speaker);
@@ -263,9 +238,9 @@ const assignments = useMemo(() => {
                   <User className="h-4 w-4" />
                   <span className="font-medium">{mapSpeakerName(speaker)}</span>
                   <Badge variant="outline" className="text-xs font-bold" style={{ color: style.textColor, borderColor: style.borderColor }}>
-                    {stats.count} segments
+                    {stats.count} {t('transcription.segments')}
                   </Badge>
-                  <span className="text-xs font-medium">{formatTime(stats.totalDuration)} talk time</span>
+                  <span className="text-xs font-medium">{formatTime(stats.totalDuration)} {t('transcription.talkTime')}</span>
                 </div>
               );
             })}
@@ -273,7 +248,6 @@ const assignments = useMemo(() => {
         </CardContent>
       </Card>
 
-      {/* Conversation Display */}
       <Card>
         <CardContent className="p-0">
           <ResizableScrollArea storageKey="enhanced-speaker-dialog">
@@ -327,12 +301,10 @@ const assignments = useMemo(() => {
                         )}
                       </div>
 
-                      {/* единый параграф */}
                       <div className="text-sm leading-relaxed break-words whitespace-normal" style={{ color: style.textColor }}>
                         {utterance.text}
                       </div>
 
-                      {/* issues for this utterance */}
                       {utteranceMistakes.length > 0 && onNavigateToAnalysis && (
                         <div className="mt-3 pt-3 border-t border-destructive/20">
                           <div className="space-y-2">
@@ -354,7 +326,7 @@ const assignments = useMemo(() => {
                                   }}
                                 >
                                   <ExternalLink className="h-3 w-3 mr-1" />
-                                  View in Analysis Results
+                                  {t('transcription.viewInAnalysis')}
                                 </Button>
                               </div>
                             ))}

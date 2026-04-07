@@ -4,14 +4,14 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Save, Loader2, Plus, X, Tags } from "lucide-react";
+import { Save, Loader2, Tags } from "lucide-react";
 import { useEnhancedSettingsStore } from "@/store/enhancedSettingsStore";
 import { toast } from "sonner";
+import { useTranslation } from '../i18n';
 
 interface Language {
   code: string;
   name: string;
-  prompt?: string;
 }
 
 const SUPPORTED_LANGUAGES: Language[] = [
@@ -24,11 +24,8 @@ const SUPPORTED_LANGUAGES: Language[] = [
 ];
 
 const KeytermManagement: React.FC = () => {
-  const { 
-    systemConfig, 
-    isLoading, 
-    updateSystemConfig 
-  } = useEnhancedSettingsStore();
+  const { t } = useTranslation();
+  const { systemConfig, isLoading, updateSystemConfig } = useEnhancedSettingsStore();
 
   const [localKeyterms, setLocalKeyterms] = useState<Record<string, string>>({});
   const [hasChanges, setHasChanges] = useState(false);
@@ -47,29 +44,23 @@ const KeytermManagement: React.FC = () => {
   }, [systemConfig]);
 
   const handleKeytermChange = (langCode: string, value: string) => {
-    setLocalKeyterms(prev => ({
-      ...prev,
-      [langCode]: value
-    }));
+    setLocalKeyterms(prev => ({ ...prev, [langCode]: value }));
     setHasChanges(true);
   };
 
   const handleSave = async () => {
     try {
       setIsSaving(true);
-      
-      // Prepare updates for all keyterm prompts
       const updates: Record<string, string> = {};
       Object.entries(localKeyterms).forEach(([langCode, prompt]) => {
         updates[`keyterm_prompt_${langCode}`] = prompt.trim();
       });
-
       await updateSystemConfig(updates);
       setHasChanges(false);
-      toast.success('Keyterm prompts saved successfully');
+      toast.success(t('keyterms.savedSuccess'));
     } catch (error) {
       console.error('Error saving keyterm prompts:', error);
-      toast.error('Failed to save keyterm prompts');
+      toast.error(t('keyterms.saveFailed'));
     } finally {
       setIsSaving(false);
     }
@@ -80,11 +71,7 @@ const KeytermManagement: React.FC = () => {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <Loader2 className="h-8 w-8 animate-spin" />
-      </div>
-    );
+    return <div className="flex items-center justify-center p-8"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
 
   return (
@@ -92,12 +79,9 @@ const KeytermManagement: React.FC = () => {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Tags className="h-5 w-5" />
-          Keyterm Management
+          {t('keyterms.title')}
         </CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Configure keyterm prompts for each language. Nova-3 model uses keyterms to improve transcription accuracy for domain-specific terms.
-          Separate keyterms with commas.
-        </p>
+        <p className="text-sm text-muted-foreground">{t('keyterms.description')}</p>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="grid gap-6">
@@ -105,43 +89,27 @@ const KeytermManagement: React.FC = () => {
             <div key={lang.code} className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label className="text-sm font-medium">
-                  {lang.name} ({lang.code.toUpperCase()}) Keyterms
+                  {lang.name} ({lang.code.toUpperCase()}) {t('keyterms.keytermsFor')}
                 </Label>
                 <Badge variant="outline" className="text-xs">
-                  {getKeytermCount(localKeyterms[lang.code] || '')} terms
+                  {getKeytermCount(localKeyterms[lang.code] || '')} {t('keyterms.terms')}
                 </Badge>
               </div>
               <Textarea
-                placeholder={`Enter keyterms for ${lang.name} (comma-separated)`}
+                placeholder={`${t('keyterms.enterKeyterms')} ${lang.name} ${t('keyterms.commaSeparated')}`}
                 value={localKeyterms[lang.code] || ''}
                 onChange={(e) => handleKeytermChange(lang.code, e.target.value)}
                 className="min-h-[80px] resize-y"
                 rows={3}
               />
-              <div className="text-xs text-muted-foreground">
-                Example: VoiceQC, transcription, diarization, audio analysis, quality control
-              </div>
+              <div className="text-xs text-muted-foreground">{t('keyterms.example')}</div>
             </div>
           ))}
         </div>
 
         <div className="pt-4 border-t">
-          <Button 
-            onClick={handleSave} 
-            disabled={!hasChanges || isSaving}
-            className="w-full"
-          >
-            {isSaving ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Saving Keyterms...
-              </>
-            ) : (
-              <>
-                <Save className="h-4 w-4 mr-2" />
-                Save All Keyterm Prompts
-              </>
-            )}
+          <Button onClick={handleSave} disabled={!hasChanges || isSaving} className="w-full">
+            {isSaving ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('keyterms.savingKeyterms')}</>) : (<><Save className="h-4 w-4 mr-2" />{t('keyterms.saveAll')}</>)}
           </Button>
         </div>
       </CardContent>

@@ -10,6 +10,7 @@ import { Badge } from './ui/badge';
 import { toast } from 'sonner';
 import { supabase } from '../integrations/supabase/client';
 import { UserPlus, Shield, Key, Trash2, Search } from 'lucide-react';
+import { useTranslation } from '../i18n';
 
 interface User {
   id: string;
@@ -24,11 +25,11 @@ interface UserCache {
   timestamp: number;
 }
 
-// Cache users for 2 minutes to reduce database calls
 let userCache: UserCache | null = null;
-const CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
+const CACHE_DURATION = 2 * 60 * 1000;
 
 const OptimizedAdminManagement = () => {
+  const { t } = useTranslation();
   const [users, setUsers] = useState<User[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -36,342 +37,156 @@ const OptimizedAdminManagement = () => {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showPasswordResetDialog, setShowPasswordResetDialog] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [newUser, setNewUser] = useState({
-    email: '',
-    password: '',
-    name: '',
-    role: 'supervisor' as 'admin' | 'supervisor'
-  });
+  const [newUser, setNewUser] = useState({ email: '', password: '', name: '', role: 'supervisor' as 'admin' | 'supervisor' });
   const [pendingOperations, setPendingOperations] = useState<Set<string>>(new Set());
 
-  // Memoized filtered users to prevent unnecessary re-renders
   const memoizedFilteredUsers = useMemo(() => {
     if (!searchTerm) return users;
-    
     const term = searchTerm.toLowerCase();
-    return users.filter(user => 
-      user.name.toLowerCase().includes(term) ||
-      user.email.toLowerCase().includes(term) ||
-      user.role.toLowerCase().includes(term)
-    );
+    return users.filter(user => user.name.toLowerCase().includes(term) || user.email.toLowerCase().includes(term) || user.role.toLowerCase().includes(term));
   }, [users, searchTerm]);
 
-  useEffect(() => {
-    setFilteredUsers(memoizedFilteredUsers);
-  }, [memoizedFilteredUsers]);
-
-  useEffect(() => {
-    loadUsers();
-  }, []);
+  useEffect(() => { setFilteredUsers(memoizedFilteredUsers); }, [memoizedFilteredUsers]);
+  useEffect(() => { loadUsers(); }, []);
 
   const loadUsers = useCallback(async (forceRefresh = false) => {
     try {
       setIsLoading(true);
-      
-      // Check cache first unless force refresh
       if (!forceRefresh && userCache && (Date.now() - userCache.timestamp) < CACHE_DURATION) {
-        setUsers(userCache.users);
-        setIsLoading(false);
-        return;
+        setUsers(userCache.users); setIsLoading(false); return;
       }
-
-      // Use edge function to list users (bypasses RLS issues)
-      const { data, error } = await supabase.functions.invoke('admin-operations', {
-        body: {
-          operation: 'list_users'
-        }
-      });
-
+      const { data, error } = await supabase.functions.invoke('admin-operations', { body: { operation: 'list_users' } });
       if (error) throw error;
-      
-      const processedUsers = (data?.users || []).map((user: any) => ({
-        ...user,
-        role: user.role as 'admin' | 'supervisor'
-      }));
-      
-      // Update cache
-      userCache = {
-        users: processedUsers,
-        timestamp: Date.now()
-      };
-      
+      const processedUsers = (data?.users || []).map((user: any) => ({ ...user, role: user.role as 'admin' | 'supervisor' }));
+      userCache = { users: processedUsers, timestamp: Date.now() };
       setUsers(processedUsers);
     } catch (error) {
       console.error('Error loading users:', error);
-      toast.error('Failed to load users');
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+      toast.error(t('admin.loadFailed'));
+    } finally { setIsLoading(false); }
+  }, [t]);
 
   const createUser = useCallback(async () => {
-    if (!newUser.email || !newUser.password || !newUser.name) {
-      toast.error('Please fill in all fields');
-      return;
-    }
-
+    if (!newUser.email || !newUser.password || !newUser.name) { toast.error(t('admin.fillAllFields')); return; }
     const operationId = 'create-user';
     setPendingOperations(prev => new Set(prev).add(operationId));
-
     try {
-      // Optimistic update - add user to UI immediately
       const tempId = `temp-${Date.now()}`;
-      const tempUser: User = {
-        id: tempId,
-        name: newUser.name,
-        email: newUser.email,
-        role: newUser.role,
-        created_at: new Date().toISOString()
-      };
-      
-      setUsers(prev => [tempUser, ...prev]);
-      toast.success('Creating user...', { duration: 1000 });
-
-      // Create user via admin-operations edge function
+      setUsers(prev => [{ id: tempId, name: newUser.name, email: newUser.email, role: newUser.role, created_at: new Date().toISOString() }, ...prev]);
+      toast.success(t('admin.creatingUser'), { duration: 1000 });
       const { data, error } = await supabase.functions.invoke('admin-operations', {
-        body: {
-          operation: 'create_user',
-          data: {
-            email: newUser.email,
-            password: newUser.password,
-            name: newUser.name,
-            role: newUser.role
-          }
-        }
+        body: { operation: 'create_user', data: { email: newUser.email, password: newUser.password, name: newUser.name, role: newUser.role } }
       });
-
       if (error) throw error;
-
       if (data?.user) {
-        // Handle different success scenarios
-        const successMessage = data.user_already_existed 
-          ? `${newUser.role === 'admin' ? 'Admin' : 'Supervisor'} user already existed, profile updated`
-          : `${newUser.role === 'admin' ? 'Admin' : 'Supervisor'} user created successfully`;
-        
-        toast.success(successMessage);
+        const msg = data.user_already_existed
+          ? `${newUser.role === 'admin' ? 'Admin' : 'Supervisor'} ${t('admin.userAlreadyExisted')}`
+          : `${newUser.role === 'admin' ? 'Admin' : 'Supervisor'} ${t('admin.userCreated')}`;
+        toast.success(msg);
       }
-
       setShowCreateDialog(false);
       setNewUser({ email: '', password: '', name: '', role: 'supervisor' });
-      
-      // Refresh user list from server to show the new/updated user
       await loadUsers(true);
     } catch (error: any) {
-      console.error('Error creating user:', error);
-      
-      // Handle specific error codes with better messages
-      let errorMessage = 'Failed to create user';
-      if (error.message?.includes('already exists') || error.status === 409) {
-        errorMessage = 'A user with this email already exists';
-      } else if (error.message) {
-        errorMessage = `Failed to create user: ${error.message}`;
-      }
-      
+      let errorMessage = t('admin.createFailed');
+      if (error.message?.includes('already exists') || error.status === 409) errorMessage = t('admin.userEmailExists');
+      else if (error.message) errorMessage = `${t('admin.createFailed')}: ${error.message}`;
       toast.error(errorMessage);
-      
-      // Remove temp user on error
       setUsers(prev => prev.filter(user => !user.id.startsWith('temp-')));
-      
-      // Refresh users from server
       await loadUsers(true);
     } finally {
-      setPendingOperations(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(operationId);
-        return newSet;
-      });
+      setPendingOperations(prev => { const s = new Set(prev); s.delete(operationId); return s; });
     }
-  }, [newUser, loadUsers]);
+  }, [newUser, loadUsers, t]);
 
   const resetPassword = useCallback(async (userId: string, newPassword: string) => {
     const operationId = `reset-${userId}`;
     setPendingOperations(prev => new Set(prev).add(operationId));
-
     try {
-      const { data, error } = await supabase.functions.invoke('admin-operations', {
-        body: {
-          operation: 'reset_password',
-          data: {
-            userId: userId,
-            newPassword: newPassword
-          }
-        }
-      });
-
+      const { error } = await supabase.functions.invoke('admin-operations', { body: { operation: 'reset_password', data: { userId, newPassword } } });
       if (error) throw error;
-
-      toast.success('Password reset successfully. User will be prompted to change it on next login.');
-      setShowPasswordResetDialog(false);
-      setSelectedUser(null);
+      toast.success(t('admin.passwordReset'));
+      setShowPasswordResetDialog(false); setSelectedUser(null);
     } catch (error: any) {
-      console.error('Error resetting password:', error);
-      toast.error(`Failed to reset password: ${error.message}`);
+      toast.error(`${t('admin.passwordResetFailed')}: ${error.message}`);
     } finally {
-      setPendingOperations(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(operationId);
-        return newSet;
-      });
+      setPendingOperations(prev => { const s = new Set(prev); s.delete(operationId); return s; });
     }
-  }, []);
+  }, [t]);
 
   const updateUserRole = useCallback(async (userId: string, newRole: 'admin' | 'supervisor') => {
     const operationId = `role-${userId}`;
     setPendingOperations(prev => new Set(prev).add(operationId));
-
-    // Optimistic update
-    setUsers(prev => prev.map(user => 
-      user.id === userId ? { ...user, role: newRole } : user
-    ));
-
+    setUsers(prev => prev.map(user => user.id === userId ? { ...user, role: newRole } : user));
     try {
-      // Use edge function for role updates (bypasses RLS issues)
-      const { data, error } = await supabase.functions.invoke('admin-operations', {
-        body: {
-          operation: 'batch_user_update',
-          data: {
-            updates: [{ userId, role: newRole }]
-          }
-        }
-      });
-
+      const { error } = await supabase.functions.invoke('admin-operations', { body: { operation: 'batch_user_update', data: { updates: [{ userId, role: newRole }] } } });
       if (error) throw error;
-
-      toast.success(`User role updated to ${newRole}`);
-      
-      // Clear cache
+      toast.success(`${t('admin.roleUpdated')} ${newRole}`);
       userCache = null;
     } catch (error: any) {
-      console.error('Error updating role:', error);
-      toast.error(`Failed to update role: ${error.message}`);
-      
-      // Revert optimistic update
+      toast.error(`${t('admin.roleUpdateFailed')}: ${error.message}`);
       await loadUsers(true);
     } finally {
-      setPendingOperations(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(operationId);
-        return newSet;
-      });
+      setPendingOperations(prev => { const s = new Set(prev); s.delete(operationId); return s; });
     }
-  }, [loadUsers]);
+  }, [loadUsers, t]);
 
   const deleteUser = useCallback(async (userId: string) => {
-    if (!confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
-      return;
-    }
-
+    if (!confirm(t('admin.confirmDelete'))) return;
     const operationId = `delete-${userId}`;
     setPendingOperations(prev => new Set(prev).add(operationId));
-
-    // Optimistic update - remove from UI immediately
     const userToDelete = users.find(u => u.id === userId);
     setUsers(prev => prev.filter(user => user.id !== userId));
-    toast.success('Deleting user...', { duration: 1000 });
-
+    toast.success(t('admin.deletingUser'), { duration: 1000 });
     try {
-      const { data, error } = await supabase.functions.invoke('admin-operations', {
-        body: {
-          operation: 'delete_user',
-          data: {
-            userId: userId
-          }
-        }
-      });
-
+      const { error } = await supabase.functions.invoke('admin-operations', { body: { operation: 'delete_user', data: { userId } } });
       if (error) throw error;
-
-      toast.success('User deleted successfully');
-      
-      // Clear cache
+      toast.success(t('admin.userDeleted'));
       userCache = null;
     } catch (error: any) {
-      console.error('Error deleting user:', error);
-      toast.error(`Failed to delete user: ${error.message}`);
-      
-      // Restore user on error
-      if (userToDelete) {
-        setUsers(prev => [userToDelete, ...prev].sort((a, b) => 
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        ));
-      }
+      toast.error(`${t('admin.deleteFailed')}: ${error.message}`);
+      if (userToDelete) setUsers(prev => [userToDelete, ...prev].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
     } finally {
-      setPendingOperations(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(operationId);
-        return newSet;
-      });
+      setPendingOperations(prev => { const s = new Set(prev); s.delete(operationId); return s; });
     }
-  }, [users]);
-
-  // Debounced search handler
-  const handleSearchChange = useCallback((value: string) => {
-    setSearchTerm(value);
-  }, []);
+  }, [users, t]);
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold">User Management</h2>
-          <p className="text-muted-foreground">Manage admin and supervisor users</p>
+          <h2 className="text-2xl font-bold">{t('admin.userManagement')}</h2>
+          <p className="text-muted-foreground">{t('admin.manageAdminSupervisor')}</p>
         </div>
         <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
           <DialogTrigger asChild>
             <Button disabled={pendingOperations.has('create-user')}>
               <UserPlus className="h-4 w-4 mr-2" />
-              Create User
+              {t('admin.createUser')}
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Create New User</DialogTitle>
-              <DialogDescription>
-                Create a new admin or supervisor user account
-              </DialogDescription>
+              <DialogTitle>{t('admin.createNewUser')}</DialogTitle>
+              <DialogDescription>{t('admin.createNewUserDesc')}</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="name" className="text-right">Name</Label>
-                <Input
-                  id="name"
-                  value={newUser.name}
-                  onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
-                  className="col-span-3"
-                  placeholder="Full name"
-                />
+                <Label htmlFor="name" className="text-right">{t('admin.name')}</Label>
+                <Input id="name" value={newUser.name} onChange={(e) => setNewUser({ ...newUser, name: e.target.value })} className="col-span-3" placeholder={t('admin.fullName')} />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="email" className="text-right">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={newUser.email}
-                  onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                  className="col-span-3"
-                  placeholder="user@example.com"
-                />
+                <Label htmlFor="email" className="text-right">{t('admin.email')}</Label>
+                <Input id="email" type="email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} className="col-span-3" placeholder="user@example.com" />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="password" className="text-right">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={newUser.password}
-                  onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                  className="col-span-3"
-                  placeholder="Temporary password"
-                />
+                <Label htmlFor="password" className="text-right">{t('auth.password')}</Label>
+                <Input id="password" type="password" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} className="col-span-3" placeholder={t('admin.temporaryPassword')} />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="role" className="text-right">Role</Label>
-                <Select 
-                  value={newUser.role} 
-                  onValueChange={(value: 'admin' | 'supervisor') => setNewUser({ ...newUser, role: value })}
-                >
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue />
-                  </SelectTrigger>
+                <Label htmlFor="role" className="text-right">{t('admin.role')}</Label>
+                <Select value={newUser.role} onValueChange={(value: 'admin' | 'supervisor') => setNewUser({ ...newUser, role: value })}>
+                  <SelectTrigger className="col-span-3"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="supervisor">Supervisor</SelectItem>
                     <SelectItem value="admin">Admin</SelectItem>
@@ -380,14 +195,9 @@ const OptimizedAdminManagement = () => {
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
-                Cancel
-              </Button>
-              <Button 
-                onClick={createUser}
-                disabled={pendingOperations.has('create-user')}
-              >
-                {pendingOperations.has('create-user') ? 'Creating...' : 'Create User'}
+              <Button variant="outline" onClick={() => setShowCreateDialog(false)}>{t('common.cancel')}</Button>
+              <Button onClick={createUser} disabled={pendingOperations.has('create-user')}>
+                {pendingOperations.has('create-user') ? t('admin.creating') : t('admin.createUser')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -396,34 +206,26 @@ const OptimizedAdminManagement = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle>Users</CardTitle>
-          <CardDescription>
-            Manage system users and their roles
-          </CardDescription>
+          <CardTitle>{t('admin.users')}</CardTitle>
+          <CardDescription>{t('admin.manageUsers')}</CardDescription>
         </CardHeader>
         <CardContent>
-          {/* Search bar */}
           <div className="flex items-center space-x-2 mb-4">
             <Search className="h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search users..."
-              value={searchTerm}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              className="max-w-sm"
-            />
+            <Input placeholder={t('admin.searchUsers')} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="max-w-sm" />
           </div>
 
           {isLoading ? (
-            <div className="text-center py-4">Loading users...</div>
+            <div className="text-center py-4">{t('admin.loadingUsers')}</div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead>{t('admin.name')}</TableHead>
+                  <TableHead>{t('admin.email')}</TableHead>
+                  <TableHead>{t('admin.role')}</TableHead>
+                  <TableHead>{t('admin.created')}</TableHead>
+                  <TableHead>{t('admin.actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -437,43 +239,21 @@ const OptimizedAdminManagement = () => {
                         {user.role}
                       </Badge>
                     </TableCell>
-                    <TableCell>
-                      {new Date(user.created_at).toLocaleDateString()}
-                    </TableCell>
+                    <TableCell>{new Date(user.created_at).toLocaleDateString()}</TableCell>
                     <TableCell>
                       <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedUser(user);
-                            setShowPasswordResetDialog(true);
-                          }}
-                          disabled={pendingOperations.has(`reset-${user.id}`)}
-                        >
+                        <Button variant="outline" size="sm" onClick={() => { setSelectedUser(user); setShowPasswordResetDialog(true); }} disabled={pendingOperations.has(`reset-${user.id}`)}>
                           <Key className="h-3 w-3 mr-1" />
-                          {pendingOperations.has(`reset-${user.id}`) ? 'Resetting...' : 'Reset Password'}
+                          {pendingOperations.has(`reset-${user.id}`) ? t('admin.resetting') : t('admin.resetPassword')}
                         </Button>
-                        <Select
-                          value={user.role}
-                          onValueChange={(value: 'admin' | 'supervisor') => updateUserRole(user.id, value)}
-                          disabled={pendingOperations.has(`role-${user.id}`)}
-                        >
-                          <SelectTrigger className="w-32">
-                            <SelectValue />
-                          </SelectTrigger>
+                        <Select value={user.role} onValueChange={(value: 'admin' | 'supervisor') => updateUserRole(user.id, value)} disabled={pendingOperations.has(`role-${user.id}`)}>
+                          <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="supervisor">Supervisor</SelectItem>
                             <SelectItem value="admin">Admin</SelectItem>
                           </SelectContent>
                         </Select>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => deleteUser(user.id)}
-                          disabled={pendingOperations.has(`delete-${user.id}`) || user.role === 'admin'}
-                          title={user.role === 'admin' ? 'Admin users cannot be deleted' : 'Delete user'}
-                        >
+                        <Button variant="destructive" size="sm" onClick={() => deleteUser(user.id)} disabled={pendingOperations.has(`delete-${user.id}`) || user.role === 'admin'} title={user.role === 'admin' ? t('admin.adminCantDelete') : t('admin.deleteUser')}>
                           <Trash2 className="h-3 w-3" />
                         </Button>
                       </div>
@@ -486,47 +266,28 @@ const OptimizedAdminManagement = () => {
         </CardContent>
       </Card>
 
-      {/* Password Reset Dialog */}
       <Dialog open={showPasswordResetDialog} onOpenChange={setShowPasswordResetDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reset Password</DialogTitle>
-            <DialogDescription>
-              Reset password for {selectedUser?.name} ({selectedUser?.email})
-            </DialogDescription>
+            <DialogTitle>{t('admin.resetPassword')}</DialogTitle>
+            <DialogDescription>{t('admin.resetPasswordFor')} {selectedUser?.name} ({selectedUser?.email})</DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <p className="text-sm text-muted-foreground">
-              This will set a temporary password for the user. They will be prompted to change it on their next login.
-            </p>
-            <Input
-              type="password"
-              placeholder="New temporary password"
-              className="mt-4"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  const input = e.target as HTMLInputElement;
-                  if (selectedUser && input.value) {
-                    resetPassword(selectedUser.id, input.value);
-                  }
-                }
-              }}
-            />
+            <p className="text-sm text-muted-foreground">{t('admin.tempPasswordHint')}</p>
+            <Input type="password" placeholder={t('admin.newTempPassword')} className="mt-4" onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                const input = e.target as HTMLInputElement;
+                if (selectedUser && input.value) resetPassword(selectedUser.id, input.value);
+              }
+            }} />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowPasswordResetDialog(false)}>
-              Cancel
-            </Button>
-            <Button 
-              onClick={() => {
-                const input = document.querySelector('input[type="password"]') as HTMLInputElement;
-                if (selectedUser && input?.value) {
-                  resetPassword(selectedUser.id, input.value);
-                }
-              }}
-              disabled={selectedUser ? pendingOperations.has(`reset-${selectedUser.id}`) : false}
-            >
-              {selectedUser && pendingOperations.has(`reset-${selectedUser.id}`) ? 'Resetting...' : 'Reset Password'}
+            <Button variant="outline" onClick={() => setShowPasswordResetDialog(false)}>{t('common.cancel')}</Button>
+            <Button onClick={() => {
+              const input = document.querySelector('input[type="password"]') as HTMLInputElement;
+              if (selectedUser && input?.value) resetPassword(selectedUser.id, input.value);
+            }} disabled={selectedUser ? pendingOperations.has(`reset-${selectedUser.id}`) : false}>
+              {selectedUser && pendingOperations.has(`reset-${selectedUser.id}`) ? t('admin.resetting') : t('admin.resetPassword')}
             </Button>
           </DialogFooter>
         </DialogContent>

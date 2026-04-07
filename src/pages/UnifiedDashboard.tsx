@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Search, Filter, Upload, BarChart3, Clock, CheckCircle, AlertCircle, FileText, TrendingUp, Trash2, Loader2, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
+import { Search, Filter, Upload, BarChart3, Clock, CheckCircle, AlertCircle, FileText, TrendingUp, Trash2, Loader2, ChevronLeft, ChevronRight, RotateCcw, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useDatabaseDialogs } from '../hooks/useDatabaseDialogs';
 import { useUserRole } from '../hooks/useUserRole';
@@ -12,7 +12,6 @@ import { Dialog } from '../types';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import GenerateReportDialog from '@/components/GenerateReportDialog';
-import OptimizedDialogCard from '@/components/OptimizedDialogCard';
 import SkeletonLoader from '@/components/SkeletonLoader';
 import RetryTranscriptionDialog from '@/components/RetryTranscriptionDialog';
 import { useTranslation } from '../i18n';
@@ -29,15 +28,33 @@ const UnifiedDashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [agentFilter, setAgentFilter] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [retryDialog, setRetryDialog] = useState<Dialog | null>(null);
   const [isRetryDialogOpen, setIsRetryDialogOpen] = useState(false);
+
+  // Unique agents for filter
+  const uniqueAgents = useMemo(() => {
+    const agents = new Set(dialogs.map(d => d.assignedAgent).filter(Boolean));
+    return Array.from(agents).sort();
+  }, [dialogs]);
+
+  // Summary stats
+  const stats = useMemo(() => {
+    const total = dialogs.length;
+    const completed = dialogs.filter(d => d.status === 'completed').length;
+    const failed = dialogs.filter(d => d.status === 'failed').length;
+    const scores = dialogs.filter(d => d.qualityScore).map(d => d.qualityScore!);
+    const avgScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+    return { total, completed, failed, avgScore };
+  }, [dialogs]);
 
   const filteredAndSortedDialogs = useMemo(() => {
     let filtered = dialogs.filter(dialog => {
       const matchesSearch = dialog.fileName.toLowerCase().includes(searchTerm.toLowerCase()) || dialog.assignedAgent.toLowerCase().includes(searchTerm.toLowerCase()) || dialog.assignedSupervisor.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesStatus = statusFilter === 'all' || dialog.status === statusFilter;
-      return matchesSearch && matchesStatus;
+      const matchesAgent = agentFilter === 'all' || dialog.assignedAgent === agentFilter;
+      return matchesSearch && matchesStatus && matchesAgent;
     });
     return filtered.sort((a, b) => {
       switch (sortBy) {
@@ -48,9 +65,9 @@ const UnifiedDashboard = () => {
         default: return 0;
       }
     });
-  }, [dialogs, searchTerm, sortBy, statusFilter]);
+  }, [dialogs, searchTerm, sortBy, statusFilter, agentFilter]);
 
-  React.useEffect(() => { setCurrentPage(1); }, [searchTerm, sortBy, statusFilter]);
+  React.useEffect(() => { setCurrentPage(1); }, [searchTerm, sortBy, statusFilter, agentFilter]);
 
   const totalPages = Math.ceil(filteredAndSortedDialogs.length / ITEMS_PER_PAGE);
   const paginatedDialogs = useMemo(() => {
@@ -101,7 +118,7 @@ const UnifiedDashboard = () => {
         <div className="h-8 w-64 bg-muted rounded animate-pulse" />
         <div className="h-10 w-32 bg-muted rounded animate-pulse" />
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 max-w-4xl mx-auto">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {Array.from({ length: 4 }).map((_, i) => <Card key={i}><CardContent className="p-4"><div className="flex items-center justify-between"><div className="space-y-2"><div className="h-4 w-16 bg-muted rounded animate-pulse" /><div className="h-6 w-8 bg-muted rounded animate-pulse" /></div><div className="h-8 w-8 bg-muted rounded animate-pulse" /></div></CardContent></Card>)}
       </div>
       <Card><CardContent className="p-4"><div className="flex flex-col lg:flex-row gap-4"><div className="flex-1 h-10 bg-muted rounded animate-pulse" /><div className="h-10 w-[180px] bg-muted rounded animate-pulse" /><div className="h-10 w-[150px] bg-muted rounded animate-pulse" /></div></CardContent></Card>
@@ -113,6 +130,54 @@ const UnifiedDashboard = () => {
     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
       <div><h1 className="text-3xl font-bold">{t('dashboard.title')}</h1></div>
       <div className="flex gap-2"><GenerateReportDialog /></div>
+    </div>
+
+    {/* Summary Cards */}
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">{t('dashboard.totalDialogs')}</p>
+              <p className="text-2xl font-bold">{stats.total}</p>
+            </div>
+            <FileText className="h-8 w-8 text-muted-foreground" />
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">{t('dashboard.completedDialogs')}</p>
+              <p className="text-2xl font-bold text-green-600">{stats.completed}</p>
+            </div>
+            <CheckCircle className="h-8 w-8 text-green-600" />
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">{t('dashboard.failedDialogs')}</p>
+              <p className="text-2xl font-bold text-red-600">{stats.failed}</p>
+            </div>
+            <AlertCircle className="h-8 w-8 text-red-600" />
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">{t('dashboard.avgScore')}</p>
+              <p className="text-2xl font-bold">{stats.avgScore ?? t('common.noData')}</p>
+            </div>
+            <TrendingUp className="h-8 w-8 text-muted-foreground" />
+          </div>
+        </CardContent>
+      </Card>
     </div>
 
     <Card>
@@ -134,6 +199,15 @@ const UnifiedDashboard = () => {
               <SelectItem value="failed">{t('dashboard.failed')}</SelectItem>
             </SelectContent>
           </Select>
+          {uniqueAgents.length > 0 && (
+            <Select value={agentFilter} onValueChange={setAgentFilter}>
+              <SelectTrigger className="w-[180px]"><Users className="h-4 w-4 mr-2" /><SelectValue placeholder={t('dashboard.filterByAgent')} /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t('dashboard.allAgents')}</SelectItem>
+                {uniqueAgents.map(agent => <SelectItem key={agent} value={agent}>{agent}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
           <Select value={sortBy} onValueChange={(value: SortOption) => setSortBy(value)}>
             <SelectTrigger className="w-[150px]"><SelectValue placeholder={t('dashboard.sortBy')} /></SelectTrigger>
             <SelectContent>

@@ -2,6 +2,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { DialogData, OpenAIEvaluationResult } from '../types/unified';
 import { OptimizedAnalysisSummaryCards, OptimizedEnhancedDialogDetail } from './LazyComponents';
+import { useTranslation } from '../i18n';
 
 interface DialogResultsTabProps {
   dialog: DialogData;
@@ -16,6 +17,7 @@ const DialogResultsTab: React.FC<DialogResultsTabProps> = ({
   onNavigateToSpeaker,
   onNavigateToAnalysis
 }) => {
+  const { t } = useTranslation();
   const evaluationData = analysisData || dialog.openaiEvaluation;
 
   if (!evaluationData) {
@@ -23,7 +25,7 @@ const DialogResultsTab: React.FC<DialogResultsTabProps> = ({
       <Card>
         <CardContent className="pt-6">
           <p className="text-center text-muted-foreground">
-            No analysis results available. Please run AI analysis first.
+            {t('analysis.noResults')}
           </p>
         </CardContent>
       </Card>
@@ -32,15 +34,13 @@ const DialogResultsTab: React.FC<DialogResultsTabProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Summary Cards */}
       {evaluationData.mistakes && evaluationData.mistakes.length > 0 && (
         <OptimizedAnalysisSummaryCards mistakes={evaluationData.mistakes} />
       )}
 
-      {/* Overall Score */}
       <Card>
         <CardHeader>
-          <CardTitle>Overall Score</CardTitle>
+          <CardTitle>{t('analysis.overallScore')}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -49,19 +49,18 @@ const DialogResultsTab: React.FC<DialogResultsTabProps> = ({
                 {evaluationData.overallScore || evaluationData.score}
               </div>
               <div className="text-sm text-muted-foreground mt-1">
-                Confidence: {Math.round((evaluationData.confidence || 0) * 100)}%
+                {t('analysis.confidence')}: {Math.round((evaluationData.confidence || 0) * 100)}%
               </div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Category Scores */}
       {evaluationData.categoryScores && 
        Object.keys(evaluationData.categoryScores).length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Category Scores</CardTitle>
+            <CardTitle>{t('analysis.categoryScores')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -78,11 +77,10 @@ const DialogResultsTab: React.FC<DialogResultsTabProps> = ({
         </Card>
       )}
 
-      {/* Recommendations */}
       {evaluationData.recommendations && evaluationData.recommendations.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Recommendations</CardTitle>
+            <CardTitle>{t('analysis.recommendations')}</CardTitle>
           </CardHeader>
           <CardContent>
             <ul className="list-disc pl-6 space-y-2">
@@ -96,11 +94,10 @@ const DialogResultsTab: React.FC<DialogResultsTabProps> = ({
         </Card>
       )}
 
-      {/* Detected Issues */}
       {evaluationData.mistakes && evaluationData.mistakes.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Detected Issues ({evaluationData.mistakes.length})</CardTitle>
+            <CardTitle>{t('analysis.detectedIssues')} ({evaluationData.mistakes.length})</CardTitle>
           </CardHeader>
           <CardContent>
             <OptimizedEnhancedDialogDetail 

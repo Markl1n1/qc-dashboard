@@ -1,8 +1,8 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
-import { Progress } from './ui/progress';
 import { Volume2, Wifi, AudioLines, Gauge, Activity } from 'lucide-react';
+import { useTranslation } from '../i18n';
 
 interface AudioMetrics {
   rmsLevel?: number;
@@ -30,35 +30,31 @@ function getScoreColor(score: number) {
   return 'text-red-600 dark:text-red-400';
 }
 
-function getScoreBadge(score: number) {
-  if (score >= 80) return { variant: 'default' as const, label: 'Good' };
-  if (score >= 60) return { variant: 'secondary' as const, label: 'Fair' };
-  return { variant: 'destructive' as const, label: 'Poor' };
+function getScoreBadge(score: number, t: (key: string) => string) {
+  if (score >= 80) return { variant: 'default' as const, label: t('callQuality.good') };
+  if (score >= 60) return { variant: 'secondary' as const, label: t('callQuality.fair') };
+  return { variant: 'destructive' as const, label: t('callQuality.poor') };
 }
 
 function formatDb(db: number | undefined) {
   return db != null ? `${db.toFixed(1)} dB` : '—';
 }
 
-function formatPercent(val: number | undefined) {
-  return val != null ? `${val.toFixed(1)}%` : '—';
-}
-
-const metricRows = [
-  { key: 'snrEstimate', label: 'Signal-to-Noise (SNR)', icon: <Wifi className="h-4 w-4" />, format: (v: number) => `${v.toFixed(1)} dB`, desc: 'Higher is better. >20dB = good' },
-  { key: 'clippingPercent', label: 'Clipping (Distortion)', icon: <Activity className="h-4 w-4" />, format: (v: number) => `${v.toFixed(2)}%`, desc: 'Lower is better. >1% = issues' },
-  { key: 'silencePercent', label: 'Silence Ratio', icon: <AudioLines className="h-4 w-4" />, format: (v: number) => `${v.toFixed(1)}%`, desc: 'Percentage of silent segments' },
-  { key: 'rmsDb', label: 'Volume Level (RMS)', icon: <Volume2 className="h-4 w-4" />, format: (v: number) => `${v.toFixed(1)} dB`, desc: 'Average loudness' },
-  { key: 'dynamicRange', label: 'Dynamic Range', icon: <Gauge className="h-4 w-4" />, format: (v: number) => `${v.toFixed(1)} dB`, desc: 'Difference between quiet and loud' },
-] as const;
-
 const AudioSignalQualityCard: React.FC<AudioSignalQualityCardProps> = ({ metrics }) => {
+  const { t } = useTranslation();
   const score = metrics.overallScore ?? 0;
-  const badge = getScoreBadge(score);
+  const badge = getScoreBadge(score, t);
+
+  const metricRows = [
+    { key: 'snrEstimate', label: t('audioSignal.snr'), icon: <Wifi className="h-4 w-4" />, format: (v: number) => `${v.toFixed(1)} dB`, desc: t('audioSignal.snrDesc') },
+    { key: 'clippingPercent', label: t('audioSignal.clipping'), icon: <Activity className="h-4 w-4" />, format: (v: number) => `${v.toFixed(2)}%`, desc: t('audioSignal.clippingDesc') },
+    { key: 'silencePercent', label: t('audioSignal.silenceRatio'), icon: <AudioLines className="h-4 w-4" />, format: (v: number) => `${v.toFixed(1)}%`, desc: t('audioSignal.silenceDesc') },
+    { key: 'rmsDb', label: t('audioSignal.volumeLevel'), icon: <Volume2 className="h-4 w-4" />, format: (v: number) => `${v.toFixed(1)} dB`, desc: t('audioSignal.volumeDesc') },
+    { key: 'dynamicRange', label: t('audioSignal.dynamicRange'), icon: <Gauge className="h-4 w-4" />, format: (v: number) => `${v.toFixed(1)} dB`, desc: t('audioSignal.dynamicRangeDesc') },
+  ];
 
   return (
     <div className="space-y-4">
-      {/* Overall Audio Score */}
       <Card>
         <CardContent className="pt-6">
           <div className="flex items-center gap-4">
@@ -67,18 +63,15 @@ const AudioSignalQualityCard: React.FC<AudioSignalQualityCardProps> = ({ metrics
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-medium">Audio Signal Quality</span>
+                <span className="font-medium">{t('audioSignal.audioSignalQuality')}</span>
                 <Badge variant={badge.variant}>{badge.label}</Badge>
               </div>
-              <p className="text-sm text-muted-foreground mt-1">
-                Based on raw audio signal analysis (SNR, clipping, silence, volume)
-              </p>
+              <p className="text-sm text-muted-foreground mt-1">{t('audioSignal.basedOnRaw')}</p>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Metric Details */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {metricRows.map(({ key, label, icon, format, desc }) => {
           const val = metrics[key as keyof AudioMetrics] as number | undefined;
@@ -88,9 +81,7 @@ const AudioSignalQualityCard: React.FC<AudioSignalQualityCardProps> = ({ metrics
                 <div className="flex items-center gap-2 mb-2">
                   {icon}
                   <span className="text-sm font-medium">{label}</span>
-                  <span className="ml-auto text-sm font-bold">
-                    {val != null ? format(val) : '—'}
-                  </span>
+                  <span className="ml-auto text-sm font-bold">{val != null ? format(val) : '—'}</span>
                 </div>
                 <p className="text-xs text-muted-foreground">{desc}</p>
               </CardContent>
@@ -98,28 +89,26 @@ const AudioSignalQualityCard: React.FC<AudioSignalQualityCardProps> = ({ metrics
           );
         })}
 
-        {/* Audio info */}
         <Card>
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-2 mb-2">
               <AudioLines className="h-4 w-4" />
-              <span className="text-sm font-medium">Audio Info</span>
+              <span className="text-sm font-medium">{t('audioSignal.audioInfo')}</span>
             </div>
             <div className="text-xs text-muted-foreground space-y-1">
-              {metrics.sampleRate && <p>Sample rate: {metrics.sampleRate} Hz</p>}
-              {metrics.channels && <p>Channels: {metrics.channels}</p>}
+              {metrics.sampleRate && <p>{t('audioSignal.sampleRate')}: {metrics.sampleRate} Hz</p>}
+              {metrics.channels && <p>{t('audioSignal.channels')}: {metrics.channels}</p>}
               {metrics.duration && <p>Duration: {Math.floor(metrics.duration / 60)}:{Math.floor(metrics.duration % 60).toString().padStart(2, '0')}</p>}
-              {metrics.peakDb != null && <p>Peak: {formatDb(metrics.peakDb)}</p>}
+              {metrics.peakDb != null && <p>{t('audioSignal.peak')}: {formatDb(metrics.peakDb)}</p>}
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Issues */}
       {metrics.issues && metrics.issues.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Detected Issues</CardTitle>
+            <CardTitle className="text-sm">{t('audioSignal.detectedIssues')}</CardTitle>
           </CardHeader>
           <CardContent>
             <ul className="space-y-2">

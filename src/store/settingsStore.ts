@@ -7,6 +7,8 @@ interface SettingsState {
   setMaxTokens: (tokens: number) => void;
   noiseReduction: boolean;
   setNoiseReduction: (enabled: boolean) => void;
+  autoAnalysis: boolean;
+  setAutoAnalysis: (enabled: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -16,6 +18,8 @@ export const useSettingsStore = create<SettingsState>()(
       setMaxTokens: (tokens: number) => set({ maxTokens: tokens }),
       noiseReduction: true,
       setNoiseReduction: (enabled: boolean) => set({ noiseReduction: enabled }),
+      autoAnalysis: false,
+      setAutoAnalysis: (enabled: boolean) => set({ autoAnalysis: enabled }),
     }),
     {
       name: 'voiceqc-settings',
