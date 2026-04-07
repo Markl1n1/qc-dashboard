@@ -1,79 +1,83 @@
 
 
-# Интернационализация (EN/RU) + удаление блоков
+# Анализ приложения VoiceQC: возможные улучшения
 
-## Задача 1: Удалить блоки из Admin Dashboard
+После изучения кодовой базы, вот ключевые области для улучшения:
 
-**Файл:** `src/pages/AdminDashboard.tsx`
-- Удалить карточку "System Configuration" (строки 110-123)
-- Удалить карточку "Password Management" (строки 75-101)
+---
 
-## Задача 2: Система переводов
+## 1. Незавершённая интернационализация (~15 компонентов)
 
-### Подход
-Легковесная система на базе Zustand (уже есть `languageStore.ts`) + JSON-словари. Без тяжёлых библиотек (react-i18next не нужен для 2 языков).
+Многие компоненты все ещё содержат хардкод на английском:
 
-### Новые файлы
+- **DialogResultsTab.tsx** — "Overall Score", "Category Scores", "Recommendations", "Detected Issues", "No analysis results available"
+- **DialogAnalysisTab.tsx** — "AI Quality Analysis", "Analysis Complete", "Start AI Analysis", "Re-run Analysis", "Analyzing...", все информационные сообщения
+- **GenerateReportDialog.tsx** — "Average Quality Score by Agent", "Type B Report", ошибки валидации, пресеты дат (частично на русском)
+- **EnhancedSpeakerDialog.tsx** — заголовки и labels
+- **OptimizedDialogCard.tsx**, **BackgroundAnalysisIndicator.tsx**, **DataRetentionManager.tsx**, **PasscodeManager.tsx**, **DeepgramModelSettings.tsx**, **KeytermManagement.tsx**, **AIInstructionsFileManager.tsx**, **AudioSignalQualityCard.tsx**
 
-| Файл | Назначение |
-|------|-----------|
-| `src/i18n/translations/en.ts` | Словарь EN — все строки интерфейса |
-| `src/i18n/translations/ru.ts` | Словарь RU — русские переводы |
-| `src/i18n/useTranslation.ts` | Хук `useTranslation()` → возвращает функцию `t('key')` |
-| `src/i18n/index.ts` | Экспорт |
+**Действие:** Добавить ключи в `en.ts`/`ru.ts` и заменить строки на `t()` вызовы.
 
-### Обновление languageStore.ts
-Расширить store: `uiLanguage: 'en' | 'ru'` + `setUiLanguage(...)`, persist в localStorage.
+---
 
-### Переключатель языка
-**Файл:** `src/components/AppSidebar.tsx` — добавить иконку `Languages` (из lucide) справа от логотипа VoiceQC в header. Клик переключает EN↔RU.
+## 2. Дашборд без аналитических карточек
 
-### Файлы для перевода (основные страницы и компоненты)
+Раньше были summary cards (Total/Completed/Failed/Processing), сейчас дашборд показывает только список диалогов. Нет визуальной сводки.
 
-Все hardcoded строки заменяются на `t('key')`:
+**Действие:** Вернуть 4 карточки-счётчика вверху дашборда — Total Dialogs, Completed, Failed, Average Score.
 
-| Файл | Примеры строк |
-|------|--------------|
-| `src/components/AppSidebar.tsx` | Dashboard, Upload, Settings, Sign Out, Theme |
-| `src/pages/Upload.tsx` | Upload Audio, Agent Name, Transcribe, etc. |
-| `src/pages/UnifiedDashboard.tsx` | Search, Filter, Total, Completed, Failed |
-| `src/pages/DialogDetail.tsx` | Transcription, Analysis, Results, Call Quality |
-| `src/pages/AdminDashboard.tsx` | User Management, Security, System Settings |
-| `src/pages/Settings.tsx` | AI Analysis, System, Deepgram, AI Instructions |
-| `src/pages/Auth.tsx` | Sign In, Sign Up, Email, Password |
-| `src/pages/ChangePassword.tsx` | Change Password, New Password, Confirm |
-| `src/pages/AgentManagement.tsx` | Agent Management |
-| `src/components/EnhancedSpeakerDialog.tsx` | Copy Dialog, Copy ID, speakers |
-| `src/components/CallQualityTab.tsx` | Call Quality, Signal metrics labels |
-| `src/components/DialogDetailHeader.tsx` | Back, Export PDF, Analyze |
-| `src/components/DialogFilters.tsx` | Filter labels |
-| `src/components/LanguageSelector.tsx` | Audio Language |
-| `src/components/AgentSelector.tsx` | Select Agent |
-| `src/components/GenerateReportDialog.tsx` | Generate Report |
-| `src/components/DataRetentionManager.tsx` | Data Retention |
-| `src/components/PasscodeManager.tsx` | Passcode labels |
-| `src/components/OptimizedAdminManagement.tsx` | User management strings |
-| `src/components/BackgroundAnalysisIndicator.tsx` | Status labels |
-| `src/components/AudioSignalQualityCard.tsx` | Metric labels |
-| `src/components/KeytermManagement.tsx` | Keyterm labels |
-| `src/components/DeepgramModelSettings.tsx` | Model settings labels |
-| `src/components/AIInstructionsFileManager.tsx` | Instruction labels |
+---
 
-### Структура словаря (пример)
+## 3. Автоматический запуск AI анализа после транскрипции
 
-```text
-{
-  nav: { dashboard, upload, settings, agents, admin, changePassword, signOut, theme },
-  upload: { title, agentName, transcribe, dropzone, ... },
-  dashboard: { search, filter, total, completed, failed, ... },
-  dialog: { transcription, analysis, results, callQuality, copyDialog, copyId, ... },
-  auth: { signIn, signUp, email, password, ... },
-  settings: { aiAnalysis, system, deepgram, instructions, save, ... },
-  admin: { userManagement, security, ... },
-  common: { loading, error, save, cancel, delete, ... }
-}
-```
+Сейчас после загрузки файла пользователь должен вручную открыть диалог → перейти на вкладку Analysis → нажать "Start AI Analysis". Это лишние шаги.
 
-### Итого
-~25 файлов будут изменены + 4 новых файла для системы переводов.
+**Действие:** Добавить опцию (toggle в Upload или Settings) для автоматического запуска AI анализа сразу после завершения транскрипции.
+
+---
+
+## 4. Batch-загрузка и анализ нескольких диалогов
+
+Сейчас можно загрузить несколько файлов, но они объединяются в один диалог. Нет возможности загрузить 10 отдельных диалогов за раз.
+
+**Действие:** Добавить режим "Multiple Dialogs" — каждый файл = отдельный диалог с автоматической транскрипцией и опциональным AI анализом.
+
+---
+
+## 5. Отчёты — только один тип работает
+
+В `GenerateReportDialog` определено 3 типа отчётов, но 2 из них "Coming Soon". Единственный рабочий — "Average Quality Score by Agent".
+
+**Действие:** Добавить новые типы отчётов:
+- Тренды качества по времени (график)
+- Детальный отчёт по агенту (все диалоги, средний балл, частые ошибки)
+- Сводка по категориям ошибок
+
+---
+
+## 6. Дубликат "Transcription required" в DialogAnalysisTab
+
+Строки 99-103 и 105-108 — одно и то же сообщение выводится дважды.
+
+**Действие:** Удалить дубликат.
+
+---
+
+## 7. Фильтр по агенту на дашборде
+
+Сейчас есть фильтр по статусу и поиск, но нет отдельного фильтра/dropdown для выбора агента.
+
+**Действие:** Добавить фильтр по агенту (Select с уникальными именами из диалогов).
+
+---
+
+## Рекомендуемый приоритет
+
+1. **Завершить i18n** — быстрый, высокий impact для русскоязычных пользователей
+2. **Summary cards на дашборде** — визуальная сводка
+3. **Авто-анализ после транскрипции** — убирает ручные шаги
+4. **Фильтр по агенту** — удобство навигации
+5. **Batch upload** — производительность для больших команд
+6. **Новые типы отчётов** — аналитика
+7. **Bugfix дубликата** — мелочь
 
