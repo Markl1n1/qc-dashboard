@@ -252,11 +252,41 @@ Deno.serve(async (req) => {
     console.log('📊 [INPUT]', utterances.length, 'utterances');
 
     const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-    if (!OPENAI_API_KEY) {
-      return new Response(
-        JSON.stringify({ error: 'OpenAI API key not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+
+    // Helper: build a successful fallback response using deterministic labels
+    const respondWithFallback = (reason: string) => {
+      console.warn('⚠️ [FALLBACK]', reason);
+      const fallbackLabels = deterministicFallbackLabels(utterances);
+      const correctedUtterances: CorrectedUtterance[] = utterances.map((u, i) => ({
+        speaker: normalizeFinalSpeaker(fallbackLabels[i]),
+        original_speaker: u.speaker,
+        text: u.text,
+        start: u.start,
+        end: u.end,
+      }));
+      const speakerMapping = buildSpeakerMapping(utterances, correctedUtterances);
+      const formattedDialog = buildFormattedDialog(correctedUtterances);
+      const needsCorrection = correctedUtterances.some(
+        (u, i) => u.speaker !== utterances[i].speaker
       );
+      return new Response(
+        JSON.stringify({
+          success: true,
+          fallback: true,
+          fallback_reason: reason,
+          needs_correction: needsCorrection,
+          confidence: 0.5,
+          analysis: `Deterministic fallback applied (${reason}).`,
+          corrected_utterances: correctedUtterances,
+          formatted_dialog: formattedDialog,
+          speaker_mapping: speakerMapping,
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    };
+
+    if (!OPENAI_API_KEY) {
+      return respondWithFallback('OpenAI API key not configured');
     }
 
     const model = utterances.length > 80 ? 'gpt-4o-mini' : 'gpt-4o';
@@ -302,51 +332,34 @@ Deno.serve(async (req) => {
         });
       } catch (e: unknown) {
         clearTimeout(timeoutId);
-        if (e instanceof Error && e.name === 'AbortError') {
-          return new Response(
-            JSON.stringify({ success: false, error: 'Request timed out.' }),
-            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-        throw e;
+        const reason = e instanceof Error && e.name === 'AbortError' ? 'GPT request timed out' : 'GPT request failed';
+        return respondWithFallback(reason);
       }
       clearTimeout(timeoutId);
 
       console.log('✅ [GPT] Response in', ((Date.now() - gptStart) / 1000).toFixed(2), 's');
 
       if (!response.ok) {
-        const errorText = await response.text();
-        return new Response(
-          JSON.stringify({ success: false, error: 'OpenAI API error', details: errorText }),
-          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        await response.text().catch(() => '');
+        return respondWithFallback(`OpenAI API error ${response.status}`);
       }
 
       const openaiResult = await response.json();
       const content = openaiResult.choices?.[0]?.message?.content;
       if (!content) {
-        return new Response(
-          JSON.stringify({ success: false, error: 'No response from GPT' }),
-          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return respondWithFallback('No response from GPT');
       }
 
       result = tryParseJson(content);
       if (!result) {
-        return new Response(
-          JSON.stringify({ success: false, error: 'GPT returned invalid JSON. Please retry.' }),
-          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return respondWithFallback('GPT returned invalid JSON');
       }
 
       // Extract labels
       if (Array.isArray(result.labels)) {
         allLabels = result.labels.map(l => String(l));
       } else {
-        return new Response(
-          JSON.stringify({ success: false, error: 'GPT response missing labels.' }),
-          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return respondWithFallback('GPT response missing labels');
       }
     } else {
       // Multi-chunk batching
@@ -360,17 +373,15 @@ Deno.serve(async (req) => {
 
       console.log('✅ [GPT] All chunks done in', ((Date.now() - gptStart) / 1000).toFixed(2), 's');
 
+      // If any chunk failed, fall back deterministically for the whole dialog
+      if (chunkResults.some(r => !r)) {
+        return respondWithFallback('One or more chunks failed during batched analysis');
+      }
+
       // Merge labels from chunks, removing overlap context
       allLabels = [];
       for (let i = 0; i < chunks.length; i++) {
-        const labels = chunkResults[i];
-        if (!labels) {
-          return new Response(
-            JSON.stringify({ success: false, error: `Chunk ${i + 1}/${chunks.length} failed. Please retry.` }),
-            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-        // For chunks with overlap context, skip the overlap labels
+        const labels = chunkResults[i]!;
         const overlapCount = chunks[i].globalOffset > 0 ? CHUNK_OVERLAP : 0;
         allLabels.push(...labels.slice(overlapCount));
       }
