@@ -186,7 +186,17 @@ async function processChunk(
   signal: AbortSignal
 ): Promise<string[] | null> {
   const N = chunk.utterances.length;
-  const userPrompt = `Return VALID JSON only. Keys: labels, speaker_mapping.\n\nRules:\n- labels length MUST be exactly ${N}\n- labels values ONLY: Agent or Customer\n- do NOT include any other keys\n\nUtterances:\n${JSON.stringify(chunk.utterances)}`;
+  const userPrompt = `N = ${N}. Верни ТОЛЬКО JSON с ключами labels и speaker_mapping.
+
+ПРАВИЛА:
+- labels.length РОВНО ${N}
+- значения labels — только "Agent" или "Customer"
+- НЕ копируй слепо исходного speaker — определяй роль ПО СМЫСЛУ реплики
+- помни: реплики-вопросы о продукте/мотивации = Agent; короткие отказы = Customer
+- роли в живом диалоге чередуются, не "залипай" на одной метке надолго
+
+Реплики:
+${JSON.stringify(chunk.utterances)}`;
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -201,7 +211,7 @@ async function processChunk(
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.0,
-      max_tokens: 1200,
+      max_tokens: 2000,
       response_format: { type: 'json_object' }
     }),
     signal
