@@ -139,13 +139,17 @@ const Upload: React.FC<UploadProps> = () => {
           const { data: diarizationResult, error: diarizationError } = await supabase.functions.invoke('diarization-fix', {
             body: { utterances: result.speakerUtterances }
           });
-          if (!diarizationError && diarizationResult?.success && diarizationResult.needs_correction) {
+          // ALWAYS apply normalized Agent/Customer labels, even when GPT says no correction needed.
+          // The edge function returns final corrected_utterances normalized to Agent/Customer in every case.
+          if (!diarizationError && diarizationResult?.success && Array.isArray(diarizationResult.corrected_utterances)) {
             const transcriptions = await databaseService.getTranscriptions(dialogId);
             const speakerTranscription = transcriptions.find(t => t.transcription_type === 'speaker');
             if (speakerTranscription) {
               const corrections = diarizationResult.corrected_utterances.map((u: any, i: number) => ({ utterance_order: i, speaker: u.speaker }));
               const updatedCount = await databaseService.updateUtteranceSpeakers(speakerTranscription.id, corrections);
-              if (updatedCount > 0) toast.success(`${t('upload.diarizationCorrected')}: ${updatedCount} ${t('upload.speakerFixes')}`);
+              if (diarizationResult.needs_correction && updatedCount > 0) {
+                toast.success(`${t('upload.diarizationCorrected')}: ${updatedCount} ${t('upload.speakerFixes')}`);
+              }
             }
           }
         } catch (diarizationErr) { console.warn('Diarization validation error (non-blocking):', diarizationErr); }
