@@ -100,6 +100,8 @@ function deterministicFallbackLabels(utterances: SpeakerUtterance[]): string[] {
   const firstSpeaker = utterances[0].speaker;
   return utterances.map(u => (u.speaker === firstSpeaker ? 'Agent' : 'Customer'));
 }
+
+const CHUNK_SIZE = 120;
 const CHUNK_OVERLAP = 5;
 
 interface ChunkInput {
