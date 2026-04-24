@@ -487,6 +487,33 @@ ${JSON.stringify(utterancesForAnalysis)}`;
       end: u.end,
     }));
 
+    // Diagnostic: detect "stuck label" anomaly (>12 consecutive identical labels)
+    let maxRun = 1, curRun = 1, runLabel = correctedUtterances[0]?.speaker;
+    let stuckSpeaker: string | null = null;
+    for (let i = 1; i < correctedUtterances.length; i++) {
+      if (correctedUtterances[i].speaker === correctedUtterances[i - 1].speaker) {
+        curRun++;
+        if (curRun > maxRun) { maxRun = curRun; runLabel = correctedUtterances[i].speaker; }
+      } else {
+        curRun = 1;
+      }
+    }
+    if (maxRun > 12) {
+      stuckSpeaker = runLabel;
+      console.warn(`⚠️ [DIARIZATION] Suspicious "stuck" label run: ${maxRun} consecutive "${runLabel}" utterances — possible model failure`);
+    }
+
+    // Diagnostic: speaker time distribution
+    const dist = correctedUtterances.reduce(
+      (acc, u) => {
+        const dur = Math.max(0, (u.end ?? 0) - (u.start ?? 0));
+        acc[u.speaker] = (acc[u.speaker] || 0) + dur;
+        return acc;
+      },
+      {} as Record<string, number>
+    );
+    console.log('📊 [DIARIZATION] Time distribution (sec):', JSON.stringify(dist));
+
     const speakerMapping =
       result!.speaker_mapping && Object.keys(result!.speaker_mapping).length > 0
         ? result!.speaker_mapping
