@@ -1,11 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Alert, AlertDescription } from './ui/alert';
-import { ArrowLeft, FileText, Loader2, AlertCircle, Timer } from 'lucide-react';
+import { ArrowLeft, FileText, Loader2, AlertCircle, Timer, Wrench } from 'lucide-react';
 import { DialogData } from '../types/unified';
 import { extractUsernameFromEmail, capitalizeStatus } from '../utils/userUtils';
+import { supabase } from '../integrations/supabase/client';
+import { databaseService } from '../services/databaseService';
+import { toast } from 'sonner';
+import { useTranslation } from '../i18n';
 
 // Format audio duration in a readable format
 const formatDuration = (minutes?: number): string => {
@@ -35,6 +39,46 @@ const DialogDetailHeader: React.FC<DialogDetailHeaderProps> = ({
   isExportingPDF,
   onExportPDF
 }) => {
+  const { t } = useTranslation();
+  const [isFixing, setIsFixing] = useState(false);
+
+  const handleRefixDiarization = async () => {
+    if (!dialog.id) return;
+    setIsFixing(true);
+    try {
+      const transcriptions = await databaseService.getTranscriptions(dialog.id);
+      const speakerTx = transcriptions.find(t => t.transcription_type === 'speaker');
+      if (!speakerTx) throw new Error('No speaker transcription');
+      const utts = await databaseService.getUtterances(speakerTx.id);
+      if (!utts?.length) throw new Error('No utterances');
+
+      const payload = utts.map(u => ({
+        speaker: u.speaker,
+        text: u.text,
+        confidence: u.confidence ?? 0,
+        start: u.start_time ?? 0,
+        end: u.end_time ?? 0,
+      }));
+
+      const { data, error } = await supabase.functions.invoke('diarization-fix', {
+        body: { utterances: payload }
+      });
+      if (error || !data?.success) throw new Error(error?.message || data?.error || 'Unknown error');
+
+      const corrections = data.corrected_utterances.map((u: any, i: number) => ({
+        utterance_order: i,
+        speaker: u.speaker,
+      }));
+      const updated = await databaseService.updateUtteranceSpeakers(speakerTx.id, corrections);
+      toast.success(`${t('admin.diarizationFixed')} (${updated})`);
+      // Reload page to refresh transcription view
+      setTimeout(() => window.location.reload(), 800);
+    } catch (e: any) {
+      toast.error(`${t('admin.diarizationFixFailed')}: ${e.message}`);
+    } finally {
+      setIsFixing(false);
+    }
+  };
   const getStatusColor = (status: DialogData['status']) => {
     const normalizedStatus = status.toLowerCase();
     switch (normalizedStatus) {
