@@ -6,6 +6,7 @@ import OptimizedAdminManagement from '../components/OptimizedAdminManagement';
 import DataRetentionManager from '../components/DataRetentionManager';
 import PasscodeManager from '../components/PasscodeManager';
 import PerformanceMonitor from '../components/PerformanceMonitor';
+import PipelineHealthCard from '../components/PipelineHealthCard';
 import { useUserRole } from '../hooks/useUserRole';
 import { Navigate } from 'react-router-dom';
 import { useTranslation } from '../i18n';
@@ -56,7 +57,8 @@ const AdminDashboard = () => {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="users" className="mt-6">
+        <TabsContent value="users" className="mt-6 space-y-6">
+          <PipelineHealthCard />
           <OptimizedAdminManagement />
         </TabsContent>
 
