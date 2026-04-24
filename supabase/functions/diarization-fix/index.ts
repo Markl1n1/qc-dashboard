@@ -31,23 +31,71 @@ interface DiarizationFixResult {
   speaker_mapping?: Record<string, string>;
 }
 
-const SYSTEM_PROMPT = `You correct speaker diarization for customer service calls between exactly two roles: Agent and Customer.
+const SYSTEM_PROMPT = `Ты — эксперт по диаризации речи для звонков колл-центра / отдела продаж.
+В разговоре участвуют РОВНО ДВА человека: Agent (сотрудник компании) и Customer (клиент).
+Твоя задача: для КАЖДОЙ реплики определить, кто её произнёс — Agent или Customer.
+Опирайся на СМЫСЛ реплики, а не только на исходную метку speaker (она часто ошибочна).
 
-INPUT: a list of utterances with fields {index, speaker, text} in order.
-OUTPUT: JSON only (no markdown) with EXACT keys:
+═══════════════════════════════════════════════
+КАК ОТЛИЧИТЬ AGENT ОТ CUSTOMER (применяй ВСЕ признаки):
+
+🟦 AGENT (продавец / оператор / консультант):
+- Здоровается ПЕРВЫМ, обращается к клиенту по имени ("Алло, Виктор, здравствуйте")
+- Задаёт ПРОДАЮЩИЕ / КВАЛИФИЦИРУЮЩИЕ вопросы:
+  • "Когда начнёте инвестировать с нами?", "Почему?", "А почему вы так уверены?"
+  • "Какой у вас альтернативный источник заработка?", "Чем вы занимаетесь помимо работы?"
+  • "Для чего вы изначально приходили к нам?", "В чём цель была?"
+- Работает с возражениями, убеждает, давит:
+  • "В любом случае будете, это неизбежно"
+  • "Я сомневаюсь, что вас устраивает уровень дохода"
+  • "Любой нормальный мужчина, если чего-то добился, без проблем поделится"
+  • "Вы будете думать, то есть уже не так категоричны"
+- Использует "мы", "у нас", "наша компания", "наш сайт", "наша заявка"
+- Говорит профессионально, длинными структурированными фразами
+- Резюмирует, подводит итог, возвращает разговор к теме продукта
+
+🟥 CUSTOMER (клиент / абонент):
+- Отвечает на вопросы, часто коротко: "Работаю", "Никогда", "Нормально, хватает"
+- СОПРОТИВЛЯЕТСЯ продаже: "я не буду", "я уже сказал", "я не хочу зарабатывать"
+- Перебивает, говорит эмоционально / грубо:
+  • "А почему вы меня заставляете?"
+  • "Я не спрашиваю, какого цвета у вас трусы"
+  • "Я не буду рассказывать, чем я занимаюсь"
+- Жалуется на жизнь, ссылается на личные обстоятельства, знакомых, "коллегу"
+- Использует "я", "мне", "у меня", "моя квартира", "моя работа"
+- Часто говорит обрывисто, с паузами, переспрашивает: "Алло?", "Что?"
+
+═══════════════════════════════════════════════
+КЛЮЧЕВЫЕ ПРИНЦИПЫ:
+
+1. ПЕРВАЯ реплика (приветствие по имени) — почти ВСЕГДА Agent.
+2. Реплика-ВОПРОС о продукте/услуге/мотивации клиента → Agent.
+3. Реплика-ОТКАЗ или короткий ответ → Customer.
+4. ДЛИННАЯ убеждающая речь с "мы", "наша компания" → Agent.
+5. НЕ "залипай" на одной метке: в живом диалоге роли ЧЕРЕДУЮТСЯ.
+   Если подряд идёт >5 реплик одной роли — пересмотри их СМЫСЛ.
+6. Низкий confidence у Deepgram (<0.5) и короткая реплика ("Алло", "Я", "Бога") —
+   часто это вкрапление ДРУГОГО спикера в речь основного. Решай по контексту соседей.
+7. Если реплика логически продолжает мысль предыдущей реплики того же спикера —
+   сохраняй ту же метку. Если меняется тема/тон/направление — скорее всего смена.
+8. Игнорируй исходный speaker от Deepgram, если он противоречит смыслу.
+
+═══════════════════════════════════════════════
+INPUT: список реплик {index, speaker, text} по порядку.
+OUTPUT: ТОЛЬКО валидный JSON (без markdown, без комментариев) со СТРОГО такими ключами:
 {
   "needs_correction": boolean,
-  "confidence": number,
-  "analysis": string,
-  "labels": ["Agent"|"Customer", ...],
-  "speaker_mapping": { "<original speaker>": "Agent"|"Customer", ... }
+  "confidence": number,         // 0..1, твоя уверенность в разметке
+  "analysis": string,           // ≤ 180 символов, без переносов строк
+  "labels": ["Agent"|"Customer", ...],   // ровно N элементов
+  "speaker_mapping": { "<original>": "Agent"|"Customer" }  // как чаще всего маппится исходная метка
 }
 
-STRICT RULES:
-- The "labels" array MUST have exactly N items (N is provided).
-- "analysis" MUST be <= 180 characters and contain NO newlines.
-- Do not include any other keys.
-- If unsure, be conservative: set needs_correction=false and keep labels consistent with the original speaker labels (map each original speaker consistently).`;
+СТРОГО:
+- labels.length === N (N передан в user prompt).
+- Каждое значение labels — РОВНО строка "Agent" или "Customer", без других вариантов.
+- Никаких лишних ключей, никакого текста вне JSON.
+- Решай ПО КАЖДОЙ реплике отдельно, не копируй слепо исходного speaker.`;
 
 function normalizeFinalSpeaker(input: unknown): 'Agent' | 'Customer' {
   const raw = String(input ?? '').trim().toLowerCase();
@@ -138,7 +186,17 @@ async function processChunk(
   signal: AbortSignal
 ): Promise<string[] | null> {
   const N = chunk.utterances.length;
-  const userPrompt = `Return VALID JSON only. Keys: labels, speaker_mapping.\n\nRules:\n- labels length MUST be exactly ${N}\n- labels values ONLY: Agent or Customer\n- do NOT include any other keys\n\nUtterances:\n${JSON.stringify(chunk.utterances)}`;
+  const userPrompt = `N = ${N}. Верни ТОЛЬКО JSON с ключами labels и speaker_mapping.
+
+ПРАВИЛА:
+- labels.length РОВНО ${N}
+- значения labels — только "Agent" или "Customer"
+- НЕ копируй слепо исходного speaker — определяй роль ПО СМЫСЛУ реплики
+- помни: реплики-вопросы о продукте/мотивации = Agent; короткие отказы = Customer
+- роли в живом диалоге чередуются, не "залипай" на одной метке надолго
+
+Реплики:
+${JSON.stringify(chunk.utterances)}`;
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -153,7 +211,7 @@ async function processChunk(
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.0,
-      max_tokens: 1200,
+      max_tokens: 2000,
       response_format: { type: 'json_object' }
     }),
     signal
@@ -289,7 +347,10 @@ Deno.serve(async (req) => {
       return respondWithFallback('OpenAI API key not configured');
     }
 
-    const model = utterances.length > 80 ? 'gpt-4o-mini' : 'gpt-4o';
+    // Используем gpt-4o (более качественную модель) для всех диалогов до 250 реплик,
+    // т.к. семантический анализ ролей требует сильного reasoning. Только для очень
+    // длинных диалогов переключаемся на gpt-4o-mini ради скорости и стоимости.
+    const model = utterances.length > 250 ? 'gpt-4o-mini' : 'gpt-4o';
     const utterancesForAnalysis = utterances.map((u, index) => ({
       index, speaker: u.speaker, text: u.text
     }));
@@ -308,7 +369,19 @@ Deno.serve(async (req) => {
       const gptStart = Date.now();
 
       const N = utterancesForAnalysis.length;
-      const userPrompt = `Return VALID JSON only. Keys: needs_correction, confidence, analysis, labels, speaker_mapping.\n\nRules:\n- labels length MUST be exactly ${N}\n- analysis <= 180 characters, no newlines\n- labels values ONLY: Agent or Customer\n- do NOT include any other keys\n\nUtterances:\n${JSON.stringify(utterancesForAnalysis)}`;
+      const userPrompt = `N = ${N}. Верни ТОЛЬКО JSON с ключами needs_correction, confidence, analysis, labels, speaker_mapping.
+
+ПРАВИЛА:
+- labels.length РОВНО ${N}
+- analysis ≤ 180 символов, без переносов строк
+- значения labels — только "Agent" или "Customer"
+- НЕ копируй слепо исходного speaker — определяй роль ПО СМЫСЛУ реплики
+- помни признаки: вопросы о продукте/мотивации = Agent; короткие отказы/жалобы = Customer
+- роли в живом диалоге чередуются, не "залипай" на одной метке надолго (>5 подряд — пересмотри)
+- первая реплика-приветствие по имени = почти всегда Agent
+
+Реплики:
+${JSON.stringify(utterancesForAnalysis)}`;
 
       let response: Response;
       try {
@@ -324,8 +397,8 @@ Deno.serve(async (req) => {
               { role: 'system', content: SYSTEM_PROMPT },
               { role: 'user', content: userPrompt }
             ],
-            temperature: 0.2,
-            max_tokens: 1600,
+            temperature: 0.0,
+            max_tokens: 2400,
             response_format: { type: 'json_object' }
           }),
           signal: controller.signal
@@ -413,6 +486,33 @@ Deno.serve(async (req) => {
       start: u.start,
       end: u.end,
     }));
+
+    // Diagnostic: detect "stuck label" anomaly (>12 consecutive identical labels)
+    let maxRun = 1, curRun = 1, runLabel = correctedUtterances[0]?.speaker;
+    let stuckSpeaker: string | null = null;
+    for (let i = 1; i < correctedUtterances.length; i++) {
+      if (correctedUtterances[i].speaker === correctedUtterances[i - 1].speaker) {
+        curRun++;
+        if (curRun > maxRun) { maxRun = curRun; runLabel = correctedUtterances[i].speaker; }
+      } else {
+        curRun = 1;
+      }
+    }
+    if (maxRun > 12) {
+      stuckSpeaker = runLabel;
+      console.warn(`⚠️ [DIARIZATION] Suspicious "stuck" label run: ${maxRun} consecutive "${runLabel}" utterances — possible model failure`);
+    }
+
+    // Diagnostic: speaker time distribution
+    const dist = correctedUtterances.reduce(
+      (acc, u) => {
+        const dur = Math.max(0, (u.end ?? 0) - (u.start ?? 0));
+        acc[u.speaker] = (acc[u.speaker] || 0) + dur;
+        return acc;
+      },
+      {} as Record<string, number>
+    );
+    console.log('📊 [DIARIZATION] Time distribution (sec):', JSON.stringify(dist));
 
     const speakerMapping =
       result!.speaker_mapping && Object.keys(result!.speaker_mapping).length > 0
