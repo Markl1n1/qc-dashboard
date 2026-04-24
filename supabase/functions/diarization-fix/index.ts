@@ -347,7 +347,10 @@ Deno.serve(async (req) => {
       return respondWithFallback('OpenAI API key not configured');
     }
 
-    const model = utterances.length > 80 ? 'gpt-4o-mini' : 'gpt-4o';
+    // Используем gpt-4o (более качественную модель) для всех диалогов до 250 реплик,
+    // т.к. семантический анализ ролей требует сильного reasoning. Только для очень
+    // длинных диалогов переключаемся на gpt-4o-mini ради скорости и стоимости.
+    const model = utterances.length > 250 ? 'gpt-4o-mini' : 'gpt-4o';
     const utterancesForAnalysis = utterances.map((u, index) => ({
       index, speaker: u.speaker, text: u.text
     }));
