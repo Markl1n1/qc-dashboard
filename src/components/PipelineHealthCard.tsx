@@ -107,7 +107,7 @@ const PipelineHealthCard: React.FC = () => {
       const transcriptions = await databaseService.getTranscriptions(dialogId);
       const speakerTx = transcriptions.find(t => t.transcription_type === 'speaker');
       if (!speakerTx) throw new Error('No speaker transcription found');
-      const utts = await databaseService.getSpeakerUtterances(speakerTx.id);
+      const utts = await databaseService.getUtterances(speakerTx.id);
       if (!utts?.length) throw new Error('No utterances found');
 
       const payload = utts.map(u => ({
@@ -163,7 +163,7 @@ const PipelineHealthCard: React.FC = () => {
           </div>
         ) : issues.length === 0 ? (
           <div className="flex items-center justify-center py-8 text-muted-foreground gap-2">
-            <CheckCircle2 className="h-5 w-5 text-green-600" />
+            <CheckCircle2 className="h-5 w-5 text-primary" />
             {t('admin.allHealthy')}
           </div>
         ) : (
@@ -174,7 +174,7 @@ const PipelineHealthCard: React.FC = () => {
                 className="flex items-center justify-between p-3 rounded-md border bg-card"
               >
                 <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                  <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium truncate">{issue.fileName}</p>
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
