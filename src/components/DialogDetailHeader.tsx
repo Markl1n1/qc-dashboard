@@ -132,24 +132,38 @@ const DialogDetailHeader: React.FC<DialogDetailHeaderProps> = ({
           </div>
         </div>
         
-        <Button 
-          onClick={onExportPDF} 
-          disabled={isExportingPDF || !dialog.speakerTranscription} 
-          variant="outline" 
-          size="sm"
-        >
-          {isExportingPDF ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Exporting...
-            </>
-          ) : (
-            <>
-              <FileText className="h-4 w-4 mr-2" />
-              Export PDF
-            </>
-          )}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={handleRefixDiarization}
+            disabled={isFixing || !dialog.speakerTranscription}
+            variant="outline"
+            size="sm"
+          >
+            {isFixing ? (
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('admin.fixing')}</>
+            ) : (
+              <><Wrench className="h-4 w-4 mr-2" />{t('admin.runDiarizationFix')}</>
+            )}
+          </Button>
+          <Button
+            onClick={onExportPDF}
+            disabled={isExportingPDF || !dialog.speakerTranscription}
+            variant="outline"
+            size="sm"
+          >
+            {isExportingPDF ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                {t('dialog.exporting')}
+              </>
+            ) : (
+              <>
+                <FileText className="h-4 w-4 mr-2" />
+                {t('dialog.exportPDF')}
+              </>
+            )}
+          </Button>
+        </div>
       </div>
       
       {/* Error message for failed dialogs */}
