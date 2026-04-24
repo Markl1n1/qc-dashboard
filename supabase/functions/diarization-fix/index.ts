@@ -369,7 +369,19 @@ Deno.serve(async (req) => {
       const gptStart = Date.now();
 
       const N = utterancesForAnalysis.length;
-      const userPrompt = `Return VALID JSON only. Keys: needs_correction, confidence, analysis, labels, speaker_mapping.\n\nRules:\n- labels length MUST be exactly ${N}\n- analysis <= 180 characters, no newlines\n- labels values ONLY: Agent or Customer\n- do NOT include any other keys\n\nUtterances:\n${JSON.stringify(utterancesForAnalysis)}`;
+      const userPrompt = `N = ${N}. Верни ТОЛЬКО JSON с ключами needs_correction, confidence, analysis, labels, speaker_mapping.
+
+ПРАВИЛА:
+- labels.length РОВНО ${N}
+- analysis ≤ 180 символов, без переносов строк
+- значения labels — только "Agent" или "Customer"
+- НЕ копируй слепо исходного speaker — определяй роль ПО СМЫСЛУ реплики
+- помни признаки: вопросы о продукте/мотивации = Agent; короткие отказы/жалобы = Customer
+- роли в живом диалоге чередуются, не "залипай" на одной метке надолго (>5 подряд — пересмотри)
+- первая реплика-приветствие по имени = почти всегда Agent
+
+Реплики:
+${JSON.stringify(utterancesForAnalysis)}`;
 
       let response: Response;
       try {
@@ -385,8 +397,8 @@ Deno.serve(async (req) => {
               { role: 'system', content: SYSTEM_PROMPT },
               { role: 'user', content: userPrompt }
             ],
-            temperature: 0.2,
-            max_tokens: 1600,
+            temperature: 0.0,
+            max_tokens: 2400,
             response_format: { type: 'json_object' }
           }),
           signal: controller.signal
