@@ -89,7 +89,17 @@ function buildSpeakerMapping(
   return mapping;
 }
 
-const CHUNK_SIZE = 120;
+/**
+ * Deterministic fallback: when GPT is unavailable, derive Agent/Customer labels
+ * from raw speaker IDs. Heuristic: the speaker who utters the FIRST line in a
+ * customer-service call is typically the Agent (greeting). All utterances by
+ * that raw speaker map to Agent; everything else maps to Customer.
+ */
+function deterministicFallbackLabels(utterances: SpeakerUtterance[]): string[] {
+  if (!utterances.length) return [];
+  const firstSpeaker = utterances[0].speaker;
+  return utterances.map(u => (u.speaker === firstSpeaker ? 'Agent' : 'Customer'));
+}
 const CHUNK_OVERLAP = 5;
 
 interface ChunkInput {
