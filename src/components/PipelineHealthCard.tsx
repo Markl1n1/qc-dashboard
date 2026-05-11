@@ -145,7 +145,26 @@ const PipelineHealthCard: React.FC = () => {
     }
   };
 
-  return (
+  const handleMarkAsFailed = async (dialogId: string) => {
+    setMarkingId(dialogId);
+    try {
+      const { error } = await supabase
+        .from('dialogs')
+        .update({
+          status: 'failed',
+          error_message: 'Marked as failed from Pipeline Health (stuck in processing)',
+        })
+        .eq('id', dialogId);
+      if (error) throw error;
+      toast.success(t('admin.markedFailed'));
+      await loadHealth();
+    } catch (e: any) {
+      console.error(e);
+      toast.error(`${t('admin.markFailedError')}: ${e.message}`);
+    } finally {
+      setMarkingId(null);
+    }
+  };
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
@@ -191,6 +210,9 @@ const PipelineHealthCard: React.FC = () => {
                       {issue.reasons.includes('raw_speakers') && (
                         <Badge variant="outline" className="text-xs">{t('admin.rawSpeakers')}</Badge>
                       )}
+                      {issue.reasons.includes('stuck_processing') && (
+                        <Badge variant="destructive" className="text-xs">{t('admin.stuckProcessing')}</Badge>
+                      )}
                       <span className="text-xs text-muted-foreground">
                         {new Date(issue.uploadDate).toLocaleDateString()}
                       </span>
@@ -198,6 +220,20 @@ const PipelineHealthCard: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                  {issue.reasons.includes('stuck_processing') && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleMarkAsFailed(issue.dialogId)}
+                      disabled={markingId === issue.dialogId}
+                    >
+                      {markingId === issue.dialogId ? (
+                        <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />{t('admin.fixing')}</>
+                      ) : (
+                        <>{t('admin.markAsFailed')}</>
+                      )}
+                    </Button>
+                  )}
                   {issue.reasons.includes('raw_speakers') && (
                     <Button
                       variant="outline"
