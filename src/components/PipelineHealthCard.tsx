@@ -43,48 +43,51 @@ const PipelineHealthCard: React.FC = () => {
       const dialogIds = completedDialogs.map(d => d.id);
 
       // 2) Which of these have any dialog_analysis row?
-      const { data: analysisRows, error: analysisErr } = await supabase
-        .from('dialog_analysis')
-        .select('dialog_id')
-        .in('dialog_id', dialogIds);
-      if (analysisErr) throw analysisErr;
-      const analysedSet = new Set((analysisRows || []).map(r => r.dialog_id));
-
-      // 3) Find transcriptions for these dialogs and look at their utterances' speakers
-      const { data: transcriptions, error: txErr } = await supabase
-        .from('dialog_transcriptions')
-        .select('id, dialog_id')
-        .in('dialog_id', dialogIds)
-        .eq('transcription_type', 'speaker');
-      if (txErr) throw txErr;
-
-      const txByDialog = new Map<string, string[]>();
-      (transcriptions || []).forEach(tx => {
-        const arr = txByDialog.get(tx.dialog_id) ?? [];
-        arr.push(tx.id);
-        txByDialog.set(tx.dialog_id, arr);
-      });
-
-      const allTxIds = (transcriptions || []).map(t => t.id);
+      const analysedSet = new Set<string>();
       const rawSpeakerDialogIds = new Set<string>();
-      if (allTxIds.length > 0) {
-        const { data: badUtts, error: uttErr } = await supabase
-          .from('dialog_speaker_utterances')
-          .select('transcription_id, speaker')
-          .in('transcription_id', allTxIds)
-          .not('speaker', 'in', '("Agent","Customer")');
-        if (uttErr) throw uttErr;
-        const badTxIds = new Set((badUtts || []).map(u => u.transcription_id));
-        (transcriptions || []).forEach(tx => {
-          if (badTxIds.has(tx.id)) rawSpeakerDialogIds.add(tx.dialog_id);
-        });
+
+      if (dialogIds.length > 0) {
+        const { data: analysisRows, error: analysisErr } = await supabase
+          .from('dialog_analysis')
+          .select('dialog_id')
+          .in('dialog_id', dialogIds);
+        if (analysisErr) throw analysisErr;
+        (analysisRows || []).forEach(r => analysedSet.add(r.dialog_id));
+
+        // 3) Find transcriptions and look at their utterances' speakers
+        const { data: transcriptions, error: txErr } = await supabase
+          .from('dialog_transcriptions')
+          .select('id, dialog_id')
+          .in('dialog_id', dialogIds)
+          .eq('transcription_type', 'speaker');
+        if (txErr) throw txErr;
+
+        const allTxIds = (transcriptions || []).map(t => t.id);
+        if (allTxIds.length > 0) {
+          const { data: badUtts, error: uttErr } = await supabase
+            .from('dialog_speaker_utterances')
+            .select('transcription_id, speaker')
+            .in('transcription_id', allTxIds)
+            .not('speaker', 'in', '("Agent","Customer")');
+          if (uttErr) throw uttErr;
+          const badTxIds = new Set((badUtts || []).map(u => u.transcription_id));
+          (transcriptions || []).forEach(tx => {
+            if (badTxIds.has(tx.id)) rawSpeakerDialogIds.add(tx.dialog_id);
+          });
+        }
       }
 
+      const now = Date.now();
       const compiled: PipelineIssue[] = [];
       for (const d of dialogs) {
         const reasons: PipelineIssue['reasons'] = [];
-        if (!analysedSet.has(d.id)) reasons.push('missing_analysis');
-        if (rawSpeakerDialogIds.has(d.id)) reasons.push('raw_speakers');
+        if (d.status === 'processing') {
+          const ageMs = now - new Date(d.updated_at || d.upload_date).getTime();
+          if (ageMs > STUCK_THRESHOLD_MS) reasons.push('stuck_processing');
+        } else {
+          if (!analysedSet.has(d.id)) reasons.push('missing_analysis');
+          if (rawSpeakerDialogIds.has(d.id)) reasons.push('raw_speakers');
+        }
         if (reasons.length > 0) {
           compiled.push({
             dialogId: d.id,
