@@ -246,6 +246,10 @@ export const en = {
     fixing: 'Fixing...',
     diarizationFixed: 'Diarization fixed',
     diarizationFixFailed: 'Diarization fix failed',
+    stuckProcessing: 'Stuck in processing',
+    markAsFailed: 'Mark as failed',
+    markedFailed: 'Dialog marked as failed',
+    markFailedError: 'Failed to update dialog',
   },
   settings: {
     title: 'Settings',

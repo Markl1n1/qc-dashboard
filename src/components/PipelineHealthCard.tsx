@@ -13,74 +13,81 @@ interface PipelineIssue {
   dialogId: string;
   fileName: string;
   uploadDate: string;
-  reasons: Array<'missing_analysis' | 'raw_speakers'>;
+  reasons: Array<'missing_analysis' | 'raw_speakers' | 'stuck_processing'>;
 }
+
+const STUCK_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
 
 const PipelineHealthCard: React.FC = () => {
   const { t } = useTranslation();
   const [issues, setIssues] = useState<PipelineIssue[]>([]);
   const [loading, setLoading] = useState(false);
   const [fixingId, setFixingId] = useState<string | null>(null);
+  const [markingId, setMarkingId] = useState<string | null>(null);
 
   const loadHealth = useCallback(async () => {
     setLoading(true);
     try {
-      // 1) Fetch recent completed dialogs (last 100)
+      // 1) Fetch recent dialogs (last 100), include processing & completed
       const { data: dialogs, error: dialogsErr } = await supabase
         .from('dialogs')
-        .select('id, file_name, upload_date, status')
-        .eq('status', 'completed')
+        .select('id, file_name, upload_date, updated_at, status')
+        .in('status', ['completed', 'processing'])
         .order('upload_date', { ascending: false })
         .limit(100);
 
       if (dialogsErr) throw dialogsErr;
       if (!dialogs?.length) { setIssues([]); return; }
 
-      const dialogIds = dialogs.map(d => d.id);
+      const completedDialogs = dialogs.filter(d => d.status === 'completed');
+      const dialogIds = completedDialogs.map(d => d.id);
 
       // 2) Which of these have any dialog_analysis row?
-      const { data: analysisRows, error: analysisErr } = await supabase
-        .from('dialog_analysis')
-        .select('dialog_id')
-        .in('dialog_id', dialogIds);
-      if (analysisErr) throw analysisErr;
-      const analysedSet = new Set((analysisRows || []).map(r => r.dialog_id));
-
-      // 3) Find transcriptions for these dialogs and look at their utterances' speakers
-      const { data: transcriptions, error: txErr } = await supabase
-        .from('dialog_transcriptions')
-        .select('id, dialog_id')
-        .in('dialog_id', dialogIds)
-        .eq('transcription_type', 'speaker');
-      if (txErr) throw txErr;
-
-      const txByDialog = new Map<string, string[]>();
-      (transcriptions || []).forEach(tx => {
-        const arr = txByDialog.get(tx.dialog_id) ?? [];
-        arr.push(tx.id);
-        txByDialog.set(tx.dialog_id, arr);
-      });
-
-      const allTxIds = (transcriptions || []).map(t => t.id);
+      const analysedSet = new Set<string>();
       const rawSpeakerDialogIds = new Set<string>();
-      if (allTxIds.length > 0) {
-        const { data: badUtts, error: uttErr } = await supabase
-          .from('dialog_speaker_utterances')
-          .select('transcription_id, speaker')
-          .in('transcription_id', allTxIds)
-          .not('speaker', 'in', '("Agent","Customer")');
-        if (uttErr) throw uttErr;
-        const badTxIds = new Set((badUtts || []).map(u => u.transcription_id));
-        (transcriptions || []).forEach(tx => {
-          if (badTxIds.has(tx.id)) rawSpeakerDialogIds.add(tx.dialog_id);
-        });
+
+      if (dialogIds.length > 0) {
+        const { data: analysisRows, error: analysisErr } = await supabase
+          .from('dialog_analysis')
+          .select('dialog_id')
+          .in('dialog_id', dialogIds);
+        if (analysisErr) throw analysisErr;
+        (analysisRows || []).forEach(r => analysedSet.add(r.dialog_id));
+
+        // 3) Find transcriptions and look at their utterances' speakers
+        const { data: transcriptions, error: txErr } = await supabase
+          .from('dialog_transcriptions')
+          .select('id, dialog_id')
+          .in('dialog_id', dialogIds)
+          .eq('transcription_type', 'speaker');
+        if (txErr) throw txErr;
+
+        const allTxIds = (transcriptions || []).map(t => t.id);
+        if (allTxIds.length > 0) {
+          const { data: badUtts, error: uttErr } = await supabase
+            .from('dialog_speaker_utterances')
+            .select('transcription_id, speaker')
+            .in('transcription_id', allTxIds)
+            .not('speaker', 'in', '("Agent","Customer")');
+          if (uttErr) throw uttErr;
+          const badTxIds = new Set((badUtts || []).map(u => u.transcription_id));
+          (transcriptions || []).forEach(tx => {
+            if (badTxIds.has(tx.id)) rawSpeakerDialogIds.add(tx.dialog_id);
+          });
+        }
       }
 
+      const now = Date.now();
       const compiled: PipelineIssue[] = [];
       for (const d of dialogs) {
         const reasons: PipelineIssue['reasons'] = [];
-        if (!analysedSet.has(d.id)) reasons.push('missing_analysis');
-        if (rawSpeakerDialogIds.has(d.id)) reasons.push('raw_speakers');
+        if (d.status === 'processing') {
+          const ageMs = now - new Date(d.updated_at || d.upload_date).getTime();
+          if (ageMs > STUCK_THRESHOLD_MS) reasons.push('stuck_processing');
+        } else {
+          if (!analysedSet.has(d.id)) reasons.push('missing_analysis');
+          if (rawSpeakerDialogIds.has(d.id)) reasons.push('raw_speakers');
+        }
         if (reasons.length > 0) {
           compiled.push({
             dialogId: d.id,
@@ -138,6 +145,27 @@ const PipelineHealthCard: React.FC = () => {
     }
   };
 
+  const handleMarkAsFailed = async (dialogId: string) => {
+    setMarkingId(dialogId);
+    try {
+      const { error } = await supabase
+        .from('dialogs')
+        .update({
+          status: 'failed',
+          error_message: 'Marked as failed from Pipeline Health (stuck in processing)',
+        })
+        .eq('id', dialogId);
+      if (error) throw error;
+      toast.success(t('admin.markedFailed'));
+      await loadHealth();
+    } catch (e: any) {
+      console.error(e);
+      toast.error(`${t('admin.markFailedError')}: ${e.message}`);
+    } finally {
+      setMarkingId(null);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -184,6 +212,9 @@ const PipelineHealthCard: React.FC = () => {
                       {issue.reasons.includes('raw_speakers') && (
                         <Badge variant="outline" className="text-xs">{t('admin.rawSpeakers')}</Badge>
                       )}
+                      {issue.reasons.includes('stuck_processing') && (
+                        <Badge variant="destructive" className="text-xs">{t('admin.stuckProcessing')}</Badge>
+                      )}
                       <span className="text-xs text-muted-foreground">
                         {new Date(issue.uploadDate).toLocaleDateString()}
                       </span>
@@ -191,6 +222,20 @@ const PipelineHealthCard: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                  {issue.reasons.includes('stuck_processing') && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleMarkAsFailed(issue.dialogId)}
+                      disabled={markingId === issue.dialogId}
+                    >
+                      {markingId === issue.dialogId ? (
+                        <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />{t('admin.fixing')}</>
+                      ) : (
+                        <>{t('admin.markAsFailed')}</>
+                      )}
+                    </Button>
+                  )}
                   {issue.reasons.includes('raw_speakers') && (
                     <Button
                       variant="outline"
