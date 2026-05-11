@@ -13,8 +13,10 @@ interface PipelineIssue {
   dialogId: string;
   fileName: string;
   uploadDate: string;
-  reasons: Array<'missing_analysis' | 'raw_speakers'>;
+  reasons: Array<'missing_analysis' | 'raw_speakers' | 'stuck_processing'>;
 }
+
+const STUCK_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
 
 const PipelineHealthCard: React.FC = () => {
   const { t } = useTranslation();
