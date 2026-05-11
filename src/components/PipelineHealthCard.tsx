@@ -23,22 +23,24 @@ const PipelineHealthCard: React.FC = () => {
   const [issues, setIssues] = useState<PipelineIssue[]>([]);
   const [loading, setLoading] = useState(false);
   const [fixingId, setFixingId] = useState<string | null>(null);
+  const [markingId, setMarkingId] = useState<string | null>(null);
 
   const loadHealth = useCallback(async () => {
     setLoading(true);
     try {
-      // 1) Fetch recent completed dialogs (last 100)
+      // 1) Fetch recent dialogs (last 100), include processing & completed
       const { data: dialogs, error: dialogsErr } = await supabase
         .from('dialogs')
-        .select('id, file_name, upload_date, status')
-        .eq('status', 'completed')
+        .select('id, file_name, upload_date, updated_at, status')
+        .in('status', ['completed', 'processing'])
         .order('upload_date', { ascending: false })
         .limit(100);
 
       if (dialogsErr) throw dialogsErr;
       if (!dialogs?.length) { setIssues([]); return; }
 
-      const dialogIds = dialogs.map(d => d.id);
+      const completedDialogs = dialogs.filter(d => d.status === 'completed');
+      const dialogIds = completedDialogs.map(d => d.id);
 
       // 2) Which of these have any dialog_analysis row?
       const { data: analysisRows, error: analysisErr } = await supabase
